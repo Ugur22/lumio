@@ -1,4 +1,4 @@
-import { animated, useSpring } from "@react-spring/web";
+import { animated, config, useSpring, useTrail } from "@react-spring/web";
 import { createContext, useContext, useRef, useState, type ComponentProps } from "react";
 import ReactMarkdown from "react-markdown";
 import { prepare } from "../lib/markup/tags";
@@ -64,14 +64,71 @@ function StyledBlock(all: ComponentProps<"div"> & { node?: unknown }) {
   );
 }
 
+// Pieces of the generic UI sketch, in build-up order. `box` sizes and places the piece, `look`
+// paints it; the pulse runs on an inner element because a CSS animation would override the
+// opacity the build-up spring sets on the outer one.
+const SKETCH = [
+  { box: "h-6 w-6 shrink-0", look: "rounded-full bg-[color-mix(in_srgb,var(--accent)_35%,transparent)]" },
+  { box: "h-2 w-16", look: "rounded-full bg-border" },
+  { box: "h-2 w-10", look: "rounded-full bg-border" },
+  { box: "h-5 w-[58%] self-start", look: "rounded-xl bg-border" },
+  { box: "h-5 w-[42%] self-end", look: "rounded-xl border border-border bg-surface" },
+  { box: "h-5 w-[66%] self-start", look: "rounded-xl bg-border" },
+] as const;
+
+// useTrail chains each spring to the previous one, so the stagger is spring lag, not fixed
+// milliseconds. Reduced motion needs no branch here: main.tsx makes springs jump to the end.
 function DrawingPlaceholder() {
+  const trail = useTrail(SKETCH.length, {
+    from: { opacity: 0, y: 6 },
+    to: { opacity: 1, y: 0 },
+    config: config.gentle,
+  });
+  const piece = (i: number) => {
+    const sketch = SKETCH[i];
+    if (!sketch) return null;
+    return (
+      <animated.div key={i} aria-hidden className={sketch.box} style={trail[i]}>
+        <div
+          className={`h-full w-full ${sketch.look} motion-safe:animate-sketch-pulse`}
+          style={{ animationDelay: `${900 + i * 150}ms` }}
+        />
+      </animated.div>
+    );
+  };
   return (
     <div
       role="status"
       aria-label="Drawing"
-      className="my-4 flex h-40 items-center justify-center rounded-2xl border border-border bg-bubble font-sans text-sm text-muted motion-safe:animate-pulse"
+      className="relative my-4 h-40 overflow-hidden rounded-2xl border border-border bg-bubble p-4 font-sans"
     >
-      Drawing…
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2.5">
+          {piece(0)}
+          <div className="flex flex-col gap-1.5">
+            {piece(1)}
+            {piece(2)}
+          </div>
+        </div>
+        {SKETCH.slice(3).map((_, i) => piece(i + 3))}
+      </div>
+      <span className="absolute right-3 top-2.5 flex items-center gap-0.5 text-xs text-muted">
+        Drawing
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            aria-hidden
+            className="opacity-70 motion-safe:animate-dot-pulse"
+            style={{ animationDelay: `${i * 200}ms` }}
+          >
+            .
+          </span>
+        ))}
+      </span>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 hidden bg-[linear-gradient(100deg,transparent_30%,color-mix(in_srgb,var(--accent)_14%,transparent)_50%,transparent_70%)] motion-safe:block motion-safe:animate-shimmer"
+      />
     </div>
   );
 }

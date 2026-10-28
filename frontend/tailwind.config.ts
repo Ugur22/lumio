@@ -25,6 +25,18 @@ export default {
         "warn-bar": v("warn-bar"),
         caution: v("caution"),
       },
+      keyframes: {
+        shimmer: { "0%": { transform: "translateX(-100%)" }, "100%": { transform: "translateX(100%)" } },
+        "dot-pulse": { "0%, 100%": { opacity: "0.25" }, "50%": { opacity: "1" } },
+        "sketch-pulse": { "0%, 100%": { opacity: "1" }, "50%": { opacity: "0.45" } },
+      },
+      animation: {
+        // The delay holds the sweep back until the sketch has finished building up.
+        shimmer: "shimmer 2.2s ease-in-out 1.2s infinite",
+        "dot-pulse": "dot-pulse 1.2s ease-in-out infinite",
+        // Backwards fill keeps pieces solid until their staggered delay, after the build-up.
+        "sketch-pulse": "sketch-pulse 1.6s ease-in-out infinite backwards",
+      },
       boxShadow: {
         soft: v("shadow"),
         lift: v("shadow-lift"),
