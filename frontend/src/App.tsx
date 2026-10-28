@@ -69,7 +69,7 @@ export function App() {
   });
 
   return (
-    <div className="canvas flex h-dvh font-sans text-[15px] leading-[1.6] text-text">
+    <div className="flex h-dvh font-sans text-[15px] leading-[1.6] text-text">
       <Sidebar
         chats={chats}
         currentId={currentId}
@@ -107,7 +107,7 @@ export function App() {
           >
             <MenuIcon />
           </PressButton>
-          <h1 className="truncate font-display text-lg font-semibold">{title}</h1>
+          <h1 className="min-w-0 truncate font-display text-lg font-semibold">{title}</h1>
           <ProviderSwitcher onManage={() => setSettingsOpen(true)} />
         </header>
         {loadError && (

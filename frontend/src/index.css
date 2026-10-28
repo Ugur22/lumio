@@ -17,7 +17,6 @@
   --warn-bg: #fbe3e0;
   --warn-bar: #c0392b;
   --surface: #ffffff;
-  --glow: rgb(59 91 219 / 0.09);
   --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 24px -10px rgb(16 24 40 / 0.12);
   --shadow-lift: 0 2px 4px rgb(16 24 40 / 0.07), 0 14px 32px -10px rgb(59 91 219 / 0.3);
   color-scheme: light;
@@ -30,7 +29,7 @@
   --muted: #8b92a3;
   --border: #262a34;
   --bubble: #1f232d;
-  --accent: #5a77ea;
+  --accent: #6a85ee;
   --dialogue: #5fc4d8;
   --key-bg: #5a4a10;
   --note-bg: #1d2a3a;
@@ -38,8 +37,7 @@
   --warn-bg: #3d2320;
   --warn-bar: #e0584a;
   --surface: #1b1e26;
-  --glow: rgb(90 119 234 / 0.12);
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 10px 28px -12px rgb(0 0 0 / 0.7);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 12px -8px rgb(0 0 0 / 0.3);
   --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.4), 0 14px 32px -10px rgb(90 119 234 / 0.35);
   color-scheme: dark;
 }
@@ -59,13 +57,6 @@ body {
 }
 
 @layer components {
-  /* A faint accent glow at the top gives the page depth without a decorative image. */
-  .canvas {
-    background:
-      radial-gradient(60rem 28rem at 50% -12rem, var(--glow), transparent 70%),
-      var(--bg);
-  }
-
   .dialogue {
     color: var(--dialogue);
   }

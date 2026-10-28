@@ -7,3 +7,8 @@ data/
 .pytest_cache/
 profiles.json
 profiles.corrupt
+# Third-party design skill (reinstall with the skills CLI) and its inspector output, which holds chat screenshots.
+.agents/
+.claude/skills/
+skills-lock.json
+.taste-skill/
