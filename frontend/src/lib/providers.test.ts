@@ -6,6 +6,7 @@ describe("detectPreset", () => {
     ["sk-or-v1-abc", "openrouter"],
     ["sk-ant-api03-abc", "anthropic"],
     ["gsk_abc", "groq"],
+    ["xai-abc123", "xai"],
     ["sk-proj-abc", "openai"],
     ["sk-abc", "openai"],
   ])("%s -> %s", (key, id) => {
