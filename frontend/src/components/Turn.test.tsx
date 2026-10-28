@@ -43,3 +43,15 @@ describe("Turn search query", () => {
     }
   });
 });
+
+describe("Turn copy button", () => {
+  it("offers to copy a finished reply", () => {
+    const out = renderToStaticMarkup(<Turn question="q" reply={{ kind: "text", content: "hi" }} />);
+    expect(out).toContain('aria-label="Copy message"');
+  });
+
+  it("hides it while the reply is still streaming", () => {
+    const out = renderToStaticMarkup(<Turn question="q" reply={{ kind: "text", content: "hi", streaming: true }} />);
+    expect(out).not.toContain("Copy message");
+  });
+});

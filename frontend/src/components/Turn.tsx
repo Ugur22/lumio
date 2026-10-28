@@ -5,7 +5,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { APP_NAME } from "../lib/brand";
 import { hostOf } from "../lib/providers";
 import type { SourceRef } from "../types";
-import { LumioMark } from "./icons";
+import { CheckIcon, CopyIcon, LumioMark } from "./icons";
 import { ImageLightbox } from "./ImageLightbox";
 import { Markup } from "./Markup";
 
@@ -59,6 +59,7 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
           <Appear live={live} className="mt-5">
             <Who />
             <Markup text={r.content} streaming={r.streaming} />
+            {!r.streaming && <CopyButton text={r.content} />}
           </Appear>
         ))
         .with({ kind: "thinking" }, () => (
@@ -195,6 +196,34 @@ function Who() {
       <LumioMark size={20} />
       {APP_NAME}
     </div>
+  );
+}
+
+// Copies the raw reply, not the rendered markup, so Markdown survives a paste.
+function CopyButton({ text }: { text: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setState("copied");
+    } catch {
+      setState("failed");
+    }
+    setTimeout(() => setState("idle"), 1500);
+  }
+
+  const label = state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy message";
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-label={label}
+      title={label}
+      className="-ml-1.5 mt-2 grid size-7 place-items-center rounded-lg text-muted hover:bg-surface hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {state === "copied" ? <CheckIcon width={16} height={16} /> : <CopyIcon width={16} height={16} />}
+    </button>
   );
 }
 
