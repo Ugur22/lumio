@@ -1,7 +1,9 @@
 import base64
 import json
 import logging
+import os
 import re
+import sys
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -54,6 +56,17 @@ from models import (
 )
 
 log = logging.getLogger("dolphinllm")
+
+
+class RedWarnings(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        line = f"{record.levelname}: {super().format(record)}"
+        return f"\033[31m{line}\033[0m" if record.levelno >= logging.WARNING and sys.stderr.isatty() and "NO_COLOR" not in os.environ else line
+
+
+_console = logging.StreamHandler()
+_console.setFormatter(RedWarnings("%(message)s"))
+log.addHandler(_console)
 
 settings = Settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
