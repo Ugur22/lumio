@@ -82,7 +82,7 @@ def test_vision_profile_sends_content_parts_and_stores_a_ref(api, calls):
     assert sent[0] == {"type": "text", "text": "what is this?"}
     assert sent[1] == {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{PNG}"}}
     ref = chat["messages"][0]["images"][0]
-    assert set(ref) == {"id", "media_type"}
+    assert set(ref) == {"id", "media_type", "prompt"} and ref["prompt"] is None
     assert PNG not in json.dumps(chat)
     assert api.get(f"/api/chats/{cid}/images/{ref['id']}").content == base64.b64decode(PNG)
 

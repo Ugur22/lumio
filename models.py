@@ -74,6 +74,8 @@ class ImageRef(BaseModel):
 
     id: str = Field(pattern=r"^[0-9a-f]{32}$")
     media_type: MediaType
+    # What a generated illustration was asked to show: alt text, and its stand-in in history.
+    prompt: str | None = None
 
 
 class TextPart(BaseModel):
@@ -159,6 +161,13 @@ def clean_base_url(url: str) -> str:
     return url
 
 
+XAI_IMAGE_MODEL = "grok-2-image"
+
+
+def blank_to_none(v):
+    return None if isinstance(v, str) and not v.strip() else v.strip() if isinstance(v, str) else v
+
+
 class Profile(BaseModel):
     id: str
     name: str = Field(min_length=1, max_length=60)
@@ -170,16 +179,21 @@ class Profile(BaseModel):
     vision: bool = False
     # Set by the user (OpenRouter's model list can prefill it): used only for the usage meter.
     context_window: int | None = Field(default=None, ge=1000)
+    # Model for POST /images/generations; None means the provider can't illustrate replies.
+    image_model: str | None = Field(default=None, max_length=120)
+
+    _blank_image_model = field_validator("image_model", mode="before")(lambda cls, v: blank_to_none(v))
 
     @model_validator(mode="before")
     @classmethod
-    def _default_vision(cls, data):
-        # Profiles saved before this field existed: Grok models read images, so an
-        # existing xAI profile should not need switching on by hand.
-        if isinstance(data, dict) and "vision" not in data:
+    def _xai_defaults(cls, data):
+        # Profiles saved before these fields existed: Grok models read images and xAI
+        # offers an image model, so an existing xAI profile should not need setting up by hand.
+        if isinstance(data, dict):
             host = urlsplit(str(data.get("base_url", ""))).hostname
             if host == "api.x.ai":
-                return {**data, "vision": True}
+                defaults = {"vision": True, "image_model": XAI_IMAGE_MODEL}
+                return {**{k: v for k, v in defaults.items() if k not in data}, **data}
         return data
 
 
@@ -206,9 +220,11 @@ class NewProfile(BaseModel):
     needs_key: bool = True
     vision: bool = False
     context_window: int | None = Field(default=None, ge=1000)
+    image_model: str | None = Field(default=None, max_length=120)
     key: SecretStr | None = None
 
     _url = field_validator("base_url")(lambda cls, v: clean_base_url(v))
+    _blank_image_model = field_validator("image_model", mode="before")(lambda cls, v: blank_to_none(v))
 
 
 class EditProfile(BaseModel):
@@ -217,7 +233,11 @@ class EditProfile(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=120)
     vision: bool | None = None
     context_window: int | None = Field(default=None, ge=1000)
+    # Nullable like context_window: an explicit null clears it (see edit_profile).
+    image_model: str | None = Field(default=None, max_length=120)
     key: SecretStr | None = None
+
+    _blank_image_model = field_validator("image_model", mode="before")(lambda cls, v: blank_to_none(v))
 
     @field_validator("base_url")
     @classmethod
@@ -241,6 +261,7 @@ class NewMessage(BaseModel):
     content: str = ""
     images: list[ImageData] = Field(default=[], max_length=MAX_IMAGES)
     web: bool = False
+    illustrate: bool = False
 
     @model_validator(mode="after")
     def _not_empty(self) -> "NewMessage":

@@ -54,6 +54,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 interface StreamOptions {
   images: ImageUpload[];
   web: boolean;
+  illustrate: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
@@ -62,11 +63,11 @@ interface StreamOptions {
 // Resolves with the saved chat once the server sends `done`. Aborting rejects with an
 // AbortError; the server then saves whatever text it had already streamed.
 async function streamMessage(id: string, content: string, opts: StreamOptions): Promise<DoneChat> {
-  const { images, web, signal, onDelta, onSources } = opts;
+  const { images, web, illustrate, signal, onDelta, onSources } = opts;
   const res = await fetch(`/api/chats/${id}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, images, web }),
+    body: JSON.stringify({ content, images, web, illustrate }),
     signal,
   });
   if (!res.ok || !res.body) {
@@ -84,6 +85,8 @@ async function streamMessage(id: string, content: string, opts: StreamOptions): 
         (payload.notes as string[] | undefined) ?? [],
         typeof payload.query === "string" ? payload.query : null,
       );
+    // Images are delivered with `done` (stored on the saved message), so the live event needs no handling.
+    else if (event === "image") return;
     else if (event === "done") chat = payload as unknown as DoneChat;
     else if (event === "error") failure = errorMessage(payload.detail, "Stream failed");
   });

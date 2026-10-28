@@ -69,6 +69,7 @@ interface SendVars {
   content: string;
   images: ImageUpload[];
   web: boolean;
+  illustrate: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
@@ -88,7 +89,7 @@ async function savedAfterStop(id: string, knownCount: number): Promise<Chat> {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation<SentChat, Error, SendVars>({
-    mutationFn: async ({ chatId, content, images, web, signal, onDelta, onSources }) => {
+    mutationFn: async ({ chatId, content, images, web, illustrate, signal, onDelta, onSources }) => {
       const id = chatId ?? (await api.createChat()).id;
       const knownCount = chatId === null ? 0 : (qc.getQueryData<Chat>(chatKey(id))?.messages.length ?? 0);
       let received = false;
@@ -96,6 +97,7 @@ export function useSendMessage() {
         return await api.sendMessage(id, content, {
           images,
           web,
+          illustrate,
           signal,
           onSources,
           onDelta: (text) => {

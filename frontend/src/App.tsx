@@ -48,9 +48,9 @@ export function App() {
     if (id === null) composer.current?.focus();
   };
 
-  function onSend(content: string, attachments: Attachment[], web: boolean) {
+  function onSend(content: string, attachments: Attachment[], web: boolean, illustrate: boolean) {
     const chatId = currentId;
-    send(chatId, content, attachments, web, (saved) => {
+    send(chatId, content, attachments, web, illustrate, (saved) => {
       // Only jump to the new chat if the user is still on the blank one.
       setChosen((cur) => (chatId === null && (cur === null || cur === undefined) ? saved.id : cur));
     });
@@ -172,6 +172,7 @@ export function App() {
           ref={composer}
           disabled={sending}
           vision={activeProfile?.vision ?? false}
+          canIllustrate={Boolean(activeProfile?.image_model)}
           providerName={activeProfile?.name ?? null}
           onStop={stop}
           onSend={onSend}

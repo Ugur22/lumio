@@ -6,6 +6,8 @@ export interface Preset {
   needsKey: boolean;
   // Whether the preset's default model reads images; the user can change it per profile.
   vision: boolean;
+  // Default image-generation model, if the provider has one.
+  imageModel?: string;
   // Only used to suggest a preset when a key is pasted; the user always confirms.
   keyPrefixes: string[];
 }
@@ -14,7 +16,7 @@ export const PRESETS: Preset[] = [
   { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", needsKey: true, vision: true, keyPrefixes: ["sk-"] },
   { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", needsKey: true, vision: true, keyPrefixes: ["sk-or-"] },
   { id: "groq", label: "Groq", baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", needsKey: true, vision: false, keyPrefixes: ["gsk_"] },
-  { id: "xai", label: "xAI (Grok)", baseUrl: "https://api.x.ai/v1", model: "grok-4", needsKey: true, vision: true, keyPrefixes: ["xai-"] },
+  { id: "xai", label: "xAI (Grok)", baseUrl: "https://api.x.ai/v1", model: "grok-4", needsKey: true, vision: true, imageModel: "grok-2-image", keyPrefixes: ["xai-"] },
   { id: "together", label: "Together", baseUrl: "https://api.together.xyz/v1", model: "meta-llama/Llama-3.3-70B-Instruct-Turbo", needsKey: true, vision: false, keyPrefixes: [] },
   { id: "anthropic", label: "Anthropic (OpenAI-compatible)", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-5-5", needsKey: true, vision: true, keyPrefixes: ["sk-ant-"] },
   { id: "dolphin", label: "Dolphin", baseUrl: "https://api.dolphinllm.com/v1", model: "uncensored", needsKey: true, vision: false, keyPrefixes: [] },

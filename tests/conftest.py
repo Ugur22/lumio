@@ -98,9 +98,10 @@ class FakeStream:
 
 
 class FakeClient:
-    def __init__(self, create=None, models=None):
+    def __init__(self, create=None, models=None, generate=None):
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=create))
         self.models = SimpleNamespace(list=models)
+        self.images = SimpleNamespace(generate=generate)
 
 
 @pytest.fixture

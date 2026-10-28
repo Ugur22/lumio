@@ -13,6 +13,8 @@ export interface Source extends SourceRef {
 export interface ImageRef {
   id: string;
   media_type: string;
+  // The description an illustration was generated from; used as its caption.
+  prompt?: string | null;
 }
 
 // What the browser uploads: base64 without the `data:` prefix.
@@ -101,6 +103,8 @@ export interface Profile {
   last4: string | null;
   source: "keychain" | "env" | null;
   context_window: number | null;
+  // Set when the provider can generate images; enables the Illustrate toggle.
+  image_model: string | null;
 }
 
 export interface ProfileList {
@@ -116,11 +120,12 @@ export interface NewProfileBody {
   vision: boolean;
   key?: string;
   context_window?: number | null;
+  image_model?: string | null;
 }
 
-// For context_window, omitted leaves it unchanged and null clears it.
+// For context_window and image_model, omitted leaves it unchanged and null clears it.
 export type EditProfileBody = Partial<
-  Pick<NewProfileBody, "name" | "base_url" | "model" | "vision" | "key" | "context_window">
+  Pick<NewProfileBody, "name" | "base_url" | "model" | "vision" | "key" | "context_window" | "image_model">
 >;
 
 export interface WebStatus {

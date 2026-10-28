@@ -38,6 +38,12 @@ export const ImageIcon = icon(
     <path d="m21 16-5-5-8 9" />
   </>,
 );
+export const PaperclipIcon = icon(
+  <path d="m21 11.5-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9" />,
+);
+export const SparklesIcon = icon(
+  <path d="M10 4l1.8 4.7L16.5 10.5l-4.7 1.8L10 17l-1.8-4.7L3.5 10.5l4.7-1.8zM18 3v4M16 5h4M18 15v4M16 17h4" />,
+);
 export const CloseIcon = icon(<path d="M6 6l12 12M18 6 6 18" />);
 export const MenuIcon = icon(<path d="M4 7h16M4 12h16M4 17h16" />);
 export const PencilIcon = icon(<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />);

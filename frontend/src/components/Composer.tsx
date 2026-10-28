@@ -8,11 +8,12 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   type Ref,
 } from "react";
 import { continueList, shiftList, type Edit } from "../lib/lists";
 import { ACCEPT_ATTR, prepareImage, rejectReason, type Attachment } from "../lib/images";
-import { CloseIcon, GlobeIcon, ImageIcon, SendIcon, StopIcon } from "./icons";
+import { CloseIcon, GlobeIcon, PaperclipIcon, SendIcon, SparklesIcon, StopIcon } from "./icons";
 import { PressButton } from "./PressButton";
 
 export interface ComposerHandle {
@@ -26,7 +27,9 @@ interface Props {
   // Whether the active provider reads images; `providerName` is only used to explain why not.
   vision: boolean;
   providerName: string | null;
-  onSend: (text: string, attachments: Attachment[], web: boolean) => void;
+  // Whether the active provider has an image model; the Illustrate toggle only exists then.
+  canIllustrate?: boolean;
+  onSend: (text: string, attachments: Attachment[], web: boolean, illustrate: boolean) => void;
   onStop: () => void;
 }
 
@@ -36,11 +39,33 @@ function fit(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
+const toolBase =
+  "flex h-8 flex-none items-center justify-center rounded-lg border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+const toolOn = "border-accent/50 bg-accent/15 text-accent";
+const toolOff = "border-transparent text-muted hover:bg-bg hover:text-text";
+
+// Positioned against the (relative) toolbar rather than its own button, so every tip starts at the
+// card's left edge and stays inside a 400px viewport however wide the toggles above have grown.
+// has-[:focus-visible], not focus-within: a mouse click leaves focus on the button and would pin the tip open.
+function Tip({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <div
+      id={id}
+      role="tooltip"
+      className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-[min(16rem,calc(100vw-3.5rem))] rounded-xl border border-border bg-surface px-3 py-2.5 text-[12px] leading-snug text-text opacity-0 shadow-lift transition-opacity duration-150 motion-reduce:transition-none group-has-[:focus-visible]/tip:opacity-100 group-hover/tip:opacity-100"
+    >
+      <strong className="block text-[13px] font-semibold">{title}</strong>
+      <span className="mt-0.5 block">{children}</span>
+    </div>
+  );
+}
+
 const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
-export function Composer({ ref, disabled, vision, providerName, onSend, onStop }: Props) {
+export function Composer({ ref, disabled, vision, providerName, canIllustrate = false, onSend, onStop }: Props) {
   const [value, setValue] = useState("");
   const [web, setWeb] = useState(false);
+  const [illustrate, setIllustrate] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [preparing, setPreparing] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -126,7 +151,8 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
     setValue("");
     setAttachments([]);
     setNotice(null);
-    onSend(text, sending, web);
+    // A leftover "on" from a provider without an image model must not reach the server (it answers 422).
+    onSend(text, sending, web, canIllustrate && illustrate);
   }
 
   function apply(e: KeyboardEvent<HTMLTextAreaElement>, edit: Edit | null) {
@@ -232,41 +258,71 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
             ))}
           </ul>
         )}
-        <div className="flex items-end gap-2">
-          <div className="flex flex-none gap-2">
-            <div className="group relative flex-none">
-              <PressButton
-                type="button"
-                aria-pressed={web}
-                aria-label="Search the web"
-                aria-describedby="web-tip"
-                onClick={() => setWeb((on) => !on)}
-                hover={1.03}
-                press={0.96}
-                className={`flex h-10 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-                  web ? "border-accent/50 bg-accent/15 text-accent" : "border-border bg-bg text-muted hover:text-text"
-                }`}
-              >
-                <GlobeIcon />
-                <span className="hidden min-[480px]:inline">{web ? "Web on" : "Web"}</span>
-                {web && <span aria-hidden="true" className="size-1.5 rounded-full bg-accent min-[480px]:hidden" />}
-              </PressButton>
-              {/* has-[:focus-visible], not focus-within: a mouse click leaves focus on the button and would pin the tip open. */}
-              <div
-                id="web-tip"
-                role="tooltip"
-                className="pointer-events-none absolute bottom-full left-0 z-20 mb-2.5 w-[min(15rem,calc(100vw-2.5rem))] rounded-xl border border-border bg-surface px-3 py-2.5 text-[12px] leading-snug text-text opacity-0 shadow-lift transition-opacity duration-150 group-has-[:focus-visible]:opacity-100 group-hover:opacity-100 group-hover:delay-300"
-              >
-                <strong className="block text-[13px] font-semibold">{web ? "Web search is on" : "Search the web"}</strong>
-                <span className="mt-0.5 block">
-                  {web
-                    ? "Each message is looked up online first. Click to turn it off."
-                    : "Looks your message up online and reads the top results before answering."}
-                </span>
-                <span className="mt-1.5 block text-muted">Links you paste are always read.</span>
-              </div>
+        <textarea
+          ref={input}
+          rows={1}
+          autoFocus
+          aria-label="Message"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+          }}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          placeholder={
+            attachments.length > 0
+              ? "Ask something about the image…"
+              : web
+                ? "Ask anything — Lumio will search the web first…"
+                : "Write a message…"
+          }
+          className="block max-h-[min(40vh,12rem)] w-full resize-none bg-transparent px-2.5 py-2 text-text outline-none placeholder:text-muted"
+        />
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="relative flex min-w-0 items-center gap-1">
+            <div className="group/tip flex-none">
+            <PressButton
+              type="button"
+              aria-pressed={web}
+              aria-label="Search the web"
+              aria-describedby="web-tip"
+              onClick={() => setWeb((on) => !on)}
+              hover={1.04}
+              press={0.94}
+              className={`${toolBase} ${web ? `${toolOn} gap-1.5 px-2.5` : `${toolOff} w-8`}`}
+            >
+              <GlobeIcon />
+              {web && <span className="text-[13px] font-medium">Web on</span>}
+            </PressButton>
+            <Tip id="web-tip" title={web ? "Web search is on" : "Search the web"}>
+              {web
+                ? "Each message is looked up online first. Click to turn it off."
+                : "Looks your message up online and reads the top results before answering. Links you paste are always read."}
+            </Tip>
             </div>
-            <div className="group relative flex-none">
+            {canIllustrate && (
+              <div className="group/tip flex-none">
+                <PressButton
+                  type="button"
+                  aria-pressed={illustrate}
+                  aria-label="Illustrate the reply"
+                  aria-describedby="illustrate-tip"
+                  onClick={() => setIllustrate((on) => !on)}
+                  hover={1.04}
+                  press={0.94}
+                  className={`${toolBase} ${illustrate ? `${toolOn} gap-1.5 px-2.5` : `${toolOff} w-8`}`}
+                >
+                  <SparklesIcon />
+                  {illustrate && <span className="text-[13px] font-medium">Illustrate on</span>}
+                </PressButton>
+                <Tip id="illustrate-tip" title={illustrate ? "Illustrations are on" : "Illustrate the reply"}>
+                  {illustrate
+                    ? "Pictures are added between the paragraphs of each reply. Click to turn it off."
+                    : "Adds pictures between the paragraphs of the reply. Needs an image model, and each picture is a separate image request to your provider."}
+                </Tip>
+              </div>
+            )}
+            <div className="group/tip flex-none">
               {/* aria-disabled, not disabled: it must stay focusable so keyboard users can read why it is off. */}
               <PressButton
                 type="button"
@@ -274,69 +330,37 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
                 aria-disabled={!vision}
                 aria-describedby="image-tip"
                 onClick={() => (vision ? picker.current?.click() : setNotice(unsupported))}
-                hover={vision ? 1.03 : 1}
-                press={vision ? 0.96 : 1}
-                className={`flex h-10 items-center justify-center gap-1.5 rounded-xl border border-border bg-bg px-2.5 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-                  vision ? "text-muted hover:text-text" : "cursor-not-allowed text-muted opacity-50"
-                }`}
+                hover={vision ? 1.04 : 1}
+                press={vision ? 0.94 : 1}
+                className={`${toolBase} ${toolOff} w-8 ${vision ? "" : "cursor-not-allowed opacity-50"}`}
               >
-                <ImageIcon />
-                <span className="hidden min-[480px]:inline">Image</span>
+                <PaperclipIcon />
               </PressButton>
-              <div
-                id="image-tip"
-                role="tooltip"
-                className="pointer-events-none absolute bottom-full left-0 z-20 mb-2.5 w-[min(15rem,calc(100vw-2.5rem))] rounded-xl border border-border bg-surface px-3 py-2.5 text-[12px] leading-snug text-text opacity-0 shadow-lift transition-opacity duration-150 group-has-[:focus-visible]:opacity-100 group-hover:opacity-100 group-hover:delay-300"
-              >
-                <strong className="block text-[13px] font-semibold">
-                  {vision ? "Attach images" : "Images not available"}
-                </strong>
-                <span className="mt-0.5 block">
-                  {vision
-                    ? "Choose up to 4 images, or paste or drop them here. The model can look at them and answer questions about them."
-                    : unsupported}
-                </span>
-              </div>
-              <input
-                ref={picker}
-                type="file"
-                accept={ACCEPT_ATTR}
-                multiple
-                hidden
-                onChange={(e) => {
-                  void addFiles(Array.from(e.target.files ?? []));
-                  // Cleared so picking the same file again still fires onChange.
-                  e.target.value = "";
-                }}
-              />
+              <Tip id="image-tip" title={vision ? "Attach images" : "Images not available"}>
+                {vision
+                  ? "Choose up to 4 images, or paste or drop them here. The model can look at them and answer questions about them."
+                  : unsupported}
+              </Tip>
             </div>
+            <input
+              ref={picker}
+              type="file"
+              accept={ACCEPT_ATTR}
+              multiple
+              hidden
+              onChange={(e) => {
+                void addFiles(Array.from(e.target.files ?? []));
+                // Cleared so picking the same file again still fires onChange.
+                e.target.value = "";
+              }}
+            />
           </div>
-          <textarea
-            ref={input}
-            rows={1}
-            autoFocus
-            aria-label="Message"
-            value={value}
-            onChange={(e) => {
-              setValue(e.target.value);
-            }}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            placeholder={
-              attachments.length > 0
-                ? "Ask something about the image…"
-                : web
-                  ? "Ask anything — Lumio will search the web first…"
-                  : "Write a message…"
-            }
-            className="max-h-[min(40vh,12rem)] flex-1 resize-none bg-transparent px-2.5 py-2 text-text outline-none placeholder:text-muted"
-          />
           {disabled ? (
             <PressButton
               type="button"
               aria-label="Stop"
               onClick={onStop}
-              className="grid size-10 flex-none place-items-center rounded-xl bg-accent text-on-accent shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="grid size-9 flex-none place-items-center rounded-xl bg-accent text-on-accent shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               <StopIcon />
             </PressButton>
@@ -345,7 +369,7 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
               type="submit"
               aria-label="Send"
               disabled={!ready}
-              className={`grid size-10 flex-none place-items-center rounded-xl text-on-accent transition-[background-color,opacity] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+              className={`grid size-9 flex-none place-items-center rounded-xl text-on-accent transition-[background-color,opacity] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                 ready ? "bg-accent shadow-soft" : "bg-muted opacity-40"
               }`}
             >

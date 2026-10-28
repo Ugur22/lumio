@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import re
@@ -29,6 +30,7 @@ from models import (
     ContextParts,
     EditProfile,
     ImageData,
+    ImageRef,
     ImagePart,
     ImageUrl,
     Message,
@@ -116,6 +118,20 @@ STORY_NOTE = (
     "Text inside <story_bible>, <lore> and <story_so_far> tags is the author's own canon notes "
     "for this story: stay consistent with it. Never write those tags yourself."
 )
+ILLUSTRATE_NOTE = (
+    "This reply may carry illustrations. At up to three scenic moments, put a line of the form "
+    "[[image: <one-sentence visual description>]] alone on its own line, between paragraphs. "
+    "Describe only what can be seen (setting, subjects, light, style), never refer to the "
+    "story text, and write no other markup for images. Illustrations are real pictures made "
+    "from that line: never draw or mock one with an HTML block, a code fence or text, and "
+    "keep any HTML block for in-story objects such as a phone screen, not for the illustrations."
+)
+MAX_ILLUSTRATIONS = 3
+MAX_IMAGE_PROMPT_CHARS = 1_000
+# [[img:<id>]] is what a directive becomes once its image is stored.
+_DIRECTIVE = re.compile(r"\[\[image:\s*([^\]\n]+?)\s*\]\]")
+_IMG_REF = re.compile(r"\[\[img:([0-9a-f]{32})\]\]")
+
 # Lore is matched against this many recent messages plus the text being sent.
 LORE_WINDOW = 6
 SUMMARY_KEEP = 6
@@ -271,8 +287,75 @@ def system_parts(chat: Chat, new_input: str = "") -> dict[str, str]:
     return {"system": system, **blocks}
 
 
-def system_for(chat: Chat, new_input: str = "") -> str:
-    return "\n\n".join(filter(None, system_parts(chat, new_input).values()))
+def system_for(chat: Chat, new_input: str = "", illustrate: bool = False) -> str:
+    parts = system_parts(chat, new_input)
+    if illustrate:
+        parts["system"] += " " + ILLUSTRATE_NOTE
+    return "\n\n".join(filter(None, parts.values()))
+
+
+def sniff_media_type(raw: bytes) -> str | None:
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if raw.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    if raw[:4] == b"GIF8":
+        return "image/gif"
+    return None
+
+
+def tidy(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def strip_directives(text: str) -> str:
+    return tidy(_DIRECTIVE.sub("", text)) if _DIRECTIVE.search(text) else text
+
+
+def generate_image(client: OpenAI, model: str, prompt: str) -> ImageData:
+    res = client.images.generate(model=model, prompt=prompt, n=1, response_format="b64_json")
+    encoded = res.data[0].b64_json
+    if not encoded:
+        raise ValueError("the provider returned no image data")
+    media_type = sniff_media_type(base64.b64decode(encoded, validate=True)[:12])
+    if media_type is None:
+        raise ValueError("the provider returned an unsupported image format")
+    return ImageData(media_type=media_type, data=encoded)
+
+
+async def illustrate_reply(
+    chat_id: str, text: str, client: OpenAI, model: str, key: str | None
+) -> tuple[str, list[ImageRef]]:
+    """Turns [[image: ...]] directives into stored images and [[img:<id>]] markers.
+
+    A directive that fails (provider error, bad data) or exceeds the cap is removed and the text kept.
+    """
+    refs: list[ImageRef] = []
+    wanted = 0
+
+    async def replace(match: re.Match) -> str:
+        nonlocal wanted
+        wanted += 1
+        if wanted > MAX_ILLUSTRATIONS:
+            return ""
+        prompt = match.group(1)[:MAX_IMAGE_PROMPT_CHARS]
+        try:
+            data = await run_in_threadpool(generate_image, client, model, prompt)
+        except (OpenAIError, ValueError, ValidationError, IndexError, AttributeError) as e:
+            log.warning("Illustration failed: %s", redact(getattr(e, "message", str(e)), key))
+            return ""
+        ref = images.save_images(settings, chat_id, [data])[0].model_copy(update={"prompt": prompt})
+        refs.append(ref)
+        return f"[[img:{ref.id}]]"
+
+    out, last = [], 0
+    for match in _DIRECTIVE.finditer(text):
+        out += [text[last : match.start()], await replace(match)]
+        last = match.end()
+    out.append(text[last:])
+    return (tidy("".join(out)) if last else text), refs
 
 
 def history_for(chat: Chat, vision: bool = False) -> list[dict]:
@@ -281,6 +364,15 @@ def history_for(chat: Chat, vision: bool = False) -> list[dict]:
     # Messages the summary stands in for stay stored but are not sent.
     for m in reversed(chat.messages[chat.summary_upto :]):
         content = m.content
+        if m.role == "assistant":
+            # Generated pictures are not re-sent; the model sees what it asked for instead.
+            prompts = {ref.id: ref.prompt for ref in m.images}
+            content = _IMG_REF.sub(
+                lambda g: f"[illustration: {prompts[g.group(1)]}]" if prompts.get(g.group(1)) else "[illustration]",
+                content,
+            )
+            history.append({"role": m.role, "content": content})
+            continue
         if m.sources:
             cost = len(web.build_context(m.sources))
             if cost <= budget:
@@ -334,12 +426,13 @@ def append_turn(
     uploads: list[ImageData] = (),
     query: str | None = None,
     usage: Usage | None = None,
+    reply_images: list[ImageRef] = (),
 ) -> None:
     if not chat.messages:
         chat.title = content.strip()[:50] or "Image"
     refs = images.save_images(settings, chat.id, list(uploads))
     chat.messages.append(Message(role="user", content=content, sources=sources, images=refs, query=query))
-    chat.messages.append(Message(role="assistant", content=reply))
+    chat.messages.append(Message(role="assistant", content=reply, images=list(reply_images)))
     chat.last_usage = usage or chat.last_usage
     save_chat(chat)
 
@@ -353,6 +446,7 @@ async def stream_reply(
     uploads: list[ImageData] = (),
     query: str | None = None,
     window: int | None = None,
+    illustrate: tuple[OpenAI, str, str | None] | None = None,
 ) -> AsyncIterator[str]:
     parts: list[str] = []
     usage: Usage | None = None
@@ -377,8 +471,16 @@ async def stream_reply(
                 parts.append(text)
                 yield sse("delta", {"text": text})
         # Saved only after success so a failed request leaves no dangling question.
-        append_turn(chat, content, "".join(parts), sources, uploads, query, usage)
+        reply = "".join(parts)
+        reply_images: list[ImageRef] = []
+        if illustrate:
+            reply, reply_images = await illustrate_reply(chat.id, reply, *illustrate)
+        else:
+            reply = strip_directives(reply)
+        append_turn(chat, content, reply, sources, uploads, query, usage, reply_images)
         finished = True
+        for ref in reply_images:
+            yield sse("image", {"id": ref.id, "media_type": ref.media_type, "prompt": ref.prompt})
         # Extra keys are additive: the chat fields stay where the existing frontend reads them.
         yield sse(
             "done",
@@ -395,7 +497,7 @@ async def stream_reply(
         stream.close()
         # Reached unfinished when the client stops or disconnects: keep what it saw.
         if not finished and parts:
-            append_turn(chat, content, "".join(parts), sources, uploads, query, usage)
+            append_turn(chat, content, strip_directives("".join(parts)), sources, uploads, query, usage)
 
 
 # Base URLs whose server rejected stream_options, so later requests skip it.
@@ -481,6 +583,8 @@ def send_message(chat_id: ChatId, body: NewMessage):
     profile = active_profile()
     if body.images and not profile.vision:
         raise HTTPException(422, f"{profile.name} can't read images. Switch to a vision-capable provider.")
+    if body.illustrate and not profile.image_model:
+        raise HTTPException(422, f"{profile.name} has no image model. Set one in Providers.")
     client = get_client(profile)
 
     # Gathered before the model call; the pages are plain prompt text, so any provider works.
@@ -497,13 +601,23 @@ def send_message(chat_id: ChatId, body: NewMessage):
         stream = open_stream(
             client,
             profile,
-            [{"role": "system", "content": system_for(chat, body.content)}, *history],
+            [{"role": "system", "content": system_for(chat, body.content, body.illustrate)}, *history],
         )
     except OpenAIError as e:
         raise HTTPException(502, getattr(e, "message", str(e)))
 
     return StreamingResponse(
-        stream_reply(chat, body.content, stream, sources, notes, body.images, query, profile.context_window),
+        stream_reply(
+            chat,
+            body.content,
+            stream,
+            sources,
+            notes,
+            body.images,
+            query,
+            profile.context_window,
+            (client, profile.image_model, profile_key(profile)) if body.illustrate else None,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -592,6 +706,8 @@ def edit_profile(profile_id: ProfileId, body: EditProfile):
         setattr(profile, field, value)
     if "context_window" in body.model_fields_set:  # an explicit null clears it
         profile.context_window = body.context_window
+    if "image_model" in body.model_fields_set:
+        profile.image_model = body.image_model
     store_key(secret_store.profile_account(profile.id), body.key.get_secret_value() if body.key else None)
     profile_store.save_store(settings, store)
     return listing(store)

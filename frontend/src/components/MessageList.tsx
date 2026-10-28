@@ -47,7 +47,8 @@ export function MessageList({ messages, chatId, loading = false, onPick, onStory
     const q = messages[i];
     const a = messages[i + 1];
     if (q) {
-      const reply: Reply = a ? { kind: "text", content: a.content } : { kind: "none" };
+      const illustrations = chatId && a ? a.images.map((r) => ({ id: r.id, url: imageUrl(chatId, r.id), prompt: r.prompt ?? null })) : [];
+      const reply: Reply = a ? { kind: "text", content: a.content, illustrations } : { kind: "none" };
       const images = chatId ? q.images.map((r) => imageUrl(chatId, r.id)) : [];
       turns.push({ question: q.content, images, reply, sources: q.sources, notes: [], query: q.query ?? null });
     }

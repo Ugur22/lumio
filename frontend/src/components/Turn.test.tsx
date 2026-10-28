@@ -55,3 +55,39 @@ describe("Turn copy button", () => {
     expect(out).not.toContain("Copy message");
   });
 });
+
+describe("Turn illustrations", () => {
+  const id = "0123456789abcdef0123456789abcdef";
+  const render = (content: string, known = true, streaming = false) =>
+    renderToStaticMarkup(
+      <Turn
+        question="q"
+        reply={{
+          kind: "text",
+          content,
+          streaming,
+          illustrations: known ? [{ id, url: "/api/chats/c/images/" + id, prompt: "a harbour" }] : [],
+        }}
+      />,
+    );
+
+  it("renders a stored image with its prompt as caption", () => {
+    const out = render(`One.\n\n[[img:${id}]]\n\nTwo.`);
+    expect(out).toContain(`src="/api/chats/c/images/${id}"`);
+    expect(out).toContain("<figcaption");
+    expect(out).toContain("a harbour");
+    expect(out).not.toContain("[[img:");
+  });
+
+  it("renders nothing for an id the message does not own", () => {
+    const out = render(`One.\n[[img:${id}]]\nTwo.`, false);
+    expect(out).not.toContain("<img");
+    expect(out).not.toContain("[[img:");
+  });
+
+  it("shows Illustrating while a directive streams and hides the raw text", () => {
+    const out = render("One.\n\n[[image: a lighthouse]]", true, true);
+    expect(out).toContain("Illustrating");
+    expect(out).not.toContain("lighthouse");
+  });
+});

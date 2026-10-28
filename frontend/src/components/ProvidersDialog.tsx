@@ -228,6 +228,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
   const [model, setModel] = useState(profile?.model ?? "");
   const [needsKey, setNeedsKey] = useState(profile?.needs_key ?? true);
   const [vision, setVision] = useState(profile?.vision ?? false);
+  const [imageModel, setImageModel] = useState(profile?.image_model ?? "");
   const [key, setKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [contextWindow, setContextWindow] = useState(profile?.context_window?.toString() ?? "");
@@ -249,6 +250,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     setModel(p.model);
     setNeedsKey(p.needsKey);
     setVision(p.vision);
+    setImageModel(p.imageModel ?? "");
     setModels([]);
     setWindows({});
     setContextWindow("");
@@ -294,7 +296,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     // Cleared before the request settles so the secret never lingers in the DOM or state.
     setKey("");
     return run(async () => {
-      const body = { name: name.trim(), base_url: baseUrl.trim(), model: model.trim(), vision };
+      const body = { name: name.trim(), base_url: baseUrl.trim(), model: model.trim(), vision, image_model: imageModel.trim() || null };
       // Editing sends null to clear a size; creating just leaves it out.
       if (profile) await actions.edit(profile.id, { ...body, context_window: windowValue, ...(typedKey && { key: typedKey }) });
       else await actions.create({ ...body, needs_key: needsKey, ...(windowValue !== null && { context_window: windowValue }), ...(typedKey && { key: typedKey }) });
@@ -418,6 +420,21 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
           {windowValid
             ? "How much text the model can read at once. Lets Lumio show how full the context is. Some providers report it when you fetch models."
             : `Use a whole number of at least ${MIN_WINDOW.toLocaleString()}, or leave it blank.`}
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-[13px] font-medium">Image model (optional)</span>
+        <input
+          value={imageModel}
+          onChange={(e) => setImageModel(e.target.value)}
+          placeholder="e.g. grok-2-image"
+          spellCheck={false}
+          className={field}
+        />
+        <span className="text-[12px] text-muted">
+          Lets the model illustrate its replies. Leave blank if this provider has no image generation; the Illustrate
+          button then stays hidden.
         </span>
       </label>
 
