@@ -169,16 +169,21 @@ interface RowProps {
   onDelete: (chat: ChatSummary) => void;
 }
 
-const iconBtn = `rounded-lg p-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:opacity-100 min-[721px]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 ${focus}`;
+const iconBtn = `rounded-lg p-1.5 text-muted transition-colors duration-200 hover:bg-bubble ${focus}`;
 
 function ChatRow({ chat, active, onOpen, onRename, onDelete }: RowProps) {
   return (
     <div
-      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-xl pl-3.5 pr-1.5 transition-colors ${
-        active ? "bg-surface ring-1 ring-border" : "hover:bg-bubble/70"
+      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-xl pl-6 pr-1.5 transition-colors ${
+        active ? "bg-surface ring-1 ring-accent/30" : "hover:bg-bubble"
       }`}
     >
-      {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-accent" />}
+      <span
+        aria-hidden
+        className={`absolute left-2.5 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_8px_color-mix(in_srgb,var(--accent)_45%,transparent)] transition-[opacity,transform] duration-200 ease-out ${
+          active ? "scale-y-100 opacity-100" : "scale-y-0 opacity-0"
+        }`}
+      />
       <button
         type="button"
         onClick={() => onOpen(chat.id)}
@@ -187,24 +192,30 @@ function ChatRow({ chat, active, onOpen, onRename, onDelete }: RowProps) {
       >
         {chat.title}
       </button>
-      <PressButton
-        type="button"
-        aria-label={`Rename ${chat.title}`}
-        title="Rename"
-        onClick={() => onRename(chat)}
-        className={iconBtn}
+      <div
+        className={`flex items-center gap-0.5 transition-opacity duration-200 ease-out min-[721px]:absolute min-[721px]:inset-y-0 min-[721px]:right-0 min-[721px]:rounded-r-xl min-[721px]:bg-gradient-to-l min-[721px]:to-transparent min-[721px]:pl-10 min-[721px]:pr-1.5 min-[721px]:opacity-0 min-[721px]:group-hover:opacity-100 min-[721px]:group-focus-within:opacity-100 ${
+          active ? "min-[721px]:from-surface min-[721px]:from-55%" : "min-[721px]:from-bubble min-[721px]:from-55%"
+        }`}
       >
-        <PencilIcon width={15} height={15} />
-      </PressButton>
-      <PressButton
-        type="button"
-        aria-label={`Delete ${chat.title}`}
-        title="Delete"
-        onClick={() => onDelete(chat)}
-        className={iconBtn}
-      >
-        <TrashIcon width={15} height={15} />
-      </PressButton>
+        <PressButton
+          type="button"
+          aria-label={`Rename ${chat.title}`}
+          title="Rename"
+          onClick={() => onRename(chat)}
+          className={`${iconBtn} hover:text-text`}
+        >
+          <PencilIcon width={15} height={15} />
+        </PressButton>
+        <PressButton
+          type="button"
+          aria-label={`Delete ${chat.title}`}
+          title="Delete"
+          onClick={() => onDelete(chat)}
+          className={`${iconBtn} hover:text-red-500`}
+        >
+          <TrashIcon width={15} height={15} />
+        </PressButton>
+      </div>
     </div>
   );
 }
