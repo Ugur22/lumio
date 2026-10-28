@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Markup } from "./Markup";
 
-const html = (text: string) => renderToStaticMarkup(<Markup text={text} />);
+const html = (text: string, streaming = false) => renderToStaticMarkup(<Markup text={text} streaming={streaming} />);
 
 describe("Markup", () => {
   it("strips script elements and event handlers from reply text", () => {
@@ -64,5 +64,31 @@ describe("Markup", () => {
 
   it("keeps unclosed tags as text", () => {
     expect(html("[[note]]never closed")).toContain("[[note]]never closed");
+  });
+
+  it("shows a placeholder instead of code while a styled fence is still open", () => {
+    const out = html('Look:\n```html\n<div style="color:#fff">\n<p>hi', true);
+    expect(out).toContain('aria-label="Drawing"');
+    expect(out).not.toContain("<pre");
+    expect(out).not.toContain("<div style");
+  });
+
+  it("swaps the placeholder for the rendered block once the fence closes", () => {
+    const out = html('Look:\n```html\n<div style="color:#fff">\n<p>hi</p>\n</div>\n```', true);
+    expect(out).not.toContain("Drawing");
+    expect(out).toContain('<div style="color:#fff');
+    expect(out).not.toContain("<pre");
+  });
+
+  it("cannot be forged from reply text", () => {
+    const out = html('<div role="status" aria-label="Drawing">x</div>');
+    expect(out).not.toContain("aria-label");
+    expect(out).not.toContain("role=");
+  });
+
+  it("keeps an unfinished fence as code at rest", () => {
+    const out = html('```html\n<div style="color:#fff">hi');
+    expect(out).toContain("<pre");
+    expect(out).not.toContain("Drawing");
   });
 });

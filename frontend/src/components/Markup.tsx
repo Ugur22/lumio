@@ -1,6 +1,7 @@
-import { useRef, useState, type ComponentProps } from "react";
+import { animated, useSpring } from "@react-spring/web";
+import { createContext, useContext, useRef, useState, type ComponentProps } from "react";
 import ReactMarkdown from "react-markdown";
-import { applyTags } from "../lib/markup/tags";
+import { prepare } from "../lib/markup/tags";
 import { rehypePlugins, remarkPlugins } from "../lib/markup/plugins";
 
 function CodeBlock({ children }: ComponentProps<"pre">) {
@@ -34,16 +35,59 @@ function CodeBlock({ children }: ComponentProps<"pre">) {
   );
 }
 
-export function Markup({ text, streaming = false }: { text: string; streaming?: boolean }) {
+const StreamingContext = createContext(false);
+const InBlockContext = createContext(false);
+
+// Top-level model-styled blocks rise in when they appear during a stream. Replies that were
+// already finished on first mount (reloads, history) mount with streaming off and skip it.
+// Reduced motion is handled globally: main.tsx makes every spring jump to its end state.
+function Reveal(props: ComponentProps<"div">) {
+  const style = useSpring({
+    from: { opacity: 0, y: 12 },
+    to: { opacity: 1, y: 0 },
+    config: { tension: 170, friction: 22 },
+  });
+  return <animated.div {...props} style={{ ...props.style, ...style }} />;
+}
+
+function StyledBlock(all: ComponentProps<"div"> & { node?: unknown }) {
+  // react-markdown passes its hast `node`, which must not reach the DOM.
+  const props = { ...all };
+  delete props.node;
+  const nested = useContext(InBlockContext);
+  const streaming = useRef(useContext(StreamingContext)).current;
+  if (nested) return <div {...props} />;
   return (
-    <div className="prose max-w-[62ch] prose-p:my-[0.8em] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
-      <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={{ pre: CodeBlock }}
-      >
-        {applyTags(text, streaming)}
-      </ReactMarkdown>
+    <InBlockContext.Provider value>
+      {streaming && props.style ? <Reveal {...props} /> : <div {...props} />}
+    </InBlockContext.Provider>
+  );
+}
+
+function DrawingPlaceholder() {
+  return (
+    <div
+      role="status"
+      aria-label="Drawing"
+      className="my-4 flex h-40 items-center justify-center rounded-2xl border border-border bg-bubble font-sans text-sm text-muted motion-safe:animate-pulse"
+    >
+      Drawing…
     </div>
+  );
+}
+
+const components = { pre: CodeBlock, div: StyledBlock };
+
+export function Markup({ text, streaming = false }: { text: string; streaming?: boolean }) {
+  const { source, drawing } = prepare(text, streaming);
+  return (
+    <StreamingContext.Provider value={streaming}>
+      <div className="prose max-w-[62ch] prose-p:my-[0.8em] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
+          {source}
+        </ReactMarkdown>
+        {drawing && <DrawingPlaceholder />}
+      </div>
+    </StreamingContext.Provider>
   );
 }

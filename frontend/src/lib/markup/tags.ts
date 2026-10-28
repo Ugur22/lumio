@@ -38,6 +38,12 @@ const STYLED_START = /^<div\b[^>]*\bstyle=/;
 const unwrapStyledFences = (text: string) =>
   text.replace(STYLED_FENCE, (_, lead: string, _fence: string, body: string) => lead + body);
 
+// An html fence still open while streaming whose body already starts a styled <div>: the closing
+// fence will turn it into the rendered block, so it is held back instead of flashing as code.
+const OPEN_STYLED_FENCE = /^(\n?)(```|~~~)html[ \t]*\n\s*<div\b[^>]*\bstyle=/;
+// A tag cut off mid-arrival, such as "<div sty". Attributes only count after a known name, so prose like "a < b" survives.
+const PARTIAL_TAG = /<\/?(?:(?:div|span|p|b|i|em|strong|small|mark|aside)\s[^<>]*|[a-z]*)$/i;
+
 const count = (line: string, needle: string) => line.split(needle).length - 1;
 
 // A blank line followed by an indented line turns the rest of an HTML block into Markdown code,
@@ -59,18 +65,38 @@ function tidyStyledBlocks(text: string): string {
   return out.join("\n");
 }
 
-export function applyTags(text: string, streaming = false): string {
+export interface Prepared {
+  source: string;
+  // True when a styled block is still being written and was cut out of `source`.
+  drawing: boolean;
+}
+
+// The held-back block is always the tail of the text (an open fence runs to the end), so it is
+// reported as a flag rather than a marker in the text: reply text can then never forge it.
+export function prepare(text: string, streaming = false): Prepared {
   const stash: string[] = [];
+  let drawing = false;
   // Streamed chunks re-run this over the whole reply; most replies have no styled block at all.
   const styled = text.includes("style=");
-  const masked = (styled ? unwrapStyledFences(text) : text).replace(CODE, (m) => `${NUL}${stash.push(m) - 1}${NUL}`);
+  const masked = (styled ? unwrapStyledFences(text) : text).replace(CODE, (m) => {
+    const open = streaming && OPEN_STYLED_FENCE.exec(m);
+    if (open && !new RegExp(`\\n${open[2] ?? ""}[^\\n]*$`).test(m)) {
+      drawing = true;
+      return open[1] ?? "";
+    }
+    return `${NUL}${stash.push(m) - 1}${NUL}`;
+  });
   const tidied = styled ? tidyStyledBlocks(masked) : masked;
   const stripped = tidied.replace(STRAY_SOURCE, "");
-  const source = streaming ? completeOpenTags(stripped.replace(STRAY_SOURCE_PARTIAL, "")) : stripped;
+  const source = streaming
+    ? completeOpenTags(stripped.replace(STRAY_SOURCE_PARTIAL, "").replace(PARTIAL_TAG, ""))
+    : stripped;
   const tagged = source.replace(TAG, (_, tag: string, body: string) =>
     tag === "key"
       ? `<mark class="hl-key">${body}</mark>`
       : `<aside class="hl-${tag}">\n\n${body}\n\n</aside>`,
   );
-  return tagged.replace(MASK, (_, i: string) => stash[Number(i)] ?? "");
+  return { source: tagged.replace(MASK, (_, i: string) => stash[Number(i)] ?? ""), drawing };
 }
+
+export const applyTags = (text: string, streaming = false) => prepare(text, streaming).source;

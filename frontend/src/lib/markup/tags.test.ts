@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTags } from "./tags";
+import { applyTags, prepare } from "./tags";
 
 describe("applyTags", () => {
   it("turns key into mark and note/warn into asides", () => {
@@ -66,6 +66,42 @@ describe("applyTags while streaming", () => {
     expect(applyTags("[[key]]x[[/key]]", true)).toBe('<mark class="hl-key">x</mark>');
     const fenced = "```\n[[key]]x";
     expect(applyTags(fenced, true)).toBe(fenced);
+  });
+
+  describe("styled html blocks", () => {
+    const open = 'Here:\n```html\n<div style="color:red">\n<p>hi';
+
+    it("cuts out an open styled html fence and reports it as drawing", () => {
+      expect(applyTags(open, true)).toBe("Here:\n");
+      expect(prepare(open, true).drawing).toBe(true);
+      expect(applyTags('~~~html\n<div style="back', true)).toBe("");
+    });
+
+    it("renders a closed styled fence as the block, with nothing held back", () => {
+      const closed = `${open}</p>\n</div>\n\`\`\``;
+      expect(prepare(closed, true)).toEqual({ source: 'Here:\n<div style="color:red">\n<p>hi</p>\n</div>', drawing: false });
+    });
+
+    it("leaves other open fences as code while streaming", () => {
+      for (const s of ['```html\n<div class="a">x', '```css\n<div style="a">x', '```html\nplain']) {
+        expect(prepare(s, true)).toEqual({ source: s, drawing: false });
+      }
+    });
+
+    it("keeps an unfinished fence as code when not streaming", () => {
+      const cancelled = '```html\n<div style="color:red">x';
+      expect(prepare(cancelled)).toEqual({ source: cancelled, drawing: false });
+    });
+
+    it("hides a half-written trailing tag while streaming only", () => {
+      for (const tail of ["<", "</", "<di", '<div style="back', '<span class="a" sty']) {
+        expect(applyTags(`hello ${tail}`, true)).toBe("hello ");
+      }
+      expect(applyTags('hello <div style="back')).toBe('hello <div style="back');
+      expect(applyTags("a < b", true)).toBe("a < b");
+      expect(applyTags("a <b>x</b>", true)).toBe("a <b>x</b>");
+      expect(applyTags("`<div style=\"a`", true)).toBe("`<div style=\"a`");
+    });
   });
 
   describe("stray web_source tokens", () => {
