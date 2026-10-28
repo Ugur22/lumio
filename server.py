@@ -333,6 +333,13 @@ def generate_image(client: OpenAI, model: str, prompt: str) -> ImageData:
     return ImageData(media_type=media_type, data=encoded)
 
 
+def describe_provider_error(e: Exception, key: str | None) -> str:
+    """Status and raw body of a failed provider call: the SDK's own message drops both when the body is not OpenAI-shaped."""
+    status = getattr(e, "status_code", None)
+    body = getattr(getattr(e, "response", None), "text", "") or getattr(e, "message", str(e))
+    return redact(f"{status or type(e).__name__}: {' '.join(body.split())[:500]}", key)
+
+
 async def illustrate_reply(
     chat_id: str, text: str, client: OpenAI, model: str, key: str | None
 ) -> tuple[str, list[ImageRef]]:
@@ -352,7 +359,7 @@ async def illustrate_reply(
         try:
             data = await run_in_threadpool(generate_image, client, model, prompt)
         except (OpenAIError, ValueError, ValidationError, IndexError, AttributeError) as e:
-            log.warning("Illustration failed: %s", redact(getattr(e, "message", str(e)), key))
+            log.warning("Illustration failed (%s) for prompt %r", describe_provider_error(e, key), prompt[:200])
             return ""
         ref = images.save_images(settings, chat_id, [data])[0].model_copy(update={"prompt": prompt})
         refs.append(ref)
@@ -373,12 +380,10 @@ def history_for(chat: Chat, vision: bool = False) -> list[dict]:
     for m in reversed(chat.messages[chat.summary_upto :]):
         content = m.content
         if m.role == "assistant":
-            # Generated pictures are not re-sent; the model sees what it asked for instead.
+            # Generated pictures are not re-sent; the model sees the directive it wrote, so it
+            # keeps using that form rather than inventing its own text for an image.
             prompts = {ref.id: ref.prompt for ref in m.images}
-            content = _IMG_REF.sub(
-                lambda g: f"[illustration: {prompts[g.group(1)]}]" if prompts.get(g.group(1)) else "[illustration]",
-                content,
-            )
+            content = _IMG_REF.sub(lambda g: f"[[image: {prompts[g.group(1)]}]]" if prompts.get(g.group(1)) else "", content)
             history.append({"role": m.role, "content": content})
             continue
         if m.sources:

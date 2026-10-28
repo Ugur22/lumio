@@ -163,6 +163,24 @@ def test_failed_image_drops_only_its_directive_and_redacts_key(api, fake_client,
     assert "k" * 20 not in caplog.text and "k" * 20 not in json.dumps(evs)
 
 
+def test_failed_image_logs_status_and_body(api, fake_client, caplog):
+    setup_profile(api)
+    reply_with(fake_client, "A\n\n[[image: a red barn]]\n\nB")
+
+    class Rejected(OpenAIError):
+        status_code = 400
+        response = type("R", (), {"text": '{"code":"policy","error":"prompt rejected k' + "k" * 20 + '"}'})()
+
+    def generate(**kw):
+        raise Rejected("Error code: 400")
+
+    fake_client.images.generate = generate
+    with caplog.at_level("WARNING", logger="dolphinllm"):
+        post(api, new_chat(api), content="x", illustrate=True)
+    assert "400" in caplog.text and "prompt rejected" in caplog.text and "a red barn" in caplog.text
+    assert "k" * 20 not in caplog.text
+
+
 def test_non_image_payload_is_dropped(api, fake_client):
     setup_profile(api)
     reply_with(fake_client, "A\n\n[[image: x]]\n\nB")
@@ -179,7 +197,7 @@ def test_stray_directives_are_stripped_when_not_illustrating(api, fake_client):
     assert reply["content"] == "A\n\nB" and reply["images"] == [] and log == []
 
 
-def test_history_sends_user_images_only_and_describes_illustrations(api, fake_client):
+def test_history_sends_user_images_only_and_replays_illustration_directives(api, fake_client):
     setup_profile(api, vision=True)
     seen = []
     reply_with(fake_client, "A\n\n[[image: a red barn]]\n\nB", seen)
@@ -191,7 +209,7 @@ def test_history_sends_user_images_only_and_describes_illustrations(api, fake_cl
     history = seen[1]
     assert [p["type"] for p in history[1]["content"]] == ["text", "image_url"]
     assert history[2]["role"] == "assistant"
-    assert history[2]["content"] == "A\n\n[illustration: a red barn]\n\nB"
+    assert history[2]["content"] == "A\n\n[[image: a red barn]]\n\nB"
     assert "image_url" not in json.dumps(history[2])
 
 
@@ -199,7 +217,7 @@ def test_history_for_handles_unknown_marker(api):
     from models import Chat, Message
 
     chat = Chat(id="a" * 32, messages=[Message(role="assistant", content=f"x [[img:{'b' * 32}]]")])
-    assert server.history_for(chat)[0]["content"] == "x [illustration]"
+    assert server.history_for(chat)[0]["content"] == "x "
 
 
 def test_illustrating_drops_html_block_instruction():
