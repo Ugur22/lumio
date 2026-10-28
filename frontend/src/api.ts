@@ -1,5 +1,14 @@
 import { createSseParser } from "./lib/sse";
-import type { Chat, ChatSummary, EditProfileBody, ModelsQuery, NewProfileBody, ProfileList } from "./types";
+import type {
+  Chat,
+  ChatSummary,
+  EditProfileBody,
+  ModelsQuery,
+  NewProfileBody,
+  ProfileList,
+  SourceRef,
+  WebStatus,
+} from "./types";
 
 interface ValidationIssue {
   msg?: string;
@@ -26,18 +35,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
+interface StreamOptions {
+  web: boolean;
+  signal: AbortSignal;
+  onDelta: (text: string) => void;
+  onSources: (sources: SourceRef[], notes: string[]) => void;
+}
+
 // Resolves with the saved chat once the server sends `done`. Aborting rejects with an
 // AbortError; the server then saves whatever text it had already streamed.
-async function streamMessage(
-  id: string,
-  content: string,
-  onDelta: (text: string) => void,
-  signal: AbortSignal,
-): Promise<Chat> {
+async function streamMessage(id: string, content: string, opts: StreamOptions): Promise<Chat> {
+  const { web, signal, onDelta, onSources } = opts;
   const res = await fetch(`/api/chats/${id}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, web }),
     signal,
   });
   if (!res.ok || !res.body) {
@@ -50,6 +62,7 @@ async function streamMessage(
   const feed = createSseParser(({ event, data }) => {
     const payload = JSON.parse(data) as Record<string, unknown>;
     if (event === "delta") onDelta(payload.text as string);
+    else if (event === "sources") onSources(payload.sources as SourceRef[], payload.notes as string[]);
     else if (event === "done") chat = payload as unknown as Chat;
     else if (event === "error") failure = errorMessage(payload.detail, "Stream failed");
   });
@@ -81,6 +94,9 @@ export const api = {
     request<ProfileList>(`/profiles/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteProfile: (id: string) => request<ProfileList>(`/profiles/${id}`, { method: "DELETE" }),
   activateProfile: (id: string) => request<ProfileList>(`/profiles/${id}/activate`, { method: "POST" }),
+  getWebStatus: () => request<WebStatus>("/web"),
+  setWebKey: (key: string) => request<WebStatus>("/web/key", { method: "PUT", body: JSON.stringify({ key }) }),
+  deleteWebKey: () => request<WebStatus>("/web/key", { method: "DELETE" }),
   listModels: (body: ModelsQuery) =>
     request<{ models: string[] }>("/profiles/models", { method: "POST", body: JSON.stringify(body) }),
 };

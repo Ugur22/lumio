@@ -1,10 +1,21 @@
 // Mirrors models.py. Datetimes arrive as ISO-8601 strings.
 export type Role = "user" | "assistant";
 
+export interface SourceRef {
+  url: string;
+  title: string;
+}
+
+export interface Source extends SourceRef {
+  text: string;
+}
+
 export interface Message {
   role: Role;
   content: string;
   created: string;
+  // Pages read for this turn; only user messages carry them.
+  sources: Source[];
 }
 
 export interface Chat {
@@ -47,6 +58,11 @@ export interface NewProfileBody {
 }
 
 export type EditProfileBody = Partial<Pick<NewProfileBody, "name" | "base_url" | "model" | "key">>;
+
+export interface WebStatus {
+  configured: boolean;
+  last4: string | null;
+}
 
 export interface ModelsQuery {
   profile_id?: string;

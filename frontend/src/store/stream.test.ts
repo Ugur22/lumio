@@ -32,6 +32,24 @@ describe("stream store", () => {
     expect(get().pending?.status).toBe("error");
   });
 
+  it("holds the sources read for the turn, and forgets them on the next turn", () => {
+    get().start("c1", "hi");
+    get().setSources([{ url: "https://a.com", title: "A" }], ["Could not read https://b.com"]);
+    expect(get().sources).toEqual([{ url: "https://a.com", title: "A" }]);
+    expect(get().notes).toEqual(["Could not read https://b.com"]);
+
+    get().clear();
+    get().start("c1", "again");
+    expect(get().sources).toEqual([]);
+  });
+
+  it("ignores sources that arrive after the turn was cleared", () => {
+    get().start("c1", "hi");
+    get().clear();
+    get().setSources([{ url: "https://a.com", title: "A" }], []);
+    expect(get().sources).toEqual([]);
+  });
+
   it("ignores late updates once cleared", () => {
     get().start("c1", "hi");
     get().clear();

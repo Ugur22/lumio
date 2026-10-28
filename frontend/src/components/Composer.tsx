@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, type FormEvent, type KeyboardEvent, type Ref } from "react";
-import { SendIcon, StopIcon } from "./icons";
+import { GlobeIcon, SendIcon, StopIcon } from "./icons";
 import { PressButton } from "./PressButton";
 
 export interface ComposerHandle {
@@ -10,7 +10,7 @@ export interface ComposerHandle {
 interface Props {
   ref?: Ref<ComposerHandle>;
   disabled: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, web: boolean) => void;
   onStop: () => void;
 }
 
@@ -22,6 +22,7 @@ function fit(el: HTMLTextAreaElement | null) {
 
 export function Composer({ ref, disabled, onSend, onStop }: Props) {
   const [value, setValue] = useState("");
+  const [web, setWeb] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -45,7 +46,7 @@ export function Composer({ ref, disabled, onSend, onStop }: Props) {
     setValue("");
     // Reset after React clears the value so scrollHeight shrinks back.
     requestAnimationFrame(() => fit(input.current));
-    onSend(text);
+    onSend(text, web);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -64,6 +65,18 @@ export function Composer({ ref, disabled, onSend, onStop }: Props) {
       className="mx-auto w-full max-w-[720px] px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-3"
     >
       <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 shadow-soft transition-[border-color,box-shadow] duration-200 focus-within:border-accent/60 focus-within:shadow-lift">
+        <PressButton
+          type="button"
+          aria-label="Search the web"
+          aria-pressed={web}
+          title="Search the web"
+          onClick={() => setWeb((on) => !on)}
+          className={`grid size-10 flex-none place-items-center rounded-xl transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+            web ? "bg-accent/15 text-accent" : "text-muted hover:bg-bubble"
+          }`}
+        >
+          <GlobeIcon />
+        </PressButton>
         <textarea
           ref={input}
           rows={1}
@@ -100,7 +113,9 @@ export function Composer({ ref, disabled, onSend, onStop }: Props) {
         </PressButton>
         )}
       </div>
-      <p className="mt-2 text-center text-xs text-muted">Enter to send · Shift+Enter for a new line</p>
+      <p className="mt-2 text-center text-xs text-muted">
+        {web ? "Web search on · your message is sent to Tavily" : "Enter to send · Shift+Enter for a new line"}
+      </p>
     </form>
   );
 }

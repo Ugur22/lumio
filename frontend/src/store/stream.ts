@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SourceRef } from "../types";
 
 // A discriminated union, so consumers can match it exhaustively. "Succeeded" is `pending: null`:
 // the saved chat then supplies the reply.
@@ -10,8 +11,12 @@ export type Pending = { text: string; chatId: string | null } & (
 
 interface StreamState {
   pending: Pending | null;
+  // What the server read for the turn in flight; the saved message takes over once it is done.
+  sources: SourceRef[];
+  notes: string[];
   start: (chatId: string | null, text: string) => void;
   setReply: (reply: string) => void;
+  setSources: (sources: SourceRef[], notes: string[]) => void;
   fail: (error: string) => void;
   clear: () => void;
 }
@@ -19,7 +24,10 @@ interface StreamState {
 // Lives outside App so per-frame reply updates re-render only the components that select `pending`.
 export const useStream = create<StreamState>((set) => ({
   pending: null,
-  start: (chatId, text) => set({ pending: { text, chatId, status: "thinking" } }),
+  sources: [],
+  notes: [],
+  start: (chatId, text) => set({ pending: { text, chatId, status: "thinking" }, sources: [], notes: [] }),
+  setSources: (sources, notes) => set((s) => (s.pending ? { sources, notes } : s)),
   // A failed turn keeps showing its error; a late frame must not turn it back into a reply.
   setReply: (reply) =>
     set((s) =>
@@ -31,5 +39,5 @@ export const useStream = create<StreamState>((set) => ({
     set((s) =>
       s.pending ? { pending: { text: s.pending.text, chatId: s.pending.chatId, status: "error", error } } : s,
     ),
-  clear: () => set({ pending: null }),
+  clear: () => set({ pending: null, sources: [], notes: [] }),
 }));

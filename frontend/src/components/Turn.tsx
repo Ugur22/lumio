@@ -3,6 +3,8 @@ import { useState, type ComponentPropsWithoutRef } from "react";
 import { match } from "ts-pattern";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { APP_NAME } from "../lib/brand";
+import { hostOf } from "../lib/providers";
+import type { SourceRef } from "../types";
 import { LumioMark } from "./icons";
 import { Markup } from "./Markup";
 
@@ -24,7 +26,14 @@ function Appear({ live, ...rest }: AppearProps) {
   return <animated.div {...rest} style={style} />;
 }
 
-export function Turn({ question, reply }: { question: string; reply: Reply }) {
+interface TurnProps {
+  question: string;
+  reply: Reply;
+  sources?: SourceRef[];
+  notes?: string[];
+}
+
+export function Turn({ question, reply, sources = [], notes = [] }: TurnProps) {
   // A turn that mounts while still waiting for its reply is new; history mounts with its reply.
   const [live] = useState(reply.kind === "thinking");
 
@@ -36,6 +45,7 @@ export function Turn({ question, reply }: { question: string; reply: Reply }) {
       >
         {question}
       </Appear>
+      <SourceChips sources={sources} notes={notes} />
       {match(reply)
         .with({ kind: "text" }, (r) => (
           <Appear live={live} className="mt-5">
@@ -60,6 +70,42 @@ export function Turn({ question, reply }: { question: string; reply: Reply }) {
         ))
         .with({ kind: "none" }, () => null)
         .exhaustive()}
+    </div>
+  );
+}
+
+// Page URLs come from the web, so only http(s) ones become links.
+const isWebUrl = (url: string) => /^https?:\/\//i.test(url);
+
+function SourceChips({ sources, notes }: { sources: SourceRef[]; notes: string[] }) {
+  if (sources.length === 0 && notes.length === 0) return null;
+  const chip = "max-w-full truncate rounded-lg border border-border bg-surface px-2 py-1";
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 text-[12px]">
+      {sources.length > 0 && (
+        <span className="text-muted">
+          Read {sources.length} {sources.length === 1 ? "source" : "sources"}
+        </span>
+      )}
+      {sources.map((s) =>
+        isWebUrl(s.url) ? (
+          <a
+            key={s.url}
+            href={s.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={s.title || s.url}
+            className={`${chip} text-accent hover:border-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent`}
+          >
+            {hostOf(s.url)}
+          </a>
+        ) : null,
+      )}
+      {notes.map((n) => (
+        <span key={n} role="status" className="rounded-lg bg-warn-bg px-2 py-1 text-warn-bar">
+          {n}
+        </span>
+      ))}
     </div>
   );
 }

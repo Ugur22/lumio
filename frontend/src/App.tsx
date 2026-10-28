@@ -36,9 +36,9 @@ export function App() {
     if (id === null) composer.current?.focus();
   };
 
-  function onSend(content: string) {
+  function onSend(content: string, web: boolean) {
     const chatId = currentId;
-    send(chatId, content, (saved) => {
+    send(chatId, content, web, (saved) => {
       // Only jump to the new chat if the user is still on the blank one.
       setChosen((cur) => (chatId === null && (cur === null || cur === undefined) ? saved.id : cur));
     });

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Chat } from "../types";
+import type { Chat, SourceRef } from "../types";
 
 export const chatsKey = ["chats"] as const;
 export const chatKey = (id: string) => ["chat", id] as const;
@@ -42,8 +42,10 @@ export function useDeleteChat() {
 interface SendVars {
   chatId: string | null;
   content: string;
+  web: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
+  onSources: (sources: SourceRef[], notes: string[]) => void;
 }
 
 // After Stop the server saves the partial reply on its own schedule, so poll briefly for it.
@@ -60,20 +62,20 @@ async function savedAfterStop(id: string, knownCount: number): Promise<Chat> {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation<Chat, Error, SendVars>({
-    mutationFn: async ({ chatId, content, signal, onDelta }) => {
+    mutationFn: async ({ chatId, content, web, signal, onDelta, onSources }) => {
       const id = chatId ?? (await api.createChat()).id;
       const knownCount = chatId === null ? 0 : (qc.getQueryData<Chat>(chatKey(id))?.messages.length ?? 0);
       let received = false;
       try {
-        return await api.sendMessage(
-          id,
-          content,
-          (text) => {
+        return await api.sendMessage(id, content, {
+          web,
+          signal,
+          onSources,
+          onDelta: (text) => {
             received = true;
             onDelta(text);
           },
-          signal,
-        );
+        });
       } catch (err) {
         // Stopped before any text arrived: nothing was saved, same as a failure.
         if (signal.aborted && received) return await savedAfterStop(id, knownCount);

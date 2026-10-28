@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useProfileActions, useProfiles } from "../hooks/useProfiles";
+import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
 import type { Profile } from "../types";
 import { PressButton } from "./PressButton";
@@ -112,6 +113,7 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
         ))}
       </ul>
       {failure && <p role="alert" className="text-warn-bar">{failure}</p>}
+      <WebSearchSection />
       <div className="flex items-center gap-2">
         <PressButton type="button" onClick={onAdd} hover={1.02} press={0.97} className={primary}>
           Add provider
@@ -120,6 +122,94 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
           Close
         </button>
       </div>
+    </div>
+  );
+}
+
+function WebSearchSection() {
+  const { data } = useWebStatus();
+  const actions = useWebKeyActions();
+  const [key, setKey] = useState("");
+  const [replacing, setReplacing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    setFailure(null);
+    try {
+      await action();
+    } catch (err) {
+      setFailure((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const typed = key.trim();
+    if (!typed) return;
+    // Cleared before the request settles so the secret never lingers in the DOM or state.
+    setKey("");
+    return run(async () => {
+      await actions.save(typed);
+      setReplacing(false);
+    });
+  }
+
+  const showForm = data !== undefined && (!data.configured || replacing);
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-4">
+      <h3 className="text-[13px] font-medium">Web search</h3>
+      {data?.configured && (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-bg px-3 py-2.5">
+          <span aria-hidden="true" className="size-2.5 flex-none rounded-full bg-note-bar" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium">Tavily</div>
+            <div className="truncate text-[12px] text-muted">
+              Key in keychain{data.last4 ? ` ending in ${data.last4}` : ""}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReplacing((on) => !on)}
+            className={`rounded px-2 py-1 text-muted hover:text-text ${focus}`}
+          >
+            {replacing ? "Cancel" : "Replace"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => run(actions.remove)}
+            className={`rounded px-2 py-1 text-warn-bar disabled:opacity-50 ${focus}`}
+          >
+            Remove
+          </button>
+        </div>
+      )}
+      {data && !data.configured && (
+        <p className="text-[12px] text-muted">No Tavily key. The Web toggle needs one; pasted links work without it.</p>
+      )}
+      {showForm && (
+        <form onSubmit={onSubmit} className="flex items-center gap-2">
+          <input
+            type="password"
+            aria-label="Tavily API key"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="Paste your Tavily API key"
+            className={`${field} min-w-0 flex-1`}
+          />
+          <PressButton type="submit" disabled={busy || !key.trim()} hover={1.02} press={0.97} className={secondary}>
+            Save
+          </PressButton>
+        </form>
+      )}
+      {failure && <p role="alert" className="text-warn-bar">{failure}</p>}
     </div>
   );
 }

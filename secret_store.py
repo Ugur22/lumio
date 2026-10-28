@@ -4,6 +4,7 @@ from keyring.errors import KeyringError, PasswordDeleteError
 SERVICE = "dolphinllm-client"
 # The pre-profiles single key; still read so existing setups keep working.
 LEGACY_ACCOUNT = "api-key"
+TAVILY_ACCOUNT = "tavily"
 
 
 def profile_account(profile_id: str) -> str:

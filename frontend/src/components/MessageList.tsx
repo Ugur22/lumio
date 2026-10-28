@@ -2,7 +2,7 @@ import { animated, useTrail } from "@react-spring/web";
 import { useEffect, useRef } from "react";
 import { match } from "ts-pattern";
 import { useStream } from "../store/stream";
-import type { Message } from "../types";
+import type { Message, SourceRef } from "../types";
 import { LumioMark } from "./icons";
 import { PressButton } from "./PressButton";
 import { Turn, type Reply } from "./Turn";
@@ -23,6 +23,8 @@ const SUGGESTIONS = [
 export function MessageList({ messages, chatId, onPick }: Props) {
   const ref = useRef<HTMLElement>(null);
   const stored = useStream((s) => s.pending);
+  const liveSources = useStream((s) => s.sources);
+  const liveNotes = useStream((s) => s.notes);
   // A reply still streaming for another chat must not show up here.
   const pending = stored && stored.chatId === chatId ? stored : null;
 
@@ -37,11 +39,14 @@ export function MessageList({ messages, chatId, onPick }: Props) {
   }, [messages, pending, streaming]);
 
   // Messages alternate user/assistant, so pairing them gives one visual turn each.
-  const turns: { question: string; reply: Reply }[] = [];
+  const turns: { question: string; reply: Reply; sources: SourceRef[]; notes: string[] }[] = [];
   for (let i = 0; i < messages.length; i += 2) {
     const q = messages[i];
     const a = messages[i + 1];
-    if (q) turns.push({ question: q.content, reply: a ? { kind: "text", content: a.content } : { kind: "none" } });
+    if (q) {
+      const reply: Reply = a ? { kind: "text", content: a.content } : { kind: "none" };
+      turns.push({ question: q.content, reply, sources: q.sources, notes: [] });
+    }
   }
   if (pending) {
     turns.push({
@@ -52,6 +57,8 @@ export function MessageList({ messages, chatId, onPick }: Props) {
         .with({ status: "streaming" }, (p) => ({ kind: "text", content: p.reply, streaming: true }))
         .with({ status: "error" }, (p) => ({ kind: "error", message: p.error }))
         .exhaustive(),
+      sources: liveSources,
+      notes: liveNotes,
     });
   }
 
@@ -68,7 +75,7 @@ export function MessageList({ messages, chatId, onPick }: Props) {
         {turns.length === 0 ? (
           <EmptyState onPick={onPick} />
         ) : (
-          turns.map((t, i) => <Turn key={i} question={t.question} reply={t.reply} />)
+          turns.map((t, i) => <Turn key={i} question={t.question} reply={t.reply} sources={t.sources} notes={t.notes} />)
         )}
       </div>
     </section>

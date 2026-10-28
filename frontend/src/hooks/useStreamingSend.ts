@@ -26,13 +26,13 @@ export function useStreamingSend() {
   }, []);
 
   const send = useCallback(
-    (chatId: string | null, content: string, onSaved: (chat: Chat) => void) => {
+    (chatId: string | null, content: string, web: boolean, onSaved: (chat: Chat) => void) => {
       const controller = new AbortController();
       abort.current = controller;
       streamed.current = "";
       useStream.getState().start(chatId, content);
       mutate(
-        { chatId, content, signal: controller.signal, onDelta },
+        { chatId, content, web, signal: controller.signal, onDelta, onSources: useStream.getState().setSources },
         {
           onSuccess: (saved) => {
             endStream();

@@ -24,6 +24,12 @@ function icon(paths: ReactNode) {
 export const PlusIcon = icon(<path d="M12 5v14M5 12h14" />);
 export const SendIcon = icon(<path d="M12 19V5M5 12l7-7 7 7" />);
 export const StopIcon = icon(<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />);
+export const GlobeIcon = icon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </>,
+);
 export const MenuIcon = icon(<path d="M4 7h16M4 12h16M4 17h16" />);
 export const PencilIcon = icon(<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />);
 export const TrashIcon = icon(<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6" />);

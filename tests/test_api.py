@@ -79,7 +79,7 @@ def test_error_mid_stream_is_reported_and_saves_nothing(api, fake_client):
 
 def stop_after_first_delta(chat, content, stream):
     async def run():
-        gen = server.stream_reply(chat, content, stream)
+        gen = server.stream_reply(chat, content, stream, [], [])
         await anext(gen)
         await gen.aclose()
 

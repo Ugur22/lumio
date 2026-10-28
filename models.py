@@ -26,10 +26,18 @@ class Settings(BaseSettings):
     profiles_file: Path = BASE_DIR / "profiles.json"
 
 
+class Source(BaseModel):
+    url: str
+    title: str = ""
+    text: str
+
+
 class Message(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     created: datetime = Field(default_factory=utcnow)
+    # Web pages the reply was based on; kept on the user message so later turns can reuse them.
+    sources: list[Source] = []
 
 
 class Chat(BaseModel):
@@ -119,6 +127,16 @@ class ModelsQuery(BaseModel):
 
 class NewMessage(BaseModel):
     content: str = Field(min_length=1)
+    web: bool = False
+
+
+class WebKey(BaseModel):
+    key: SecretStr = Field(min_length=1, max_length=512)
+
+
+class WebStatus(BaseModel):
+    configured: bool
+    last4: str | None = None
 
 
 class RenameChat(BaseModel):
