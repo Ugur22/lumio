@@ -1,6 +1,7 @@
 import {
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -9,6 +10,7 @@ import {
   type KeyboardEvent,
   type Ref,
 } from "react";
+import { continueList, shiftList, type Edit } from "../lib/lists";
 import { ACCEPT_ATTR, prepareImage, rejectReason, type Attachment } from "../lib/images";
 import { CloseIcon, GlobeIcon, ImageIcon, SendIcon, StopIcon } from "./icons";
 import { PressButton } from "./PressButton";
@@ -44,6 +46,7 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const caret = useRef<number | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   // Mirrors state so addFiles can count images added earlier in the same batch.
   const count = useRef(0);
@@ -56,6 +59,14 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
     input.current?.focus();
   }, [disabled]);
 
+  // Fitting after every committed value covers typing, setText and the reset after send alike.
+  useLayoutEffect(() => {
+    const el = input.current;
+    fit(el);
+    if (el && caret.current !== null) el.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  }, [value]);
+
   // Thumbnails still waiting in the composer are ours to free; sent ones belong to the stream store.
   useEffect(() => () => latest.current.forEach((a) => URL.revokeObjectURL(a.preview)), []);
 
@@ -64,8 +75,6 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
     setText: (text) => {
       setValue(text);
       input.current?.focus();
-      // Wait for React to commit the new value so scrollHeight is correct.
-      requestAnimationFrame(() => fit(input.current));
     },
   }), []);
 
@@ -116,17 +125,32 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
     setValue("");
     setAttachments([]);
     setNotice(null);
-    // Reset after React clears the value so scrollHeight shrinks back.
-    requestAnimationFrame(() => fit(input.current));
     onSend(text, sending, web);
+  }
+
+  function apply(e: KeyboardEvent<HTMLTextAreaElement>, edit: Edit | null) {
+    if (!edit) return false;
+    e.preventDefault();
+    caret.current = edit.caret;
+    setValue(edit.value);
+    return true;
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     // isComposing keeps IME users from sending mid-composition.
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      submit();
+    if (e.nativeEvent.isComposing) return;
+    const el = e.currentTarget;
+    const collapsed = el.selectionStart === el.selectionEnd;
+    if (e.key === "Tab" && collapsed && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      apply(e, shiftList(el.value, el.selectionStart, e.shiftKey));
+      return;
     }
+    if (e.key !== "Enter" || e.shiftKey) return;
+    // Ctrl/Cmd+Enter always sends, even from inside a list.
+    const send = e.ctrlKey || e.metaKey;
+    if (!send && collapsed && apply(e, continueList(el.value, el.selectionStart))) return;
+    e.preventDefault();
+    submit();
   }
 
   function onPaste(e: ClipboardEvent) {
@@ -294,7 +318,6 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
             value={value}
             onChange={(e) => {
               setValue(e.target.value);
-              fit(e.target);
             }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
@@ -305,7 +328,7 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
                   ? "Ask anything — Lumio will search the web first…"
                   : "Write a message…"
             }
-            className="max-h-[40vh] flex-1 resize-none bg-transparent px-2.5 py-2 text-text outline-none placeholder:text-muted"
+            className="max-h-[min(40vh,12rem)] flex-1 resize-none bg-transparent px-2.5 py-2 text-text outline-none placeholder:text-muted"
           />
           {disabled ? (
             <PressButton
@@ -333,7 +356,7 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
       <p className={`mt-2 text-center text-xs ${web ? "text-accent" : "text-muted"}`}>
         {web
           ? "Web search on · your message is sent to Tavily"
-          : `Enter to send · Shift+Enter for a new line${vision ? " · Paste or drop images" : ""}`}
+          : `Enter to send · Shift+Enter for a new line · Ctrl+Enter sends from a list${vision ? " · Paste or drop images" : ""}`}
       </p>
     </form>
   );
