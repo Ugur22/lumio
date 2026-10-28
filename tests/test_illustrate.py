@@ -200,3 +200,13 @@ def test_history_for_handles_unknown_marker(api):
 
     chat = Chat(id="a" * 32, messages=[Message(role="assistant", content=f"x [[img:{'b' * 32}]]")])
     assert server.history_for(chat)[0]["content"] == "x [illustration]"
+
+
+def test_illustrating_drops_html_block_instruction():
+    from test_story import chat_with
+
+    plain = server.system_for(chat_with())
+    illustrated = server.system_for(chat_with(), illustrate=True)
+    assert "style attributes" in plain
+    assert "style attributes" not in illustrated
+    assert "[[image:" in illustrated and "[[key]]" in illustrated
