@@ -105,12 +105,40 @@ class Message(BaseModel):
     query: str | None = None
 
 
+MAX_BIBLE_CHARS = 20_000
+MAX_SUMMARY_CHARS = 20_000
+MAX_LORE_ENTRIES = 200
+LORE_ID = r"^[0-9a-f]{32}$"
+
+
+class LoreEntry(BaseModel):
+    id: str = Field(pattern=LORE_ID)
+    name: str = Field(min_length=1, max_length=80)
+    # Any one of these words appearing in recent messages pulls the entry into the prompt.
+    keys: list[Annotated[str, Field(min_length=1, max_length=60)]] = Field(default=[], max_length=20)
+    content: str = Field(default="", max_length=5000)
+    enabled: bool = True
+
+
+class Usage(BaseModel):
+    prompt_tokens: int = Field(ge=0)
+
+
 class Chat(BaseModel):
     id: str
     title: str = "New chat"
     created: datetime = Field(default_factory=utcnow)
     updated: datetime = Field(default_factory=utcnow)
     messages: list[Message] = []
+    # Story context. Defaults keep chat files saved before this existed loadable.
+    # The bible's size is capped on StoryUpdate, not here, so an old oversized file still opens.
+    bible: str = ""
+    lore: list[LoreEntry] = []
+    summary: str = ""
+    # How many leading messages the summary stands in for; they stay stored but are not sent.
+    summary_upto: int = Field(default=0, ge=0)
+    # Provider-reported size of the last prompt; cleared when the story or summary changes.
+    last_usage: Usage | None = None
 
 
 class ChatSummary(BaseModel):
@@ -140,6 +168,8 @@ class Profile(BaseModel):
     needs_key: bool = True
     # Set by the user: /models does not report capabilities, so it cannot be detected.
     vision: bool = False
+    # Set by the user (OpenRouter's model list can prefill it): used only for the usage meter.
+    context_window: int | None = Field(default=None, ge=1000)
 
     @model_validator(mode="before")
     @classmethod
@@ -175,6 +205,7 @@ class NewProfile(BaseModel):
     model: str = Field(min_length=1, max_length=120)
     needs_key: bool = True
     vision: bool = False
+    context_window: int | None = Field(default=None, ge=1000)
     key: SecretStr | None = None
 
     _url = field_validator("base_url")(lambda cls, v: clean_base_url(v))
@@ -185,6 +216,7 @@ class EditProfile(BaseModel):
     base_url: str | None = None
     model: str | None = Field(default=None, min_length=1, max_length=120)
     vision: bool | None = None
+    context_window: int | None = Field(default=None, ge=1000)
     key: SecretStr | None = None
 
     @field_validator("base_url")
@@ -228,3 +260,33 @@ class WebStatus(BaseModel):
 
 class RenameChat(BaseModel):
     title: str = Field(min_length=1, max_length=100)
+
+
+class StoryUpdate(BaseModel):
+    bible: str = Field(default="", max_length=MAX_BIBLE_CHARS)
+    lore: list[LoreEntry] = Field(default=[], max_length=MAX_LORE_ENTRIES)
+
+
+class SummaryUpdate(BaseModel):
+    summary: str = Field(max_length=MAX_SUMMARY_CHARS)
+    summary_upto: int = Field(ge=0)
+
+
+class SummaryProposal(BaseModel):
+    summary: str
+    summary_upto: int
+
+
+class ContextParts(BaseModel):
+    system: int
+    bible: int
+    lore: int
+    summary: int
+    history: int
+
+
+class ContextInfo(BaseModel):
+    used: int
+    window: int | None
+    source: Literal["provider", "estimate"]
+    parts: ContextParts

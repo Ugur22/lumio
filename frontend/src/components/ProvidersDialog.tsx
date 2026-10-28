@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useProfileActions, useProfiles } from "../hooks/useProfiles";
 import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
+import { formatTokens } from "../lib/context";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
 import type { Profile } from "../types";
 import { PressButton } from "./PressButton";
@@ -12,6 +13,8 @@ interface Props {
 
 type View = { kind: "list" } | { kind: "form"; profile: Profile | null };
 type Notice = { kind: "ok" | "error"; text: string } | null;
+
+const MIN_WINDOW = 1000;
 
 const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 const field = `rounded-xl border border-border bg-bg px-3 py-2 ${focus}`;
@@ -104,6 +107,7 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
               <div className="truncate font-medium">{p.name}</div>
               <div className="truncate text-[12px] text-muted">
                 {hostOf(p.base_url)} · {p.model} · {keyLabel(p)}
+                {p.context_window ? ` · ${formatTokens(p.context_window)} context` : ""}
               </div>
             </div>
             <button type="button" onClick={() => onEdit(p)} className={`rounded px-2 py-1 text-muted hover:text-text ${focus}`}>
@@ -226,6 +230,10 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
   const [vision, setVision] = useState(profile?.vision ?? false);
   const [key, setKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
+  const [contextWindow, setContextWindow] = useState(profile?.context_window?.toString() ?? "");
+  // Sizes the provider reported per model; they only prefill, the typed value always wins.
+  const [windows, setWindows] = useState<Record<string, number>>({});
+  const [windowTouched, setWindowTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
 
@@ -242,6 +250,15 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     setNeedsKey(p.needsKey);
     setVision(p.vision);
     setModels([]);
+    setWindows({});
+    setContextWindow("");
+    setWindowTouched(false);
+  }
+
+  function chooseModel(value: string, reported = windows) {
+    setModel(value);
+    const known = reported[value.trim()];
+    if (known && !windowTouched) setContextWindow(String(known));
   }
 
   async function run(action: () => Promise<void>) {
@@ -265,6 +282,9 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
         needs_key: needsKey,
       });
       setModels(res.models);
+      const reported = res.context_windows ?? {};
+      setWindows(reported);
+      chooseModel(model, reported);
       setNotice({ kind: "ok", text: `Connected. ${res.models.length} models found.` });
     });
 
@@ -275,8 +295,9 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     setKey("");
     return run(async () => {
       const body = { name: name.trim(), base_url: baseUrl.trim(), model: model.trim(), vision };
-      if (profile) await actions.edit(profile.id, { ...body, ...(typedKey && { key: typedKey }) });
-      else await actions.create({ ...body, needs_key: needsKey, ...(typedKey && { key: typedKey }) });
+      // Editing sends null to clear a size; creating just leaves it out.
+      if (profile) await actions.edit(profile.id, { ...body, context_window: windowValue, ...(typedKey && { key: typedKey }) });
+      else await actions.create({ ...body, needs_key: needsKey, ...(windowValue !== null && { context_window: windowValue }), ...(typedKey && { key: typedKey }) });
       onDone();
     });
   }
@@ -289,7 +310,11 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     });
   }
 
-  const canSave = !busy && name.trim() && baseUrl.trim() && model.trim() && (editing || !needsKey || key.trim());
+  const windowText = contextWindow.trim();
+  const windowValue = windowText === "" ? null : Number(windowText);
+  const windowValid = windowValue === null || (Number.isInteger(windowValue) && windowValue >= MIN_WINDOW);
+
+  const canSave = !busy && windowValid && name.trim() && baseUrl.trim() && model.trim() && (editing || !needsKey || key.trim());
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3.5 p-5">
@@ -361,7 +386,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
         <span className="text-[13px] font-medium">Model</span>
         <input
           value={model}
-          onChange={(e) => setModel(e.target.value)}
+          onChange={(e) => chooseModel(e.target.value)}
           list="model-options"
           spellCheck={false}
           className={field}
@@ -371,6 +396,29 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
             <option key={m} value={m} />
           ))}
         </datalist>
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-[13px] font-medium">Context window (tokens, optional)</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_WINDOW}
+          step={1}
+          value={contextWindow}
+          onChange={(e) => {
+            setContextWindow(e.target.value);
+            setWindowTouched(true);
+          }}
+          placeholder="e.g. 128000"
+          aria-invalid={!windowValid}
+          className={field}
+        />
+        <span className={`text-[12px] ${windowValid ? "text-muted" : "text-warn-bar"}`}>
+          {windowValid
+            ? "How much text the model can read at once. Lets Lumio show how full the context is. Some providers report it when you fetch models."
+            : `Use a whole number of at least ${MIN_WINDOW.toLocaleString()}, or leave it blank.`}
+        </span>
       </label>
 
       <label className="flex items-start gap-2.5">

@@ -16,6 +16,7 @@
   --note-bar: #4a7fb0;
   --warn-bg: #fbe3e0;
   --warn-bar: #c0392b;
+  --caution: #b7791f;
   --surface: #ffffff;
   --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 24px -10px rgb(16 24 40 / 0.12);
   --shadow-lift: 0 2px 4px rgb(16 24 40 / 0.07), 0 14px 32px -10px rgb(59 91 219 / 0.3);
@@ -36,6 +37,7 @@
   --note-bar: #6aa0d0;
   --warn-bg: #3d2320;
   --warn-bar: #e0584a;
+  --caution: #e0a63a;
   --surface: #1b1e26;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 12px -8px rgb(0 0 0 / 0.3);
   --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.4), 0 14px 32px -10px rgb(90 119 234 / 0.35);

@@ -2,12 +2,17 @@ import { createSseParser } from "./lib/sse";
 import type {
   Chat,
   ChatSummary,
+  ContextInfo,
+  DoneChat,
   EditProfileBody,
   ImageUpload,
   ModelsQuery,
+  ModelsResult,
   NewProfileBody,
   ProfileList,
   SourceRef,
+  StoryBody,
+  SummaryBody,
   WebStatus,
 } from "./types";
 
@@ -24,6 +29,16 @@ function errorMessage(detail: unknown, fallback: string): string {
   return detail == null ? fallback : JSON.stringify(detail);
 }
 
+// `status` lets callers word 409/422/502 for the action that failed.
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch("/api" + path, {
     ...init,
@@ -31,7 +46,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { detail?: unknown };
-    throw new Error(errorMessage(body.detail, res.statusText || `HTTP ${res.status}`));
+    throw new ApiError(errorMessage(body.detail, res.statusText || `HTTP ${res.status}`), res.status);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
@@ -46,7 +61,7 @@ interface StreamOptions {
 
 // Resolves with the saved chat once the server sends `done`. Aborting rejects with an
 // AbortError; the server then saves whatever text it had already streamed.
-async function streamMessage(id: string, content: string, opts: StreamOptions): Promise<Chat> {
+async function streamMessage(id: string, content: string, opts: StreamOptions): Promise<DoneChat> {
   const { images, web, signal, onDelta, onSources } = opts;
   const res = await fetch(`/api/chats/${id}/messages`, {
     method: "POST",
@@ -59,7 +74,7 @@ async function streamMessage(id: string, content: string, opts: StreamOptions): 
     throw new Error(errorMessage(body.detail, res.statusText || `HTTP ${res.status}`));
   }
 
-  let chat: Chat | null = null;
+  let chat: DoneChat | null = null;
   let failure: string | null = null;
   const feed = createSseParser(({ event, data }) => {
     const payload = JSON.parse(data) as Record<string, unknown>;
@@ -69,7 +84,7 @@ async function streamMessage(id: string, content: string, opts: StreamOptions): 
         (payload.notes as string[] | undefined) ?? [],
         typeof payload.query === "string" ? payload.query : null,
       );
-    else if (event === "done") chat = payload as unknown as Chat;
+    else if (event === "done") chat = payload as unknown as DoneChat;
     else if (event === "error") failure = errorMessage(payload.detail, "Stream failed");
   });
 
@@ -95,6 +110,13 @@ export const api = {
     request<Chat>(`/chats/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
   deleteChat: (id: string) => request<void>(`/chats/${id}`, { method: "DELETE" }),
   sendMessage: streamMessage,
+  saveStory: (id: string, body: StoryBody) =>
+    request<Chat>(`/chats/${id}/story`, { method: "PUT", body: JSON.stringify(body) }),
+  // Proposes a summary; nothing is saved until saveSummary.
+  summarize: (id: string) => request<SummaryBody>(`/chats/${id}/summarize`, { method: "POST" }),
+  saveSummary: (id: string, body: SummaryBody) =>
+    request<Chat>(`/chats/${id}/summary`, { method: "PUT", body: JSON.stringify(body) }),
+  getContext: (id: string) => request<ContextInfo>(`/chats/${id}/context`),
   listProfiles: () => request<ProfileList>("/profiles"),
   createProfile: (body: NewProfileBody) =>
     request<ProfileList>("/profiles", { method: "POST", body: JSON.stringify(body) }),
@@ -106,5 +128,5 @@ export const api = {
   setWebKey: (key: string) => request<WebStatus>("/web/key", { method: "PUT", body: JSON.stringify({ key }) }),
   deleteWebKey: () => request<WebStatus>("/web/key", { method: "DELETE" }),
   listModels: (body: ModelsQuery) =>
-    request<{ models: string[] }>("/profiles/models", { method: "POST", body: JSON.stringify(body) }),
+    request<ModelsResult>("/profiles/models", { method: "POST", body: JSON.stringify(body) }),
 };

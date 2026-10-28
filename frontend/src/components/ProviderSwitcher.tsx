@@ -16,14 +16,14 @@ export function ProviderSwitcher({ onManage }: Props) {
 
   if (!active) {
     return (
-      <button type="button" onClick={onManage} className={`ml-auto rounded-lg px-2.5 py-1 text-accent ${focus}`}>
+      <button type="button" onClick={onManage} className={`rounded-lg px-2.5 py-1 text-accent ${focus}`}>
         Add a provider
       </button>
     );
   }
 
   return (
-    <div className="ml-auto flex min-w-0 pl-2 items-center gap-2 text-[13px] text-muted">
+    <div className="flex min-w-0 pl-2 items-center gap-2 text-[13px] text-muted">
       <div className="relative">
         <select
           aria-label="Provider"

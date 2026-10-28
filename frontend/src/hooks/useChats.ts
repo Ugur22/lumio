@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Chat, ImageUpload, SourceRef } from "../types";
+import type { Chat, ContextInfo, ImageUpload, SourceRef } from "../types";
 
 export const chatsKey = ["chats"] as const;
 export const chatKey = (id: string) => ["chat", id] as const;
+export const contextKey = (id: string) => ["context", id] as const;
 
 export function useChatList() {
   return useQuery({ queryKey: chatsKey, queryFn: api.listChats });
@@ -14,6 +15,27 @@ export function useChat(id: string | null) {
     queryKey: chatKey(id ?? ""),
     queryFn: () => api.getChat(id as string),
     enabled: id !== null,
+  });
+}
+
+// staleTime 0 so opening a chat re-measures it; the global default would keep the first answer forever.
+export function useChatContext(id: string | null) {
+  return useQuery({
+    queryKey: contextKey(id ?? ""),
+    queryFn: () => api.getContext(id as string),
+    enabled: id !== null,
+    staleTime: 0,
+  });
+}
+
+export function useCreateChat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.createChat,
+    onSuccess: (chat) => {
+      qc.setQueryData(chatKey(chat.id), chat);
+      return qc.invalidateQueries({ queryKey: chatsKey });
+    },
   });
 }
 
@@ -39,6 +61,9 @@ export function useDeleteChat() {
   });
 }
 
+// `context` comes from the `done` event; the stop path has none and refetches instead.
+export type SentChat = Chat & { context?: ContextInfo };
+
 interface SendVars {
   chatId: string | null;
   content: string;
@@ -62,7 +87,7 @@ async function savedAfterStop(id: string, knownCount: number): Promise<Chat> {
 // The chat file is created lazily so "New chat" never leaves empty files behind.
 export function useSendMessage() {
   const qc = useQueryClient();
-  return useMutation<Chat, Error, SendVars>({
+  return useMutation<SentChat, Error, SendVars>({
     mutationFn: async ({ chatId, content, images, web, signal, onDelta, onSources }) => {
       const id = chatId ?? (await api.createChat()).id;
       const knownCount = chatId === null ? 0 : (qc.getQueryData<Chat>(chatKey(id))?.messages.length ?? 0);
@@ -86,8 +111,10 @@ export function useSendMessage() {
         throw err;
       }
     },
-    onSuccess: (chat) => {
+    onSuccess: ({ context, ...chat }) => {
       qc.setQueryData(chatKey(chat.id), chat);
+      if (context) qc.setQueryData(contextKey(chat.id), context);
+      else void qc.invalidateQueries({ queryKey: contextKey(chat.id) });
       return qc.invalidateQueries({ queryKey: chatsKey });
     },
     onError: () => qc.invalidateQueries({ queryKey: chatsKey }),

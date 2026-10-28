@@ -48,7 +48,7 @@ def test_first_profile_becomes_active_and_is_used_for_chat(api, monkeypatch, fak
     monkeypatch.setattr(server.settings, "api_key", None)
     seen = {}
 
-    def create(model, messages, stream):
+    def create(model, messages, stream, **kw):
         seen["model"] = model
         return FakeStream([])
 

@@ -48,6 +48,7 @@ export const KeyIcon = icon(
     <path d="M11 12l9-9M16 7l3 3" />
   </>,
 );
+export const BookIcon = icon(<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5" />);
 export const MoonIcon = icon(<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />);
 export const SunIcon = icon(
   <>

@@ -22,6 +22,7 @@ export default {
         "note-bar": v("note-bar"),
         "warn-bg": v("warn-bg"),
         "warn-bar": v("warn-bar"),
+        caution: v("caution"),
       },
       boxShadow: {
         soft: v("shadow"),

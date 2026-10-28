@@ -12,7 +12,11 @@ export function useProfiles() {
 // API key should not outlive the call.
 export function useProfileActions() {
   const qc = useQueryClient();
-  const store = (list: ProfileList) => qc.setQueryData(profilesKey, list);
+  // The window belongs to the active profile, so any profile change can change every chat's meter.
+  const store = (list: ProfileList) => {
+    qc.setQueryData(profilesKey, list);
+    void qc.invalidateQueries({ queryKey: ["context"] });
+  };
   return {
     create: async (body: NewProfileBody) => store(await api.createProfile(body)),
     edit: async (id: string, body: EditProfileBody) => store(await api.editProfile(id, body)),
