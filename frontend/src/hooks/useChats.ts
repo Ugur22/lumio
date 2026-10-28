@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Chat, SourceRef } from "../types";
+import type { Chat, ImageUpload, SourceRef } from "../types";
 
 export const chatsKey = ["chats"] as const;
 export const chatKey = (id: string) => ["chat", id] as const;
@@ -42,6 +42,7 @@ export function useDeleteChat() {
 interface SendVars {
   chatId: string | null;
   content: string;
+  images: ImageUpload[];
   web: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
@@ -62,12 +63,13 @@ async function savedAfterStop(id: string, knownCount: number): Promise<Chat> {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation<Chat, Error, SendVars>({
-    mutationFn: async ({ chatId, content, web, signal, onDelta, onSources }) => {
+    mutationFn: async ({ chatId, content, images, web, signal, onDelta, onSources }) => {
       const id = chatId ?? (await api.createChat()).id;
       const knownCount = chatId === null ? 0 : (qc.getQueryData<Chat>(chatKey(id))?.messages.length ?? 0);
       let received = false;
       try {
         return await api.sendMessage(id, content, {
+          images,
           web,
           signal,
           onSources,

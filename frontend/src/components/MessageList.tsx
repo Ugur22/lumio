@@ -1,6 +1,7 @@
 import { animated, useTrail } from "@react-spring/web";
 import { useEffect, useRef } from "react";
 import { match } from "ts-pattern";
+import { imageUrl } from "../api";
 import { useStream } from "../store/stream";
 import type { Message, SourceRef } from "../types";
 import { LumioMark } from "./icons";
@@ -39,18 +40,20 @@ export function MessageList({ messages, chatId, onPick }: Props) {
   }, [messages, pending, streaming]);
 
   // Messages alternate user/assistant, so pairing them gives one visual turn each.
-  const turns: { question: string; reply: Reply; sources: SourceRef[]; notes: string[] }[] = [];
+  const turns: { question: string; images: string[]; reply: Reply; sources: SourceRef[]; notes: string[] }[] = [];
   for (let i = 0; i < messages.length; i += 2) {
     const q = messages[i];
     const a = messages[i + 1];
     if (q) {
       const reply: Reply = a ? { kind: "text", content: a.content } : { kind: "none" };
-      turns.push({ question: q.content, reply, sources: q.sources, notes: [] });
+      const images = chatId ? q.images.map((r) => imageUrl(chatId, r.id)) : [];
+      turns.push({ question: q.content, images, reply, sources: q.sources, notes: [] });
     }
   }
   if (pending) {
     turns.push({
       question: pending.text,
+      images: pending.images,
       reply: match(pending)
         .returnType<Reply>()
         .with({ status: "thinking" }, () => ({ kind: "thinking" }))
@@ -75,7 +78,7 @@ export function MessageList({ messages, chatId, onPick }: Props) {
         {turns.length === 0 ? (
           <EmptyState onPick={onPick} />
         ) : (
-          turns.map((t, i) => <Turn key={i} question={t.question} reply={t.reply} sources={t.sources} notes={t.notes} />)
+          turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} />)
         )}
       </div>
     </section>

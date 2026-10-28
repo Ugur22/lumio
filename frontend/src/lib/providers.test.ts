@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectPreset, hostOf } from "./providers";
+import { detectPreset, hostOf, PRESETS } from "./providers";
 
 describe("detectPreset", () => {
   it.each([
@@ -27,5 +27,15 @@ describe("hostOf", () => {
   it("shows host and port, and tolerates junk", () => {
     expect(hostOf("http://localhost:11434/v1")).toBe("localhost:11434");
     expect(hostOf("not a url")).toBe("not a url");
+  });
+});
+
+describe("vision defaults", () => {
+  it("turns image input on for Grok and off for text-only defaults", () => {
+    const vision = Object.fromEntries(PRESETS.map((p) => [p.id, p.vision]));
+    expect(vision.xai).toBe(true);
+    expect(vision.dolphin).toBe(false);
+    expect(vision.ollama).toBe(false);
+    expect(vision.custom).toBe(false);
   });
 });

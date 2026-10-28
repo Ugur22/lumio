@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useStream } from "../store/stream";
+import type { Attachment } from "../lib/images";
 import type { Chat } from "../types";
 import { useSendMessage } from "./useChats";
 
@@ -26,13 +27,22 @@ export function useStreamingSend() {
   }, []);
 
   const send = useCallback(
-    (chatId: string | null, content: string, web: boolean, onSaved: (chat: Chat) => void) => {
+    (chatId: string | null, content: string, attachments: Attachment[], web: boolean, onSaved: (chat: Chat) => void) => {
       const controller = new AbortController();
       abort.current = controller;
       streamed.current = "";
-      useStream.getState().start(chatId, content);
+      useStream.getState().start(
+        chatId,
+        content,
+        attachments.map((a) => a.preview),
+      );
       mutate(
-        { chatId, content, web, signal: controller.signal, onDelta, onSources: useStream.getState().setSources },
+        {
+          chatId,
+          content,
+          images: attachments.map((a) => a.upload),
+          web,
+          signal: controller.signal, onDelta, onSources: useStream.getState().setSources },
         {
           onSuccess: (saved) => {
             endStream();

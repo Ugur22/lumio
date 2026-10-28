@@ -30,6 +30,14 @@ export const GlobeIcon = icon(
     <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
   </>,
 );
+export const ImageIcon = icon(
+  <>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <circle cx="9" cy="10" r="1.6" />
+    <path d="m21 16-5-5-8 9" />
+  </>,
+);
+export const CloseIcon = icon(<path d="M6 6l12 12M18 6 6 18" />);
 export const MenuIcon = icon(<path d="M4 7h16M4 12h16M4 17h16" />);
 export const PencilIcon = icon(<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />);
 export const TrashIcon = icon(<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6" />);

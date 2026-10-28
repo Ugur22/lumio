@@ -28,23 +28,28 @@ function Appear({ live, ...rest }: AppearProps) {
 
 interface TurnProps {
   question: string;
+  // URLs of the images attached to the question (stored ones, or local previews while sending).
+  images?: string[];
   reply: Reply;
   sources?: SourceRef[];
   notes?: string[];
 }
 
-export function Turn({ question, reply, sources = [], notes = [] }: TurnProps) {
+export function Turn({ question, images = [], reply, sources = [], notes = [] }: TurnProps) {
   // A turn that mounts while still waiting for its reply is new; history mounts with its reply.
   const [live] = useState(reply.kind === "thinking");
 
   return (
     <div className="mb-8 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border [&:not(:first-child)]:pt-8">
-      <Appear
-        live={live}
-        className="ml-auto w-fit max-w-[85%] origin-right whitespace-pre-wrap break-words rounded-[12px_12px_3px_12px] bg-bubble px-4 py-2.5 shadow-soft [overflow-wrap:anywhere]"
-      >
-        {question}
-      </Appear>
+      <AttachedImages urls={images} live={live} />
+      {question && (
+        <Appear
+          live={live}
+          className="ml-auto w-fit max-w-[85%] origin-right whitespace-pre-wrap break-words rounded-[12px_12px_3px_12px] bg-bubble px-4 py-2.5 shadow-soft [overflow-wrap:anywhere]"
+        >
+          {question}
+        </Appear>
+      )}
       <SourceChips sources={sources} notes={notes} />
       {match(reply)
         .with({ kind: "text" }, (r) => (
@@ -71,6 +76,45 @@ export function Turn({ question, reply, sources = [], notes = [] }: TurnProps) {
         .with({ kind: "none" }, () => null)
         .exhaustive()}
     </div>
+  );
+}
+
+function AttachedImages({ urls, live }: { urls: string[]; live: boolean }) {
+  if (urls.length === 0) return null;
+  return (
+    <Appear live={live} className="mb-2 ml-auto flex max-w-[85%] flex-wrap justify-end gap-2">
+      {urls.map((url, i) => (
+        <AttachedImage key={url} url={url} label={`Attached image ${i + 1}`} />
+      ))}
+    </Appear>
+  );
+}
+
+// Images are pruned after a while; the server then answers 410 and the chat keeps a placeholder.
+function AttachedImage({ url, label }: { url: string; label: string }) {
+  const [expired, setExpired] = useState(false);
+  if (expired) {
+    return (
+      <span className="grid h-28 w-28 place-items-center rounded-xl border border-dashed border-border px-2 text-center text-[12px] text-muted">
+        Image no longer stored
+      </span>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Open full size"
+      className="block rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      <img
+        src={url}
+        alt={label}
+        onError={() => setExpired(true)}
+        className="max-h-48 max-w-full rounded-xl border border-border object-cover shadow-soft sm:max-h-56"
+      />
+    </a>
   );
 }
 

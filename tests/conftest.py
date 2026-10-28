@@ -49,8 +49,10 @@ def memory_keyring():
 def clean_data_dir():
     Path(os.environ["DOLPHINLLM_PROFILES_FILE"]).unlink(missing_ok=True)
     yield
-    for f in Path(os.environ["DOLPHINLLM_DATA_DIR"]).glob("*.json"):
+    data = Path(os.environ["DOLPHINLLM_DATA_DIR"])
+    for f in data.glob("*.json"):
         f.unlink()
+    shutil.rmtree(data / "images", ignore_errors=True)
 
 
 @pytest.fixture(scope="session", autouse=True)

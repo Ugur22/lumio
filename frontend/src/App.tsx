@@ -8,8 +8,10 @@ import { ProviderSwitcher } from "./components/ProviderSwitcher";
 import { ProvidersDialog } from "./components/ProvidersDialog";
 import { Sidebar } from "./components/Sidebar";
 import { useChat, useChatList, useDeleteChat, useRenameChat } from "./hooks/useChats";
+import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTheme } from "./hooks/useTheme";
+import type { Attachment } from "./lib/images";
 import type { ChatSummary } from "./types";
 
 export function App() {
@@ -29,6 +31,8 @@ export function App() {
   const rename = useRenameChat();
   const remove = useDeleteChat();
   const { send, stop, isPending: sending } = useStreamingSend();
+  const profiles = useProfiles().data;
+  const activeProfile = profiles?.profiles.find((p) => p.id === profiles.active);
 
   const select = (id: string | null) => {
     setChosen(id);
@@ -36,9 +40,9 @@ export function App() {
     if (id === null) composer.current?.focus();
   };
 
-  function onSend(content: string, web: boolean) {
+  function onSend(content: string, attachments: Attachment[], web: boolean) {
     const chatId = currentId;
-    send(chatId, content, web, (saved) => {
+    send(chatId, content, attachments, web, (saved) => {
       // Only jump to the new chat if the user is still on the blank one.
       setChosen((cur) => (chatId === null && (cur === null || cur === undefined) ? saved.id : cur));
     });
@@ -116,7 +120,14 @@ export function App() {
           chatId={currentId}
           onPick={(text) => composer.current?.setText(text)}
         />
-        <Composer ref={composer} disabled={sending} onStop={stop} onSend={onSend} />
+        <Composer
+          ref={composer}
+          disabled={sending}
+          vision={activeProfile?.vision ?? false}
+          providerName={activeProfile?.name ?? null}
+          onStop={stop}
+          onSend={onSend}
+        />
       </main>
     </div>
   );

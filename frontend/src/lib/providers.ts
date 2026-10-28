@@ -4,20 +4,22 @@ export interface Preset {
   baseUrl: string;
   model: string;
   needsKey: boolean;
+  // Whether the preset's default model reads images; the user can change it per profile.
+  vision: boolean;
   // Only used to suggest a preset when a key is pasted; the user always confirms.
   keyPrefixes: string[];
 }
 
 export const PRESETS: Preset[] = [
-  { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", needsKey: true, keyPrefixes: ["sk-"] },
-  { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", needsKey: true, keyPrefixes: ["sk-or-"] },
-  { id: "groq", label: "Groq", baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", needsKey: true, keyPrefixes: ["gsk_"] },
-  { id: "xai", label: "xAI (Grok)", baseUrl: "https://api.x.ai/v1", model: "grok-4", needsKey: true, keyPrefixes: ["xai-"] },
-  { id: "together", label: "Together", baseUrl: "https://api.together.xyz/v1", model: "meta-llama/Llama-3.3-70B-Instruct-Turbo", needsKey: true, keyPrefixes: [] },
-  { id: "anthropic", label: "Anthropic (OpenAI-compatible)", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-5-5", needsKey: true, keyPrefixes: ["sk-ant-"] },
-  { id: "dolphin", label: "Dolphin", baseUrl: "https://api.dolphinllm.com/v1", model: "uncensored", needsKey: true, keyPrefixes: [] },
-  { id: "ollama", label: "Ollama (local)", baseUrl: "http://localhost:11434/v1", model: "llama3.2", needsKey: false, keyPrefixes: [] },
-  { id: "custom", label: "Custom", baseUrl: "", model: "", needsKey: true, keyPrefixes: [] },
+  { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", needsKey: true, vision: true, keyPrefixes: ["sk-"] },
+  { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", needsKey: true, vision: true, keyPrefixes: ["sk-or-"] },
+  { id: "groq", label: "Groq", baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", needsKey: true, vision: false, keyPrefixes: ["gsk_"] },
+  { id: "xai", label: "xAI (Grok)", baseUrl: "https://api.x.ai/v1", model: "grok-4", needsKey: true, vision: true, keyPrefixes: ["xai-"] },
+  { id: "together", label: "Together", baseUrl: "https://api.together.xyz/v1", model: "meta-llama/Llama-3.3-70B-Instruct-Turbo", needsKey: true, vision: false, keyPrefixes: [] },
+  { id: "anthropic", label: "Anthropic (OpenAI-compatible)", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-5-5", needsKey: true, vision: true, keyPrefixes: ["sk-ant-"] },
+  { id: "dolphin", label: "Dolphin", baseUrl: "https://api.dolphinllm.com/v1", model: "uncensored", needsKey: true, vision: false, keyPrefixes: [] },
+  { id: "ollama", label: "Ollama (local)", baseUrl: "http://localhost:11434/v1", model: "llama3.2", needsKey: false, vision: false, keyPrefixes: [] },
+  { id: "custom", label: "Custom", baseUrl: "", model: "", needsKey: true, vision: false, keyPrefixes: [] },
 ];
 
 export const presetById = (id: string) => PRESETS.find((p) => p.id === id);

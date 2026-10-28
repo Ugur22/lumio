@@ -8,11 +8,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi import Path as PathParam
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI, OpenAIError
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
+import images
 import profile_store
 import secret_store
 import web
@@ -21,7 +22,11 @@ from models import (
     LOCAL_HOSTS,
     Chat,
     ChatSummary,
+    ContentPart,
     EditProfile,
+    ImageData,
+    ImagePart,
+    ImageUrl,
     Message,
     ModelsQuery,
     NewMessage,
@@ -32,6 +37,7 @@ from models import (
     RenameChat,
     Settings,
     Source,
+    TextPart,
     WebKey,
     WebStatus,
     utcnow,
@@ -41,6 +47,7 @@ log = logging.getLogger("dolphinllm")
 
 settings = Settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
+images.prune(settings)
 _clients: dict[tuple[str, str], OpenAI] = {}
 NO_KEY = "not-needed"  # the OpenAI SDK insists on a non-empty key even for local servers
 
@@ -87,6 +94,10 @@ SYSTEM_PROMPT = (
 
 # Older turns keep their pages in the prompt until this many characters are used, newest first.
 HISTORY_WEB_CHARS = 24_000
+
+IMAGE_GONE = "[image no longer available]"
+IMAGE_UNSUPPORTED = "[image omitted: this provider cannot read images]"
+_parts = TypeAdapter(list[ContentPart])
 
 # Hex-only ids keep user input from ever becoming a path outside data_dir.
 ChatId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$")]
@@ -154,13 +165,46 @@ def rename_chat(chat_id: ChatId, body: RenameChat):
 def delete_chat(chat_id: ChatId):
     load_chat(chat_id)
     chat_path(chat_id).unlink()
+    images.delete_chat_images(settings, chat_id)
+
+
+ImageId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$")]
+
+
+@app.get("/api/chats/{chat_id}/images/{image_id}")
+def get_image(chat_id: ChatId, image_id: ImageId):
+    chat = load_chat(chat_id)
+    for message in chat.messages:
+        for ref in message.images:
+            if ref.id == image_id:
+                path = images.image_path(settings, chat_id, ref)
+                if not path.exists():
+                    raise HTTPException(410, "This image has expired")
+                return FileResponse(path, media_type=ref.media_type, headers={"Cache-Control": "private, max-age=3600"})
+    raise HTTPException(404, "Image not found")
 
 
 def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def history_for(chat: Chat) -> list[dict]:
+def content_for(text: str, urls: list[str | None], vision: bool) -> str | list[dict]:
+    """Plain text, or an OpenAI content-parts array when the turn has readable images.
+
+    A None url is an image pruned from disk; a non-vision profile never receives image parts,
+    so chats started on a vision model stay usable after switching away from it.
+    """
+    if not urls:
+        return text
+    if not vision:
+        return "\n\n".join(filter(None, [text, *[IMAGE_UNSUPPORTED] * len(urls)]))
+    parts: list[TextPart | ImagePart] = [TextPart(text=text)] if text else []
+    for url in urls:
+        parts.append(TextPart(text=IMAGE_GONE) if url is None else ImagePart(image_url=ImageUrl(url=url)))
+    return [p.model_dump() for p in _parts.validate_python(parts)]
+
+
+def history_for(chat: Chat, vision: bool = False) -> list[dict]:
     budget = HISTORY_WEB_CHARS
     history = []
     for m in reversed(chat.messages):
@@ -170,20 +214,24 @@ def history_for(chat: Chat) -> list[dict]:
             if cost <= budget:
                 budget -= cost
                 content = web.with_context(content, m.sources)
-        history.append({"role": m.role, "content": content})
+        urls = [images.data_url(settings, chat.id, ref) for ref in m.images]
+        history.append({"role": m.role, "content": content_for(content, urls, vision)})
     return history[::-1]
 
 
-def append_turn(chat: Chat, content: str, reply: str, sources: list[Source]) -> None:
+def append_turn(
+    chat: Chat, content: str, reply: str, sources: list[Source], uploads: list[ImageData] = ()
+) -> None:
     if not chat.messages:
-        chat.title = content.strip()[:50]
-    chat.messages.append(Message(role="user", content=content, sources=sources))
+        chat.title = content.strip()[:50] or "Image"
+    refs = images.save_images(settings, chat.id, list(uploads))
+    chat.messages.append(Message(role="user", content=content, sources=sources, images=refs))
     chat.messages.append(Message(role="assistant", content=reply))
     save_chat(chat)
 
 
 async def stream_reply(
-    chat: Chat, content: str, stream, sources: list[Source], notes: list[str]
+    chat: Chat, content: str, stream, sources: list[Source], notes: list[str], uploads: list[ImageData] = ()
 ) -> AsyncIterator[str]:
     parts: list[str] = []
     finished = False
@@ -201,7 +249,7 @@ async def stream_reply(
                 parts.append(text)
                 yield sse("delta", {"text": text})
         # Saved only after success so a failed request leaves no dangling question.
-        append_turn(chat, content, "".join(parts), sources)
+        append_turn(chat, content, "".join(parts), sources, uploads)
         finished = True
         yield sse("done", chat.model_dump(mode="json"))
     except OpenAIError as e:
@@ -211,20 +259,24 @@ async def stream_reply(
         stream.close()
         # Reached unfinished when the client stops or disconnects: keep what it saw.
         if not finished and parts:
-            append_turn(chat, content, "".join(parts), sources)
+            append_turn(chat, content, "".join(parts), sources, uploads)
 
 
 @app.post("/api/chats/{chat_id}/messages")
 def send_message(chat_id: ChatId, body: NewMessage):
     chat = load_chat(chat_id)
     profile = active_profile()
+    if body.images and not profile.vision:
+        raise HTTPException(422, f"{profile.name} can't read images. Switch to a vision-capable provider.")
     client = get_client(profile)
 
     # Gathered before the model call; the pages are plain prompt text, so any provider works.
     tavily_key = secret_store.get_key(secret_store.TAVILY_ACCOUNT) if body.web else None
     sources, notes = web.gather(body.content, body.web, tavily_key)
-    history = history_for(chat)
-    history.append({"role": "user", "content": web.with_context(body.content, sources, notes)})
+    history = history_for(chat, profile.vision)
+    uploaded = [f"data:{i.media_type};base64,{i.data}" for i in body.images]
+    message = content_for(web.with_context(body.content, sources, notes), uploaded, profile.vision)
+    history.append({"role": "user", "content": message})
     try:
         stream = client.chat.completions.create(
             model=profile.model,
@@ -235,7 +287,7 @@ def send_message(chat_id: ChatId, body: NewMessage):
         raise HTTPException(502, getattr(e, "message", str(e)))
 
     return StreamingResponse(
-        stream_reply(chat, body.content, stream, sources, notes),
+        stream_reply(chat, body.content, stream, sources, notes, body.images),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

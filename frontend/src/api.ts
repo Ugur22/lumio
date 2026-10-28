@@ -3,6 +3,7 @@ import type {
   Chat,
   ChatSummary,
   EditProfileBody,
+  ImageUpload,
   ModelsQuery,
   NewProfileBody,
   ProfileList,
@@ -36,6 +37,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 interface StreamOptions {
+  images: ImageUpload[];
   web: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
@@ -45,11 +47,11 @@ interface StreamOptions {
 // Resolves with the saved chat once the server sends `done`. Aborting rejects with an
 // AbortError; the server then saves whatever text it had already streamed.
 async function streamMessage(id: string, content: string, opts: StreamOptions): Promise<Chat> {
-  const { web, signal, onDelta, onSources } = opts;
+  const { images, web, signal, onDelta, onSources } = opts;
   const res = await fetch(`/api/chats/${id}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, web }),
+    body: JSON.stringify({ content, images, web }),
     signal,
   });
   if (!res.ok || !res.body) {
@@ -78,6 +80,8 @@ async function streamMessage(id: string, content: string, opts: StreamOptions): 
   if (chat === null) throw new Error("Connection closed before the reply finished");
   return chat;
 }
+
+export const imageUrl = (chatId: string, imageId: string) => `/api/chats/${chatId}/images/${imageId}`;
 
 export const api = {
   listChats: () => request<ChatSummary[]>("/chats"),

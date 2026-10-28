@@ -10,10 +10,22 @@ export interface Source extends SourceRef {
   text: string;
 }
 
+export interface ImageRef {
+  id: string;
+  media_type: string;
+}
+
+// What the browser uploads: base64 without the `data:` prefix.
+export interface ImageUpload {
+  media_type: string;
+  data: string;
+}
+
 export interface Message {
   role: Role;
   content: string;
   created: string;
+  images: ImageRef[];
   // Pages read for this turn; only user messages carry them.
   sources: Source[];
 }
@@ -39,6 +51,7 @@ export interface Profile {
   base_url: string;
   model: string;
   needs_key: boolean;
+  vision: boolean;
   configured: boolean;
   last4: string | null;
   source: "keychain" | "env" | null;
@@ -54,10 +67,11 @@ export interface NewProfileBody {
   base_url: string;
   model: string;
   needs_key: boolean;
+  vision: boolean;
   key?: string;
 }
 
-export type EditProfileBody = Partial<Pick<NewProfileBody, "name" | "base_url" | "model" | "key">>;
+export type EditProfileBody = Partial<Pick<NewProfileBody, "name" | "base_url" | "model" | "vision" | "key">>;
 
 export interface WebStatus {
   configured: boolean;

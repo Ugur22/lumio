@@ -223,6 +223,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
   const [baseUrl, setBaseUrl] = useState(profile?.base_url ?? "");
   const [model, setModel] = useState(profile?.model ?? "");
   const [needsKey, setNeedsKey] = useState(profile?.needs_key ?? true);
+  const [vision, setVision] = useState(profile?.vision ?? false);
   const [key, setKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -239,6 +240,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     setBaseUrl(p.baseUrl);
     setModel(p.model);
     setNeedsKey(p.needsKey);
+    setVision(p.vision);
     setModels([]);
   }
 
@@ -272,7 +274,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     // Cleared before the request settles so the secret never lingers in the DOM or state.
     setKey("");
     return run(async () => {
-      const body = { name: name.trim(), base_url: baseUrl.trim(), model: model.trim() };
+      const body = { name: name.trim(), base_url: baseUrl.trim(), model: model.trim(), vision };
       if (profile) await actions.edit(profile.id, { ...body, ...(typedKey && { key: typedKey }) });
       else await actions.create({ ...body, needs_key: needsKey, ...(typedKey && { key: typedKey }) });
       onDone();
@@ -369,6 +371,22 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
             <option key={m} value={m} />
           ))}
         </datalist>
+      </label>
+
+      <label className="flex items-start gap-2.5">
+        <input
+          type="checkbox"
+          checked={vision}
+          onChange={(e) => setVision(e.target.checked)}
+          className="mt-1 size-4 accent-accent"
+        />
+        <span className="flex flex-col">
+          <span className="text-[13px] font-medium">Can read images</span>
+          <span className="text-[12px] text-muted">
+            Turn on only if this model accepts image input (such as Grok, GPT-4o or LLaVA). Otherwise attaching images
+            stays off.
+          </span>
+        </span>
       </label>
 
       {notice && (
