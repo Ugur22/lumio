@@ -3,24 +3,28 @@ import type { Element, Root } from "hast";
 // The model may style its own in-story blocks (a chat window, a note, a screen), but only with
 // this fixed vocabulary. Anything that could cover the app, load a resource or escape the
 // reply is simply not on the list.
-const PLAIN = new Set([
-  "color", "background", "background-color", "border", "border-top", "border-bottom", "border-left",
-  "border-right", "border-radius", "padding", "padding-top", "padding-bottom", "padding-left",
-  "padding-right", "margin", "margin-top", "margin-bottom", "margin-left", "margin-right",
-  "font-size", "font-weight", "font-style", "text-align", "letter-spacing", "line-height",
-  "width", "max-width", "gap", "opacity", "flex-direction", "align-items", "justify-content",
-]);
-const KEYWORDS: Record<string, RegExp> = {
-  display: /^(block|inline|inline-block|flex)$/,
+const ANY = /./;
+const NO_NEGATIVE = /^[^-]*$/;
+const sides = (prop: string) => ["", "-top", "-bottom", "-left", "-right"].map((side) => prop + side);
+
+const RULES = new Map<string, RegExp>([
+  ...[
+    "color", "background", "background-color", "border-radius", "font-size", "font-weight",
+    "font-style", "text-align", "letter-spacing", "line-height", "width", "max-width", "gap",
+    "opacity", "flex-direction", "align-items", "justify-content", ...sides("border"), ...sides("padding"),
+  ].map((prop): [string, RegExp] => [prop, ANY]),
+  // Negative margins can pull a block out of the reply.
+  ...sides("margin").map((prop): [string, RegExp] => [prop, NO_NEGATIVE]),
+  ["display", /^(block|inline|inline-block|flex)$/],
   // Blur loads nothing and moves nothing; the cap keeps it from smearing the whole reply.
-  filter: /^blur\(([0-9]|1[0-9]|20)(\.\d+)?px\)$/,
-  overflow: /^hidden$/,
-  "font-family": /^(monospace|serif|sans-serif|cursive)$/,
-  "text-decoration": /^(none|underline|line-through)$/,
-  "white-space": /^(normal|pre|pre-wrap)$/,
-  "text-transform": /^(none|uppercase|lowercase|capitalize)$/,
-};
-// url()/var()/escapes can load or hide things; viewport units and negative margins can leave the reply.
+  ["filter", /^blur\(([0-9]|1[0-9]|20)(\.\d+)?px\)$/],
+  ["overflow", /^hidden$/],
+  ["font-family", /^(monospace|serif|sans-serif|cursive)$/],
+  ["text-decoration", /^(none|underline|line-through)$/],
+  ["white-space", /^(normal|pre|pre-wrap)$/],
+  ["text-transform", /^(none|uppercase|lowercase|capitalize)$/],
+]);
+// url()/var()/escapes can load or hide things; viewport units can leave the reply.
 const FORBIDDEN = /url\s*\(|expression|@import|javascript:|var\s*\(|attr\s*\(|\\|[<>{}]|\d(vw|vh|vmin|vmax)\b/i;
 const MAX_VALUE = 80;
 
@@ -32,9 +36,7 @@ export function safeStyle(style: string): string {
     const prop = decl.slice(0, at).trim().toLowerCase();
     const value = decl.slice(at + 1).trim();
     if (!value || value.length > MAX_VALUE || FORBIDDEN.test(value)) continue;
-    if (prop.startsWith("margin") && /(^|[\s(])-/.test(value)) continue;
-    const keyword = KEYWORDS[prop];
-    if (keyword ? keyword.test(value.toLowerCase()) : PLAIN.has(prop)) kept.push(`${prop}:${value}`);
+    if (RULES.get(prop)?.test(value.toLowerCase())) kept.push(`${prop}:${value}`);
   }
   return kept.join(";");
 }

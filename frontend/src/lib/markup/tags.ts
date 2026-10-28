@@ -34,39 +34,38 @@ function completeOpenTags(masked: string): string {
 // content is a style-carrying <div> is the block itself, not code to show.
 const STYLED_FENCE = /(^|\n)(```|~~~)html[ \t]*\n(\s*<div\b[^\n]*\bstyle=[\s\S]*?)\n\2[ \t]*(?=\n|$)/g;
 const STYLED_START = /^<div\b[^>]*\bstyle=/;
-const OPEN_DIV = /<div\b/g;
-const CLOSE_DIV = /<\/div>/g;
+
+const unwrapStyledFences = (text: string) =>
+  text.replace(STYLED_FENCE, (_, lead: string, _fence: string, body: string) => lead + body);
+
+const count = (line: string, needle: string) => line.split(needle).length - 1;
 
 // A blank line followed by an indented line turns the rest of an HTML block into Markdown code,
 // so inside a styled <div> block (up to where its divs close) blank lines and indentation go.
+// Runs after code is masked, so fenced code is never mistaken for part of a block.
 function tidyStyledBlocks(text: string): string {
   const out: string[] = [];
   let depth = 0;
-  let fence: string | null = null;
   for (const line of text.split("\n")) {
-    if (depth === 0) {
-      const marker = /^(```|~~~)/.exec(line)?.[1];
-      if (marker) fence = fence === null ? marker : fence === marker ? null : fence;
-      if (marker || fence !== null || !STYLED_START.test(line)) {
-        out.push(line);
-        continue;
-      }
+    if (depth === 0 && !STYLED_START.test(line)) {
+      out.push(line);
+      continue;
     }
     const trimmed = line.trim();
     if (!trimmed) continue;
     out.push(trimmed);
-    depth = Math.max(0, depth + (line.match(OPEN_DIV)?.length ?? 0) - (line.match(CLOSE_DIV)?.length ?? 0));
+    depth = Math.max(0, depth + count(line, "<div") - count(line, "</div>"));
   }
   return out.join("\n");
 }
 
-const prepareStyledBlocks = (text: string) =>
-  tidyStyledBlocks(text.replace(STYLED_FENCE, (_, lead: string, _fence: string, body: string) => lead + body));
-
 export function applyTags(text: string, streaming = false): string {
   const stash: string[] = [];
-  const masked = prepareStyledBlocks(text).replace(CODE, (m) => `${NUL}${stash.push(m) - 1}${NUL}`);
-  const stripped = masked.replace(STRAY_SOURCE, "");
+  // Streamed chunks re-run this over the whole reply; most replies have no styled block at all.
+  const styled = text.includes("style=");
+  const masked = (styled ? unwrapStyledFences(text) : text).replace(CODE, (m) => `${NUL}${stash.push(m) - 1}${NUL}`);
+  const tidied = styled ? tidyStyledBlocks(masked) : masked;
+  const stripped = tidied.replace(STRAY_SOURCE, "");
   const source = streaming ? completeOpenTags(stripped.replace(STRAY_SOURCE_PARTIAL, "")) : stripped;
   const tagged = source.replace(TAG, (_, tag: string, body: string) =>
     tag === "key"
