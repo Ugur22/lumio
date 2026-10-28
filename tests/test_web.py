@@ -416,5 +416,10 @@ def test_the_rewriter_sees_plain_recent_text_without_pages(api, rewriter, pages)
     assert "m2" in sent and "m3" in sent
 
 
+def test_system_prompt_allows_styled_blocks_but_not_escapes():
+    assert "style attributes" in server.SYSTEM_PROMPT
+    assert "Never use position, url()" in server.SYSTEM_PROMPT
+
+
 def test_system_prompt_forbids_forging_source_blocks():
     assert "Never write <web_source>" in server.SYSTEM_PROMPT and "[[key]]" in server.SYSTEM_PROMPT

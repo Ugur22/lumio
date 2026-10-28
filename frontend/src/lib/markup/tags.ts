@@ -30,9 +30,42 @@ function completeOpenTags(masked: string): string {
   return out;
 }
 
+// Some models fence the styled block they were asked to render. A closed ```html fence whose
+// content is a style-carrying <div> is the block itself, not code to show.
+const STYLED_FENCE = /(^|\n)(```|~~~)html[ \t]*\n(\s*<div\b[^\n]*\bstyle=[\s\S]*?)\n\2[ \t]*(?=\n|$)/g;
+const STYLED_START = /^<div\b[^>]*\bstyle=/;
+const OPEN_DIV = /<div\b/g;
+const CLOSE_DIV = /<\/div>/g;
+
+// A blank line followed by an indented line turns the rest of an HTML block into Markdown code,
+// so inside a styled <div> block (up to where its divs close) blank lines and indentation go.
+function tidyStyledBlocks(text: string): string {
+  const out: string[] = [];
+  let depth = 0;
+  let fence: string | null = null;
+  for (const line of text.split("\n")) {
+    if (depth === 0) {
+      const marker = /^(```|~~~)/.exec(line)?.[1];
+      if (marker) fence = fence === null ? marker : fence === marker ? null : fence;
+      if (marker || fence !== null || !STYLED_START.test(line)) {
+        out.push(line);
+        continue;
+      }
+    }
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    out.push(trimmed);
+    depth = Math.max(0, depth + (line.match(OPEN_DIV)?.length ?? 0) - (line.match(CLOSE_DIV)?.length ?? 0));
+  }
+  return out.join("\n");
+}
+
+const prepareStyledBlocks = (text: string) =>
+  tidyStyledBlocks(text.replace(STYLED_FENCE, (_, lead: string, _fence: string, body: string) => lead + body));
+
 export function applyTags(text: string, streaming = false): string {
   const stash: string[] = [];
-  const masked = text.replace(CODE, (m) => `${NUL}${stash.push(m) - 1}${NUL}`);
+  const masked = prepareStyledBlocks(text).replace(CODE, (m) => `${NUL}${stash.push(m) - 1}${NUL}`);
   const stripped = masked.replace(STRAY_SOURCE, "");
   const source = streaming ? completeOpenTags(stripped.replace(STRAY_SOURCE_PARTIAL, "")) : stripped;
   const tagged = source.replace(TAG, (_, tag: string, body: string) =>

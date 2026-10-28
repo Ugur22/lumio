@@ -18,6 +18,25 @@ describe("Markup", () => {
     expect(out).toContain('<aside class="hl-warn">');
   });
 
+  it("keeps safe inline styles on text blocks and strips the rest", () => {
+    const out = html(
+      '<div style="background:#17212b;color:#fff;position:fixed;background-image:url(https://x.test/a.png)" onclick="x()">hi</div>',
+    );
+    expect(out).toContain('style="background:#17212b;color:#fff"');
+    expect(out).not.toContain("position");
+    expect(out).not.toContain("url(");
+    expect(out).not.toContain("onclick");
+  });
+
+  it("does not allow style on elements outside the styled list", () => {
+    expect(html('<table style="color:red"><tr><td>x</td></tr></table>')).not.toContain("style=");
+  });
+
+  it("leaves dialogue colouring off inside a model-styled block", () => {
+    const out = html('<div style="color:#fff">she said "hi"</div>\n\nthen "bye"');
+    expect(out.match(/class="dialogue"/g)).toHaveLength(1);
+  });
+
   it("drops classes outside the allowlist", () => {
     expect(html('<mark class="evil">x</mark>')).not.toContain("evil");
   });

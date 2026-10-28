@@ -17,7 +17,8 @@ function walk(parent: Root | Element): void {
   const next: RootContent[] = [];
   for (const node of parent.children) {
     if (node.type === "element") {
-      if (!SKIP.has(node.tagName)) walk(node);
+      // Blocks the model styled itself (a chat window, a note) keep their own colours.
+      if (!SKIP.has(node.tagName) && !node.properties?.style) walk(node);
       next.push(node);
     } else if (node.type === "text") {
       const segs = splitDialogue(node.value);

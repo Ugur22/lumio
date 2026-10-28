@@ -6,6 +6,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { rehypeDialogue } from "./dialogue";
 import { schema } from "./sanitize";
+import { rehypeSafeStyle } from "./style";
 
 export const remarkPlugins: PluggableList = [remarkGfm, remarkBreaks];
 
@@ -14,6 +15,7 @@ export const remarkPlugins: PluggableList = [remarkGfm, remarkBreaks];
 export const rehypePlugins: PluggableList = [
   rehypeRaw,
   [rehypeSanitize, schema],
+  rehypeSafeStyle,
   rehypeDialogue,
   [rehypeHighlight, { detect: true, ignoreMissing: true }],
 ];
