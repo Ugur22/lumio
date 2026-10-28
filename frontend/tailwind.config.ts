@@ -33,8 +33,8 @@ export default {
         "2xl": "12px",
       },
       fontFamily: {
-        sans: ['"DM Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
-        display: ['"Space Grotesk"', '"DM Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+        sans: ['"Instrument Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+        display: ['"Instrument Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },
       typography: {
@@ -47,6 +47,8 @@ export default {
             "--tw-prose-body": v("text"),
             "--tw-prose-headings": v("text"),
             "--tw-prose-bold": v("text"),
+            // The plugin default (#111827) is unreadable on the dark code background.
+            "--tw-prose-code": v("text"),
             "--tw-prose-links": v("accent"),
             "--tw-prose-counters": v("muted"),
             "--tw-prose-bullets": v("muted"),
@@ -55,6 +57,9 @@ export default {
             "--tw-prose-quote-borders": v("border"),
             "--tw-prose-th-borders": v("border"),
             "--tw-prose-td-borders": v("border"),
+            h1: { fontSize: "1.75rem", fontWeight: "600", letterSpacing: "-0.02em", lineHeight: "1.2", marginTop: "1.6em", marginBottom: "0.6em" },
+            h2: { fontSize: "1.4rem", fontWeight: "600", letterSpacing: "-0.015em", lineHeight: "1.2", marginTop: "1.5em", marginBottom: "0.5em" },
+            h3: { fontSize: "1.15rem", fontWeight: "600", letterSpacing: "-0.01em", lineHeight: "1.2", marginTop: "1.4em", marginBottom: "0.4em" },
             em: { color: v("muted") },
             "blockquote p:first-of-type::before": { content: "none" },
             "blockquote p:last-of-type::after": { content: "none" },

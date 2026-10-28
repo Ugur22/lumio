@@ -36,7 +36,7 @@ function CodeBlock({ children }: ComponentProps<"pre">) {
 
 export function Markup({ text, streaming = false }: { text: string; streaming?: boolean }) {
   return (
-    <div className="prose max-w-none prose-p:my-[0.8em] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+    <div className="prose max-w-[70ch] prose-p:my-[0.8em] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}

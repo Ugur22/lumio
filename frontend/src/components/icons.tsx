@@ -22,6 +22,7 @@ function icon(paths: ReactNode) {
 }
 
 export const PlusIcon = icon(<path d="M12 5v14M5 12h14" />);
+export const ChevronDownIcon = icon(<path d="m6 9 6 6 6-6" />);
 export const SendIcon = icon(<path d="M12 19V5M5 12l7-7 7 7" />);
 export const StopIcon = icon(<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />);
 export const GlobeIcon = icon(
