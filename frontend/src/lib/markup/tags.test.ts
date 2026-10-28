@@ -49,5 +49,33 @@ describe("applyTags while streaming", () => {
     const fenced = "```\n[[key]]x";
     expect(applyTags(fenced, true)).toBe(fenced);
   });
-});
 
+  describe("stray web_source tokens", () => {
+    it("strips [[web_source ...]] tokens, including quoted attribute values", () => {
+      const raw =
+        'Fact [[web_source url="https://a.com/x?q=[1]" title="He said \'hi\' > ok"]]more[[/web_source]] end';
+      expect(applyTags(raw)).toBe("Fact more end");
+      expect(applyTags("a [[web_source url='https://a.com' title=\"A ]] title\"]] b")).not.toContain(
+        "web_source",
+      );
+    });
+
+    it("strips <web_source> fragments", () => {
+      expect(applyTags('a <web_source url="https://a.com" title="t>x">b</web_source> c')).toBe("a b c");
+    });
+
+    it("still renders normal tags next to a stray token", () => {
+      expect(applyTags('[[key]]k[[/key]] [[web_source url="u" title="t"]]')).toBe('<mark class="hl-key">k</mark> ');
+    });
+
+    it("leaves tokens inside code literal", () => {
+      expect(applyTags('`[[web_source url="u"]]`')).toBe('`[[web_source url="u"]]`');
+    });
+
+    it("hides a half-typed token while streaming", () => {
+      expect(applyTags("text [[web_so", true)).toBe("text ");
+      expect(applyTags('text [[web_source url="https://a', true)).toBe("text ");
+      expect(applyTags("text [[key]]a", true)).toBe('text <mark class="hl-key">a</mark>');
+    });
+  });
+});

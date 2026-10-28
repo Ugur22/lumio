@@ -41,7 +41,7 @@ interface StreamOptions {
   web: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
-  onSources: (sources: SourceRef[], notes: string[]) => void;
+  onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
 }
 
 // Resolves with the saved chat once the server sends `done`. Aborting rejects with an
@@ -64,7 +64,11 @@ async function streamMessage(id: string, content: string, opts: StreamOptions): 
   const feed = createSseParser(({ event, data }) => {
     const payload = JSON.parse(data) as Record<string, unknown>;
     if (event === "delta") onDelta(payload.text as string);
-    else if (event === "sources") onSources(payload.sources as SourceRef[], payload.notes as string[]);
+    else if (event === "sources") onSources(
+        (payload.sources as SourceRef[] | undefined) ?? [],
+        (payload.notes as string[] | undefined) ?? [],
+        typeof payload.query === "string" ? payload.query : null,
+      );
     else if (event === "done") chat = payload as unknown as Chat;
     else if (event === "error") failure = errorMessage(payload.detail, "Stream failed");
   });

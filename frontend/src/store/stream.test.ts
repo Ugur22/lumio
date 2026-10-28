@@ -54,6 +54,14 @@ describe("stream store", () => {
     expect(get().sources).toEqual([]);
   });
 
+  it("holds the search query for the turn, and forgets it on the next turn", () => {
+    get().start("c1", "hi");
+    get().setSources([], [], "rust release");
+    expect(get().query).toBe("rust release");
+    get().clear();
+    expect(get().query).toBeNull();
+  });
+
   it("ignores sources that arrive after the turn was cleared", () => {
     get().start("c1", "hi");
     get().clear();

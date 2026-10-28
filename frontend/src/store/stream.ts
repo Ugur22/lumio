@@ -15,9 +15,10 @@ interface StreamState {
   // What the server read for the turn in flight; the saved message takes over once it is done.
   sources: SourceRef[];
   notes: string[];
+  query: string | null;
   start: (chatId: string | null, text: string, images?: string[]) => void;
   setReply: (reply: string) => void;
-  setSources: (sources: SourceRef[], notes: string[]) => void;
+  setSources: (sources: SourceRef[], notes: string[], query?: string | null) => void;
   fail: (error: string) => void;
   clear: () => void;
 }
@@ -31,11 +32,12 @@ export const useStream = create<StreamState>((set, get) => ({
   pending: null,
   sources: [],
   notes: [],
+  query: null,
   start: (chatId, text, images = []) => {
     revoke(get().pending);
-    set({ pending: { text, chatId, images, status: "thinking" }, sources: [], notes: [] });
+    set({ pending: { text, chatId, images, status: "thinking" }, sources: [], notes: [], query: null });
   },
-  setSources: (sources, notes) => set((s) => (s.pending ? { sources, notes } : s)),
+  setSources: (sources, notes, query = null) => set((s) => (s.pending ? { sources, notes, query } : s)),
   // A failed turn keeps showing its error; a late frame must not turn it back into a reply.
   setReply: (reply) =>
     set((s) =>
@@ -49,6 +51,6 @@ export const useStream = create<StreamState>((set, get) => ({
     ),
   clear: () => {
     revoke(get().pending);
-    set({ pending: null, sources: [], notes: [] });
+    set({ pending: null, sources: [], notes: [], query: null });
   },
 }));

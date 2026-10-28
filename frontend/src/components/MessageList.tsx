@@ -27,6 +27,7 @@ export function MessageList({ messages, chatId, loading = false, onPick }: Props
   const stored = useStream((s) => s.pending);
   const liveSources = useStream((s) => s.sources);
   const liveNotes = useStream((s) => s.notes);
+  const liveQuery = useStream((s) => s.query);
   // A reply still streaming for another chat must not show up here.
   const pending = stored && stored.chatId === chatId ? stored : null;
 
@@ -41,14 +42,14 @@ export function MessageList({ messages, chatId, loading = false, onPick }: Props
   }, [messages, pending, streaming]);
 
   // Messages alternate user/assistant, so pairing them gives one visual turn each.
-  const turns: { question: string; images: string[]; reply: Reply; sources: SourceRef[]; notes: string[] }[] = [];
+  const turns: { question: string; images: string[]; reply: Reply; sources: SourceRef[]; notes: string[]; query: string | null }[] = [];
   for (let i = 0; i < messages.length; i += 2) {
     const q = messages[i];
     const a = messages[i + 1];
     if (q) {
       const reply: Reply = a ? { kind: "text", content: a.content } : { kind: "none" };
       const images = chatId ? q.images.map((r) => imageUrl(chatId, r.id)) : [];
-      turns.push({ question: q.content, images, reply, sources: q.sources, notes: [] });
+      turns.push({ question: q.content, images, reply, sources: q.sources, notes: [], query: q.query ?? null });
     }
   }
   if (pending) {
@@ -63,6 +64,7 @@ export function MessageList({ messages, chatId, loading = false, onPick }: Props
         .exhaustive(),
       sources: liveSources,
       notes: liveNotes,
+      query: liveQuery,
     });
   }
 
@@ -80,7 +82,7 @@ export function MessageList({ messages, chatId, loading = false, onPick }: Props
         {turns.length === 0 ? (
           loading ? null : <EmptyState onPick={onPick} />
         ) : (
-          turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} />)
+          turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} query={t.query} />)
         )}
       </div>
     </section>

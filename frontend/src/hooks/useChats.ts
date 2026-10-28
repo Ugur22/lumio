@@ -46,7 +46,7 @@ interface SendVars {
   web: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
-  onSources: (sources: SourceRef[], notes: string[]) => void;
+  onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
 }
 
 // After Stop the server saves the partial reply on its own schedule, so poll briefly for it.

@@ -239,7 +239,7 @@ def test_a_url_in_the_message_is_read_and_stored_with_the_turn(api, calls, pages
     events = send(api, cid, "summarise https://example.com/a")
 
     assert [name for name, _ in events] == ["sources", "delta", "delta", "done"]
-    assert events[0][1] == {"sources": [{"url": "https://example.com/a", "title": "Page"}], "notes": []}
+    assert events[0][1] == {"sources": [{"url": "https://example.com/a", "title": "Page"}], "notes": [], "query": None}
     assert "text of https://example.com/a" in calls[0][-1]["content"]
     assert calls[0][-1]["content"].endswith("summarise https://example.com/a")
     user = events[-1][1]["messages"][0]
@@ -322,3 +322,99 @@ def test_search_key_routes_refuse_foreign_origins(api):
 
 def test_blank_search_key_is_rejected(api):
     assert api.put("/api/web/key", json={"key": ""}).status_code == 422
+
+
+class Rewriter:
+    """Fake model for both calls: the non-streaming rewrite and the streamed reply."""
+
+    def __init__(self, answer="Eiffel Tower news", error=None):
+        self.answer, self.error = answer, error
+        self.rewrites, self.replies = [], []
+
+    def create(self, model, messages, stream, **kw):
+        from conftest import REPLY_PIECES, FakeStream
+
+        if stream:
+            self.replies.append(messages)
+            return FakeStream(REPLY_PIECES)
+        self.rewrites.append((messages, kw))
+        if self.error:
+            raise self.error
+        choice = type("C", (), {"message": type("M", (), {"content": self.answer})()})()
+        return type("R", (), {"choices": [choice]})()
+
+
+@pytest.fixture
+def rewriter(fake_client, api, monkeypatch, memory_keyring):
+    api.put("/api/web/key", json={"key": "tvly-0123456789abcd"})
+    searched = []
+    monkeypatch.setattr(
+        web, "search", lambda key, q: searched.append(q) or [Source(url="https://r.com", title="R", text="result")]
+    )
+    fake = Rewriter()
+    fake_client.chat.completions.create = fake.create
+    fake.searched = searched
+    return fake
+
+
+def test_a_follow_up_is_searched_by_its_resolved_topic(api, rewriter):
+    cid = new_chat(api)
+    send(api, cid, "How tall is the Eiffel Tower?")
+
+    events = send_web(api, cid, "look on the web")
+
+    prompt = rewriter.rewrites[0][0][-1]["content"]
+    assert "Eiffel Tower" in prompt and "look on the web" in prompt
+    assert rewriter.rewrites[0][1] == {"max_tokens": 40, "temperature": 0}
+    assert rewriter.searched == ["Eiffel Tower news"]
+    assert events[0][1]["query"] == "Eiffel Tower news"
+    assert events[-1][1]["messages"][2]["query"] == "Eiffel Tower news"
+    assert events[-1][1]["messages"][0]["query"] is None
+
+
+def test_none_skips_the_search_but_the_url_is_still_read(api, rewriter, pages):
+    rewriter.answer = "NONE"
+    cid = new_chat(api)
+
+    events = send_web(api, cid, "https://example.com/a")
+
+    assert rewriter.searched == [] and pages == ["https://example.com/a"]
+    assert events[0][1] == {"sources": [{"url": "https://example.com/a", "title": "Page"}], "notes": [], "query": None}
+
+
+@pytest.mark.parametrize("failure", [server.OpenAIError("boom"), RuntimeError("bad"), None])
+def test_a_failed_or_empty_rewrite_searches_the_raw_message(api, rewriter, failure):
+    rewriter.error = failure
+    rewriter.answer = "  " if failure is None else "x"
+    cid = new_chat(api)
+
+    events = send_web(api, cid, "ev tariffs https://skip.me")
+
+    assert rewriter.searched == ["ev tariffs"]
+    assert events[0][1]["query"] == "ev tariffs"
+    assert events[-1][0] == "done"
+
+
+def test_rewrite_output_is_cleaned_and_clipped():
+    ok = Rewriter(answer='  "ev tariffs 2026"\nextra  ')
+    assert web.rewrite_query(type("C", (), {"chat": type("H", (), {"completions": ok})()})(), "m", [], "q") == "ev tariffs 2026"
+    long = Rewriter(answer="word " * 300)
+    out = web.rewrite_query(type("C", (), {"chat": type("H", (), {"completions": long})()})(), "m", [], "q")
+    assert len(out) <= web.QUERY_CHARS + 4
+
+
+def test_the_rewriter_sees_plain_recent_text_without_pages(api, rewriter, pages):
+    cid = new_chat(api)
+    for text in ["read https://example.com/a", "m2", "m3"]:
+        send(api, cid, text)
+
+    send_web(api, cid, "and that?")
+
+    sent = rewriter.rewrites[0][0][-1]["content"]
+    assert "web_source" not in sent and "text of https://example.com/a" not in sent
+    assert sent.count("user:") + sent.count("assistant:") == 4
+    assert "m2" in sent and "m3" in sent
+
+
+def test_system_prompt_forbids_forging_source_blocks():
+    assert "Never write <web_source>" in server.SYSTEM_PROMPT and "[[key]]" in server.SYSTEM_PROMPT

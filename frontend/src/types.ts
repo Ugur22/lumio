@@ -28,6 +28,8 @@ export interface Message {
   images: ImageRef[];
   // Pages read for this turn; only user messages carry them.
   sources: Source[];
+  // The search query actually sent to the web search; absent on older chats.
+  query?: string | null;
 }
 
 export interface Chat {

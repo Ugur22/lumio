@@ -101,6 +101,8 @@ class Message(BaseModel):
     images: list[ImageRef] = []
     # Web pages the reply was based on; kept on the user message so later turns can reuse them.
     sources: list[Source] = []
+    # The search query actually used for this turn (may differ from the text typed).
+    query: str | None = None
 
 
 class Chat(BaseModel):
