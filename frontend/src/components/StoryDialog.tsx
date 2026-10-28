@@ -34,7 +34,7 @@ interface Props {
 const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 const field = `rounded-xl border border-border bg-bg px-3 py-2 ${focus}`;
 const secondary = `rounded-xl border border-border bg-surface px-3.5 py-2 text-muted shadow-soft hover:text-text disabled:opacity-50 ${focus}`;
-const primary = `rounded-xl bg-accent px-3.5 py-2 font-medium text-white shadow-soft disabled:opacity-50 ${focus} focus-visible:outline-offset-2`;
+const primary = `rounded-xl bg-accent px-3.5 py-2 font-semibold text-on-accent shadow-soft disabled:opacity-50 ${focus} focus-visible:outline-offset-2`;
 
 const TABS: { id: StoryTab; label: string }[] = [
   { id: "bible", label: "Bible" },

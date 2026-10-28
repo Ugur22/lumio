@@ -4,7 +4,6 @@ import { match } from "ts-pattern";
 import { imageUrl } from "../api";
 import { useStream } from "../store/stream";
 import type { Message, SourceRef } from "../types";
-import { LumioMark } from "./icons";
 import { PressButton } from "./PressButton";
 import { Turn, type Reply } from "./Turn";
 
@@ -13,6 +12,7 @@ interface Props {
   chatId: string | null;
   loading?: boolean;
   onPick: (text: string) => void;
+  onStory: () => void;
 }
 
 const SUGGESTIONS = [
@@ -22,7 +22,7 @@ const SUGGESTIONS = [
   { title: "Explain simply", text: "Explain a hard idea to me as if I'm new to it, with one concrete example." },
 ];
 
-export function MessageList({ messages, chatId, loading = false, onPick }: Props) {
+export function MessageList({ messages, chatId, loading = false, onPick, onStory }: Props) {
   const ref = useRef<HTMLElement>(null);
   const stored = useStream((s) => s.pending);
   const liveSources = useStream((s) => s.sources);
@@ -80,7 +80,7 @@ export function MessageList({ messages, chatId, loading = false, onPick }: Props
     >
       <div className="mx-auto max-w-[720px]">
         {turns.length === 0 ? (
-          loading ? null : <EmptyState onPick={onPick} />
+          loading ? null : <EmptyState onPick={onPick} onStory={onStory} />
         ) : (
           turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} query={t.query} />)
         )}
@@ -89,7 +89,7 @@ export function MessageList({ messages, chatId, loading = false, onPick }: Props
   );
 }
 
-function EmptyState({ onPick }: { onPick: (text: string) => void }) {
+function EmptyState({ onPick, onStory }: { onPick: (text: string) => void; onStory: () => void }) {
   const trail = useTrail(SUGGESTIONS.length + 1, {
     from: { opacity: 0, y: 18 },
     to: { opacity: 1, y: 0 },
@@ -99,10 +99,9 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
 
   return (
     <div className="mt-[10vh]">
-      <animated.div style={hero} className="mb-8 text-center">
-        <LumioMark size={56} className="mx-auto mb-5 drop-shadow-lg" />
+      <animated.div style={hero} className="mb-8">
         <h2 className="font-display text-[2.1rem] font-semibold leading-tight">What shall we write?</h2>
-        <p className="mt-2 text-muted">Stories, scenes and ideas. Dialogue, actions and key moments stay styled.</p>
+        <p className="mt-2 text-muted">Pick a starting point, or just start typing.</p>
       </animated.div>
       <div className="grid gap-3 sm:grid-cols-2">
         {cards.map((style, i) => {
@@ -112,7 +111,6 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
             <animated.div key={s.title} style={style}>
               <PressButton
                 type="button"
-                hover={1.02}
                 press={0.98}
                 onClick={() => onPick(s.text)}
                 className="h-full w-full rounded-2xl border border-border bg-surface p-4 text-left shadow-soft transition-colors hover:border-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
@@ -124,6 +122,17 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
           );
         })}
       </div>
+      <p className="mt-6 text-sm text-muted">
+        Writing something longer?{" "}
+        <button
+          type="button"
+          onClick={onStory}
+          className="rounded text-accent underline underline-offset-2 hover:brightness-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          Set up your story
+        </button>{" "}
+        so the characters and world stay consistent.
+      </p>
     </div>
   );
 }

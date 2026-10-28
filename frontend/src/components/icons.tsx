@@ -70,20 +70,20 @@ export function LumioMark({ size = 32, ...props }: SVGProps<SVGSVGElement> & { s
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" {...props}>
       <defs>
         <linearGradient id="lumio-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#5b7cf0" />
-          <stop offset="1" stopColor="#2b44b8" />
+          <stop offset="0" stopColor="#3f8570" />
+          <stop offset="1" stopColor="#235242" />
         </linearGradient>
       </defs>
       <rect width="32" height="32" rx="9" fill="url(#lumio-mark)" />
       <path
         d="M11 8v12.5a2.5 2.5 0 0 0 2.5 2.5H20"
         fill="none"
-        stroke="#fff"
+        stroke="#fdfbf6"
         strokeWidth="2.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="21.5" cy="11" r="2.6" fill="#fff" />
+      <circle cx="21.5" cy="11" r="2.6" fill="#fdfbf6" />
     </svg>
   );
 }

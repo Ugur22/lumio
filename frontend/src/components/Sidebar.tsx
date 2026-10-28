@@ -108,7 +108,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         onClick={onNew}
         hover={1.02}
         press={0.97}
-        className={`flex items-center justify-center gap-2 rounded-xl border border-border bg-surface px-3.5 py-2.5 font-medium text-text shadow-soft hover:border-accent/50 ${focus} focus-visible:outline-offset-2`}
+        className={`flex items-center justify-center gap-2 rounded-xl bg-accent px-3.5 py-2.5 font-semibold text-on-accent hover:brightness-90 ${focus} focus-visible:outline-offset-2`}
       >
         <PlusIcon /> New chat
       </PressButton>
@@ -139,9 +139,8 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
       <PressButton
         type="button"
         onClick={onOpenSettings}
-        hover={1.02}
         press={0.97}
-        className={`flex items-center gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-muted shadow-soft hover:text-text ${focus}`}
+        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text ${focus}`}
       >
         <KeyIcon /> Providers
       </PressButton>
@@ -150,9 +149,8 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         type="button"
         aria-label="Toggle theme"
         onClick={onToggleTheme}
-        hover={1.02}
         press={0.97}
-        className={`flex items-center gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-2 text-muted shadow-soft hover:text-text ${focus}`}
+        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text ${focus}`}
       >
         <ThemeIcon theme={theme} />
         {theme === "dark" ? "Light mode" : "Dark mode"}
@@ -174,27 +172,22 @@ const iconBtn = `rounded-lg p-1.5 text-muted transition-colors duration-200 hove
 function ChatRow({ chat, active, onOpen, onRename, onDelete }: RowProps) {
   return (
     <div
-      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-xl pl-6 pr-1.5 transition-colors ${
-        active ? "bg-surface ring-1 ring-accent/30" : "hover:bg-bubble"
+      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-lg pl-2.5 pr-1.5 transition-colors ${
+        active ? "bg-border" : "hover:bg-bubble"
       }`}
     >
-      <span
-        aria-hidden
-        className={`absolute left-2.5 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-accent shadow-[0_0_8px_color-mix(in_srgb,var(--accent)_45%,transparent)] transition-[opacity,transform] duration-200 ease-out ${
-          active ? "scale-y-100 opacity-100" : "scale-y-0 opacity-0"
-        }`}
-      />
       <button
         type="button"
         onClick={() => onOpen(chat.id)}
+        title={chat.title}
         aria-current={active ? "page" : undefined}
         className={`flex-1 truncate rounded text-left ${active ? "font-medium" : ""} ${focus}`}
       >
         {chat.title}
       </button>
       <div
-        className={`flex items-center gap-0.5 transition-opacity duration-200 ease-out min-[721px]:absolute min-[721px]:inset-y-0 min-[721px]:right-0 min-[721px]:rounded-r-xl min-[721px]:bg-gradient-to-l min-[721px]:to-transparent min-[721px]:pl-10 min-[721px]:pr-1.5 min-[721px]:opacity-0 min-[721px]:group-hover:opacity-100 min-[721px]:group-focus-within:opacity-100 ${
-          active ? "min-[721px]:from-surface min-[721px]:from-55%" : "min-[721px]:from-bubble min-[721px]:from-55%"
+        className={`flex items-center gap-0.5 transition-opacity duration-200 ease-out min-[721px]:absolute min-[721px]:inset-y-0 min-[721px]:right-0 min-[721px]:rounded-r-lg min-[721px]:bg-gradient-to-l min-[721px]:to-transparent min-[721px]:pl-10 min-[721px]:pr-1.5 min-[721px]:opacity-0 min-[721px]:group-hover:opacity-100 min-[721px]:group-focus-within:opacity-100 ${
+          active ? "min-[721px]:from-border min-[721px]:from-55%" : "min-[721px]:from-bubble min-[721px]:from-55%"
         }`}
       >
         <PressButton
@@ -211,7 +204,7 @@ function ChatRow({ chat, active, onOpen, onRename, onDelete }: RowProps) {
           aria-label={`Delete ${chat.title}`}
           title="Delete"
           onClick={() => onDelete(chat)}
-          className={`${iconBtn} hover:text-red-500`}
+          className={`${iconBtn} hover:text-warn-bar`}
         >
           <TrashIcon width={15} height={15} />
         </PressButton>

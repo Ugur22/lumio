@@ -43,9 +43,17 @@ describe("Markup", () => {
 
   it("styles dialogue and actions but not code", () => {
     const out = html('She said "hello" *smiles*\n\n```\n"quoted"\n```');
-    expect(out).toContain('<span class="dialogue">&quot;hello&quot;</span>');
+    expect(out).toContain('<span class="dialogue">“hello”</span>');
     expect(out).toContain("<em>smiles</em>");
+    expect(out).toContain("&quot;quoted&quot;");
     expect(out.match(/dialogue/g)).toHaveLength(1);
+  });
+
+  it("curls apostrophes and dialogue quotes without touching code", () => {
+    const out = html("It's late. \"Don't go,\" she said.\n\n`don't`");
+    expect(out).toContain("It’s late.");
+    expect(out).toContain("“Don’t go,”");
+    expect(out).toContain("<code>don&#x27;t</code>");
   });
 
   it("leaves tags inside a code fence literal", () => {

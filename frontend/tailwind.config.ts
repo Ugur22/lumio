@@ -16,6 +16,7 @@ export default {
         bubble: v("bubble"),
         surface: v("surface"),
         accent: v("accent"),
+        "on-accent": v("on-accent"),
         dialogue: v("dialogue"),
         "key-bg": v("key-bg"),
         "note-bg": v("note-bg"),
@@ -36,6 +37,7 @@ export default {
       fontFamily: {
         sans: ['"Instrument Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
         display: ['"Instrument Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+        serif: ['Literata', 'Georgia', '"Times New Roman"', 'serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'Menlo', 'monospace'],
       },
       typography: {
@@ -43,7 +45,8 @@ export default {
           css: {
             maxWidth: "none",
             color: v("text"),
-            fontSize: "1.05rem",
+            fontFamily: '"Literata", Georgia, "Times New Roman", serif',
+            fontSize: "1.125rem",
             lineHeight: "1.7",
             "--tw-prose-body": v("text"),
             "--tw-prose-headings": v("text"),
@@ -61,7 +64,6 @@ export default {
             h1: { fontSize: "1.75rem", fontWeight: "600", letterSpacing: "-0.02em", lineHeight: "1.2", marginTop: "1.6em", marginBottom: "0.6em" },
             h2: { fontSize: "1.4rem", fontWeight: "600", letterSpacing: "-0.015em", lineHeight: "1.2", marginTop: "1.5em", marginBottom: "0.5em" },
             h3: { fontSize: "1.15rem", fontWeight: "600", letterSpacing: "-0.01em", lineHeight: "1.2", marginTop: "1.4em", marginBottom: "0.4em" },
-            em: { color: v("muted") },
             "blockquote p:first-of-type::before": { content: "none" },
             "blockquote p:last-of-type::after": { content: "none" },
             blockquote: { fontStyle: "normal", fontWeight: "400" },
@@ -76,7 +78,7 @@ export default {
             },
             table: { display: "block", overflowX: "auto" },
             "th, td": { border: `1px solid ${v("border")}`, padding: "0.3rem 0.7rem" },
-            pre: { margin: "0", padding: "0", backgroundColor: "#0d1117", color: "#c9d1d9", borderRadius: "10px" },
+            pre: { margin: "0", padding: "0", backgroundColor: "#1f1b16", color: "#e7dfd0", borderRadius: "10px" },
             "pre code": {
               backgroundColor: "transparent",
               padding: "1rem",

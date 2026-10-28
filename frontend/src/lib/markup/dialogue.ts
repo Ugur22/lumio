@@ -11,6 +11,15 @@ export function splitDialogue(text: string): Segment[] {
     .filter((s) => s.text !== "");
 }
 
+// Chats keep raw text, so typographic quotes are applied only when rendering.
+const APOSTROPHE = /(?<=\w)'(?=\w)/g;
+const curly = (text: string) => text.replace(APOSTROPHE, "’");
+
+function curlyDialogue(text: string): string {
+  const quoted = text.startsWith('"') && text.endsWith('"') && text.length > 1;
+  return quoted ? `“${curly(text.slice(1, -1))}”` : curly(text);
+}
+
 const SKIP = new Set(["code", "pre"]);
 
 function walk(parent: Root | Element): void {
@@ -23,6 +32,7 @@ function walk(parent: Root | Element): void {
     } else if (node.type === "text") {
       const segs = splitDialogue(node.value);
       if (segs.length === 1 && !segs[0]?.dialogue) {
+        node.value = curly(node.value);
         next.push(node);
         continue;
       }
@@ -33,9 +43,9 @@ function walk(parent: Root | Element): void {
                 type: "element",
                 tagName: "span",
                 properties: { className: ["dialogue"] },
-                children: [{ type: "text", value: s.text } satisfies Text],
+                children: [{ type: "text", value: curlyDialogue(s.text) } satisfies Text],
               } satisfies Element)
-            : ({ type: "text", value: s.text } satisfies Text),
+            : ({ type: "text", value: curly(s.text) } satisfies Text),
         );
       }
     } else {

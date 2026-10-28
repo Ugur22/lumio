@@ -161,6 +161,7 @@ export function App() {
           chatId={currentId}
           loading={restoring}
           onPick={(text) => composer.current?.setText(text)}
+          onStory={openStory}
         />
         <ContextMeter
           context={currentId ? context.data : undefined}

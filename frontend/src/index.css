@@ -3,44 +3,46 @@
 @tailwind utilities;
 
 :root {
-  --bg: #f6f7f9;
-  --panel: #eef0f4;
-  --text: #14171f;
-  --muted: #667085;
-  --border: #e1e4ea;
-  --bubble: #e8ebf1;
-  --accent: #3b5bdb;
-  --dialogue: #0e7490;
-  --key-bg: #fbe7a1;
-  --note-bg: #e4eef7;
-  --note-bar: #4a7fb0;
-  --warn-bg: #fbe3e0;
-  --warn-bar: #c0392b;
-  --caution: #b7791f;
-  --surface: #ffffff;
-  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 8px 24px -10px rgb(16 24 40 / 0.12);
-  --shadow-lift: 0 2px 4px rgb(16 24 40 / 0.07), 0 14px 32px -10px rgb(59 91 219 / 0.3);
+  --bg: #f7f2e9;
+  --panel: #efe8db;
+  --text: #26221c;
+  --muted: #6f675b;
+  --border: #ded5c4;
+  --bubble: #ebe3d3;
+  --accent: #1f5a4a;
+  --on-accent: #fdfbf6;
+  --dialogue: #2b4f7d;
+  --key-bg: #f1deaa;
+  --note-bg: #e5e8ec;
+  --note-bar: #5c7a99;
+  --warn-bg: #f4ddd3;
+  --warn-bar: #b4452c;
+  --caution: #a86a12;
+  --surface: #fcfaf5;
+  --shadow: 0 1px 2px rgb(60 40 10 / 0.06), 0 8px 24px -10px rgb(60 40 10 / 0.14);
+  --shadow-lift: 0 2px 4px rgb(60 40 10 / 0.08), 0 14px 32px -10px rgb(31 90 74 / 0.3);
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --bg: #0f1115;
-  --panel: #161920;
-  --text: #e8eaf0;
-  --muted: #8b92a3;
-  --border: #262a34;
-  --bubble: #1f232d;
-  --accent: #6a85ee;
-  --dialogue: #5fc4d8;
-  --key-bg: #5a4a10;
-  --note-bg: #1d2a3a;
-  --note-bar: #6aa0d0;
-  --warn-bg: #3d2320;
-  --warn-bar: #e0584a;
-  --caution: #e0a63a;
-  --surface: #1b1e26;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 12px -8px rgb(0 0 0 / 0.3);
-  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.4), 0 14px 32px -10px rgb(90 119 234 / 0.35);
+  --bg: #1b1814;
+  --panel: #221e19;
+  --text: #ece4d6;
+  --muted: #a0968a;
+  --border: #332e26;
+  --bubble: #2a251e;
+  --accent: #7ec4ae;
+  --on-accent: #10211b;
+  --dialogue: #8fb4e3;
+  --key-bg: #5b4a1a;
+  --note-bg: #232a33;
+  --note-bar: #7f9fc0;
+  --warn-bg: #3a221c;
+  --warn-bar: #e0705a;
+  --caution: #d9a44a;
+  --surface: #25211b;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 12px -8px rgb(0 0 0 / 0.35);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.45), 0 14px 32px -10px rgb(126 196 174 / 0.28);
   color-scheme: dark;
 }
 
@@ -68,14 +70,14 @@ body {
   }
   aside.hl-note,
   aside.hl-warn {
-    @apply my-4 rounded-r-lg border-l-4 px-4 py-[0.1rem] text-[0.95em];
+    @apply my-4 rounded-lg border px-4 py-[0.1rem] text-[0.95em];
   }
   aside.hl-note {
     background: var(--note-bg);
-    border-color: var(--note-bar);
+    border-color: color-mix(in srgb, var(--note-bar) 40%, transparent);
   }
   aside.hl-warn {
     background: var(--warn-bg);
-    border-color: var(--warn-bar);
+    border-color: color-mix(in srgb, var(--warn-bar) 45%, transparent);
   }
 }

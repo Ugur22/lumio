@@ -81,6 +81,7 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
   // Images picked on a vision model and then left behind by a provider switch can't be sent.
   const blocked = !vision && attachments.length > 0;
   const ready = (value.trim() !== "" || attachments.length > 0) && !disabled && !blocked && preparing === 0;
+  const inList = /^\s*([-*]|\d+\.) +\S/.test(value.slice(value.lastIndexOf("\n") + 1));
   const unsupported = `${providerName ?? "This provider"} can't read images. Switch to a vision-capable provider, or turn on "Can read images" for it in Providers.`;
 
   async function addFiles(files: File[]) {
@@ -335,7 +336,7 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
               type="button"
               aria-label="Stop"
               onClick={onStop}
-              className="grid size-10 flex-none place-items-center rounded-xl bg-accent text-white shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="grid size-10 flex-none place-items-center rounded-xl bg-accent text-on-accent shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               <StopIcon />
             </PressButton>
@@ -344,7 +345,7 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
               type="submit"
               aria-label="Send"
               disabled={!ready}
-              className={`grid size-10 flex-none place-items-center rounded-xl text-white transition-[background-color,opacity] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+              className={`grid size-10 flex-none place-items-center rounded-xl text-on-accent transition-[background-color,opacity] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                 ready ? "bg-accent shadow-soft" : "bg-muted opacity-40"
               }`}
             >
@@ -356,7 +357,9 @@ export function Composer({ ref, disabled, vision, providerName, onSend, onStop }
       <p className={`mt-2 text-center text-xs ${web ? "text-accent" : "text-muted"}`}>
         {web
           ? "Web search on · your message is sent to Tavily"
-          : `Enter to send · Shift+Enter for a new line · Ctrl+Enter sends from a list${vision ? " · Paste or drop images" : ""}`}
+          : inList
+            ? "Enter adds an item · Enter on an empty item ends the list · Ctrl+Enter sends"
+            : `Enter sends · Shift+Enter for a new line${vision ? " · Paste or drop images" : ""}`}
       </p>
     </form>
   );
