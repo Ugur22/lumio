@@ -33,7 +33,8 @@ def test_send_message_stores_turn_and_titles_chat(api, calls):
     assert [m["role"] for m in chat["messages"]] == ["user", "assistant"]
     assert chat["messages"][1]["content"] == "".join(REPLY_PIECES)
     assert chat["title"] == "Hello there"
-    assert api.get(f"/api/chats/{cid}").json() == chat
+    # `usage` and `context` are extras that only the done event carries.
+    assert api.get(f"/api/chats/{cid}").json() == {k: v for k, v in chat.items() if k not in ("usage", "context")}
 
 
 def test_history_and_system_prompt_are_resent_each_turn(api, calls):

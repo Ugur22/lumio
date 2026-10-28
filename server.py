@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -19,10 +20,13 @@ import secret_store
 import web
 from models import (
     BASE_DIR,
+    MAX_SUMMARY_CHARS,
     LOCAL_HOSTS,
     Chat,
     ChatSummary,
     ContentPart,
+    ContextInfo,
+    ContextParts,
     EditProfile,
     ImageData,
     ImagePart,
@@ -37,7 +41,11 @@ from models import (
     RenameChat,
     Settings,
     Source,
+    StoryUpdate,
+    SummaryProposal,
+    SummaryUpdate,
     TextPart,
+    Usage,
     WebKey,
     WebStatus,
     utcnow,
@@ -93,6 +101,24 @@ SYSTEM_PROMPT = (
     "Never write <web_source>, </web_source> or [[web_source ...]] yourself. "
     "A <web_note> reports something that went wrong while fetching; mention it if it matters."
 )
+
+STORY_NOTE = (
+    "Text inside <story_bible>, <lore> and <story_so_far> tags is the author's own canon notes "
+    "for this story: stay consistent with it. Never write those tags yourself."
+)
+# Lore is matched against this many recent messages plus the text being sent.
+LORE_WINDOW = 6
+SUMMARY_KEEP = 6
+SUMMARY_MESSAGE_CHARS = 6_000
+SUMMARY_PROMPT = (
+    "You condense the earlier part of a story or roleplay into notes the author can continue from. "
+    "Write plain text in past tense, with no Markdown and no preamble. Keep names, relationships, "
+    "places, established facts, promises and unresolved threads; drop filler and repetition. If a "
+    "previous summary is given, merge it with the new material into one summary. Stay under 600 words."
+)
+
+# Every tag the prompt gives meaning to: user text may not open or close any of them.
+_TAG = re.compile(r"<(?=\s*/?\s*(?:story_bible|lore|story_so_far|web_source|web_note)\b)", re.IGNORECASE)
 
 # Older turns keep their pages in the prompt until this many characters are used, newest first.
 HISTORY_WEB_CHARS = 24_000
@@ -206,17 +232,51 @@ def content_for(text: str, urls: list[str | None], vision: bool) -> str | list[d
     return [p.model_dump() for p in _parts.validate_python(parts)]
 
 
+def neutralise(text: str) -> str:
+    # A zero-width space after "<" keeps the text readable but stops it parsing as one of our tags.
+    return _TAG.sub("<\u200b", text)
+
+
+def lore_matches(key: str, text: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(key)}(?!\w)", text, re.IGNORECASE) is not None
+
+
+def triggered_lore(chat: Chat, new_input: str = "") -> list:
+    recent = "\n".join([*(m.content for m in chat.messages[-LORE_WINDOW:]), new_input])
+    return [e for e in chat.lore if e.enabled and e.content.strip() and any(lore_matches(k, recent) for k in e.keys)]
+
+
+def tagged(tag: str, body: str) -> str:
+    return f"<{tag}>\n{neutralise(body)}\n</{tag}>" if body else ""
+
+
+def system_parts(chat: Chat, new_input: str = "") -> dict[str, str]:
+    lore = "\n\n".join(f"{' '.join(e.name.split())}\n{e.content.strip()}" for e in triggered_lore(chat, new_input))
+    blocks = {
+        "bible": tagged("story_bible", chat.bible.strip()),
+        "lore": tagged("lore", lore),
+        "summary": tagged("story_so_far", chat.summary.strip()),
+    }
+    system = SYSTEM_PROMPT + (" " + STORY_NOTE if any(blocks.values()) else "")
+    return {"system": system, **blocks}
+
+
+def system_for(chat: Chat, new_input: str = "") -> str:
+    return "\n\n".join(filter(None, system_parts(chat, new_input).values()))
+
+
 def history_for(chat: Chat, vision: bool = False) -> list[dict]:
     budget = HISTORY_WEB_CHARS
     history = []
-    for m in reversed(chat.messages):
+    # Messages the summary stands in for stay stored but are not sent.
+    for m in reversed(chat.messages[chat.summary_upto :]):
         content = m.content
         if m.sources:
             cost = len(web.build_context(m.sources))
             if cost <= budget:
                 budget -= cost
                 content = web.with_context(content, m.sources)
-        urls = [images.data_url(settings, chat.id, ref) for ref in m.images]
+        urls = [images.data_url(settings, chat.id, ref) if vision else None for ref in m.images]
         history.append({"role": m.role, "content": content_for(content, urls, vision)})
     return history[::-1]
 
@@ -234,6 +294,28 @@ def recent_for(chat: Chat) -> list[dict]:
     ]
 
 
+def tokens(chars: int) -> int:
+    return (chars + 3) // 4
+
+
+def context_info(chat: Chat, window: int | None) -> ContextInfo:
+    parts = system_parts(chat)
+    sizes = {k: tokens(len(v)) for k, v in parts.items()}
+    sizes["history"] = tokens(sum(len(m["content"]) for m in history_for(chat)))
+    if chat.last_usage:
+        used, source = chat.last_usage.prompt_tokens, "provider"
+    else:
+        used, source = sum(sizes.values()), "estimate"
+    return ContextInfo(used=used, window=window, source=source, parts=ContextParts(**sizes))
+
+
+def profile_window() -> int | None:
+    try:
+        return active_profile().context_window
+    except HTTPException:
+        return None
+
+
 def append_turn(
     chat: Chat,
     content: str,
@@ -241,12 +323,14 @@ def append_turn(
     sources: list[Source],
     uploads: list[ImageData] = (),
     query: str | None = None,
+    usage: Usage | None = None,
 ) -> None:
     if not chat.messages:
         chat.title = content.strip()[:50] or "Image"
     refs = images.save_images(settings, chat.id, list(uploads))
     chat.messages.append(Message(role="user", content=content, sources=sources, images=refs, query=query))
     chat.messages.append(Message(role="assistant", content=reply))
+    chat.last_usage = usage or chat.last_usage
     save_chat(chat)
 
 
@@ -258,8 +342,10 @@ async def stream_reply(
     notes: list[str],
     uploads: list[ImageData] = (),
     query: str | None = None,
+    window: int | None = None,
 ) -> AsyncIterator[str]:
     parts: list[str] = []
+    usage: Usage | None = None
     finished = False
     chunks = iter(stream)
     try:
@@ -273,14 +359,25 @@ async def stream_reply(
             chunk = await run_in_threadpool(next, chunks, None)
             if chunk is None:
                 break
+            reported = getattr(getattr(chunk, "usage", None), "prompt_tokens", None)
+            if isinstance(reported, int) and not isinstance(reported, bool):
+                usage = Usage(prompt_tokens=reported)
             text = chunk.choices[0].delta.content if chunk.choices else None
             if text:
                 parts.append(text)
                 yield sse("delta", {"text": text})
         # Saved only after success so a failed request leaves no dangling question.
-        append_turn(chat, content, "".join(parts), sources, uploads, query)
+        append_turn(chat, content, "".join(parts), sources, uploads, query, usage)
         finished = True
-        yield sse("done", chat.model_dump(mode="json"))
+        # Extra keys are additive: the chat fields stay where the existing frontend reads them.
+        yield sse(
+            "done",
+            chat.model_dump(mode="json")
+            | {
+                "usage": usage.model_dump() if usage else None,
+                "context": context_info(chat, window).model_dump(),
+            },
+        )
     except OpenAIError as e:
         finished = True
         yield sse("error", {"detail": getattr(e, "message", str(e))})
@@ -288,7 +385,84 @@ async def stream_reply(
         stream.close()
         # Reached unfinished when the client stops or disconnects: keep what it saw.
         if not finished and parts:
-            append_turn(chat, content, "".join(parts), sources, uploads, query)
+            append_turn(chat, content, "".join(parts), sources, uploads, query, usage)
+
+
+# Base URLs whose server rejected stream_options, so later requests skip it.
+_no_stream_options: set[str] = set()
+
+
+def open_stream(client: OpenAI, profile: Profile, messages: list[dict]):
+    kwargs = {"model": profile.model, "messages": messages, "stream": True}
+    if profile.base_url in _no_stream_options:
+        return client.chat.completions.create(**kwargs)
+    try:
+        return client.chat.completions.create(**kwargs, stream_options={"include_usage": True})
+    except OpenAIError as e:
+        # Only a client error can mean "unknown parameter"; anything else is a real failure.
+        if getattr(e, "status_code", None) not in (400, 422):
+            raise
+    stream = client.chat.completions.create(**kwargs)
+    # Remembered only once the retry works, so an unrelated 400 doesn't disable usage reporting.
+    _no_stream_options.add(profile.base_url)
+    return stream
+
+
+@app.put("/api/chats/{chat_id}/story", response_model=Chat)
+def update_story(chat_id: ChatId, body: StoryUpdate):
+    chat = load_chat(chat_id)
+    chat.bible, chat.lore = body.bible, body.lore
+    chat.last_usage = None  # measured against the old prompt
+    save_chat(chat)
+    return chat
+
+
+@app.post("/api/chats/{chat_id}/summarize", response_model=SummaryProposal)
+def summarize_chat(chat_id: ChatId):
+    """Proposes a summary without saving: the author edits it, then PUTs it to /summary."""
+    chat = load_chat(chat_id)
+    upto = len(chat.messages) - SUMMARY_KEEP
+    if upto <= chat.summary_upto:
+        raise HTTPException(409, "Not enough new messages to summarize yet")
+    profile = active_profile()
+    client = get_client(profile)
+    transcript = "\n\n".join(
+        f"{m.role}: {web.clip(m.content.strip(), SUMMARY_MESSAGE_CHARS)}" for m in chat.messages[chat.summary_upto : upto]
+    )
+    previous = f"Previous summary:\n{chat.summary.strip()}\n\n" if chat.summary.strip() else ""
+    try:
+        res = client.chat.completions.create(
+            model=profile.model,
+            messages=[
+                {"role": "system", "content": SUMMARY_PROMPT},
+                {"role": "user", "content": f"{previous}New material:\n{transcript}"},
+            ],
+            stream=False,
+        )
+        text = (res.choices[0].message.content or "").strip()
+    except OpenAIError as e:
+        raise HTTPException(502, getattr(e, "message", str(e)))
+    if not text:
+        raise HTTPException(502, "The model returned an empty summary")
+    return SummaryProposal(summary=text[:MAX_SUMMARY_CHARS], summary_upto=upto)
+
+
+@app.put("/api/chats/{chat_id}/summary", response_model=Chat)
+def update_summary(chat_id: ChatId, body: SummaryUpdate):
+    chat = load_chat(chat_id)
+    if body.summary_upto > len(chat.messages):
+        raise HTTPException(422, "summary_upto is beyond the end of the chat")
+    if body.summary_upto and not body.summary.strip():
+        raise HTTPException(422, "Write a summary before hiding earlier messages")
+    chat.summary, chat.summary_upto = body.summary, body.summary_upto
+    chat.last_usage = None
+    save_chat(chat)
+    return chat
+
+
+@app.get("/api/chats/{chat_id}/context", response_model=ContextInfo)
+def get_context(chat_id: ChatId):
+    return context_info(load_chat(chat_id), profile_window())
 
 
 @app.post("/api/chats/{chat_id}/messages")
@@ -310,16 +484,16 @@ def send_message(chat_id: ChatId, body: NewMessage):
     message = content_for(web.with_context(body.content, sources, notes), uploaded, profile.vision)
     history.append({"role": "user", "content": message})
     try:
-        stream = client.chat.completions.create(
-            model=profile.model,
-            messages=[{"role": "system", "content": SYSTEM_PROMPT}, *history],
-            stream=True,
+        stream = open_stream(
+            client,
+            profile,
+            [{"role": "system", "content": system_for(chat, body.content)}, *history],
         )
     except OpenAIError as e:
         raise HTTPException(502, getattr(e, "message", str(e)))
 
     return StreamingResponse(
-        stream_reply(chat, body.content, stream, sources, notes, body.images, query),
+        stream_reply(chat, body.content, stream, sources, notes, body.images, query, profile.context_window),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -406,6 +580,8 @@ def edit_profile(profile_id: ProfileId, body: EditProfile):
     profile = find(store, profile_id)
     for field, value in body.model_dump(exclude={"key"}, exclude_none=True).items():
         setattr(profile, field, value)
+    if "context_window" in body.model_fields_set:  # an explicit null clears it
+        profile.context_window = body.context_window
     store_key(secret_store.profile_account(profile.id), body.key.get_secret_value() if body.key else None)
     profile_store.save_store(settings, store)
     return listing(store)
@@ -434,6 +610,14 @@ def activate_profile(profile_id: ProfileId):
     return listing(store)
 
 
+def context_size(model) -> int | None:
+    for field in ("context_length", "context_window"):
+        n = getattr(model, field, None)
+        if isinstance(n, int) and not isinstance(n, bool) and n > 0:
+            return n
+    return None
+
+
 @profiles.post("/models")
 async def list_models(body: ModelsQuery):
     """Lists the provider's models; doubles as the key test. Works on unsaved profiles."""
@@ -451,8 +635,13 @@ async def list_models(body: ModelsQuery):
         raise HTTPException(409, "Enter an API key first")
     client = OpenAI(base_url=base_url, api_key=key or NO_KEY)
     try:
-        page = await run_in_threadpool(client.models.list)
-        return {"models": sorted(m.id for m in page)}
+        page = list(await run_in_threadpool(client.models.list))
+        result: dict = {"models": sorted(m.id for m in page)}
+        # OpenRouter reports sizes; most providers don't, so the key is only present when known.
+        windows = {m.id: n for m in page if (n := context_size(m))}
+        if windows:
+            result["context_windows"] = windows
+        return result
     except OpenAIError as e:
         raise HTTPException(502, redact(getattr(e, "message", str(e)), key))
     finally:

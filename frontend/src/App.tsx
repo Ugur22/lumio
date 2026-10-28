@@ -1,13 +1,15 @@
 import { animated, useTransition } from "@react-spring/web";
 import { useRef, useState } from "react";
+import { ContextMeter } from "./components/ContextMeter";
 import { Composer, type ComposerHandle } from "./components/Composer";
-import { MenuIcon } from "./components/icons";
+import { BookIcon, MenuIcon } from "./components/icons";
 import { MessageList } from "./components/MessageList";
 import { PressButton } from "./components/PressButton";
 import { ProviderSwitcher } from "./components/ProviderSwitcher";
 import { ProvidersDialog } from "./components/ProvidersDialog";
 import { Sidebar } from "./components/Sidebar";
-import { useChat, useChatList, useDeleteChat, useRenameChat } from "./hooks/useChats";
+import { StoryDialog, type StoryTab } from "./components/StoryDialog";
+import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, useRenameChat } from "./hooks/useChats";
 import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTheme } from "./hooks/useTheme";
@@ -28,8 +30,12 @@ export function App() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [story, setStory] = useState<{ open: boolean; tab: StoryTab }>({ open: false, tab: "bible" });
   const composer = useRef<ComposerHandle>(null);
 
+  const context = useChatContext(currentId);
+
+  const create = useCreateChat();
   const rename = useRenameChat();
   const remove = useDeleteChat();
   const { send, stop, isPending: sending } = useStreamingSend();
@@ -50,6 +56,18 @@ export function App() {
     });
   }
 
+  // The story lives in the chat file, so a blank chat has to be created before the dialog can save to it.
+  function openStory() {
+    if (currentId) return setStory({ open: true, tab: "bible" });
+    if (create.isPending) return;
+    create.mutate(undefined, {
+      onSuccess: (created) => {
+        select(created.id);
+        setStory({ open: true, tab: "bible" });
+      },
+    });
+  }
+
   function onRename(c: ChatSummary) {
     const title = window.prompt("Rename chat", c.title)?.trim();
     if (title) rename.mutate({ id: c.id, title });
@@ -65,7 +83,7 @@ export function App() {
     : restoring
       ? ""
       : "New chat";
-  const loadError = list.error ?? chat.error;
+  const loadError = list.error ?? chat.error ?? create.error;
 
   const scrim = useTransition(menuOpen, {
     from: { opacity: 0 },
@@ -92,6 +110,12 @@ export function App() {
         }}
       />
       <ProvidersDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <StoryDialog
+        open={story.open}
+        chatId={currentId}
+        tab={story.tab}
+        onClose={() => setStory((s) => ({ ...s, open: false }))}
+      />
       {scrim(
         (style, show) =>
           show && (
@@ -114,6 +138,17 @@ export function App() {
             <MenuIcon />
           </PressButton>
           <h1 className="min-w-0 truncate font-display text-lg font-semibold">{title}</h1>
+          <button
+            type="button"
+            aria-label="Story"
+            title="Story bible, lore and summary"
+            disabled={create.isPending}
+            onClick={openStory}
+            className="ml-auto flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted hover:bg-bubble hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
+          >
+            <BookIcon width={16} height={16} />
+            <span className="max-[480px]:hidden">Story</span>
+          </button>
           <ProviderSwitcher onManage={() => setSettingsOpen(true)} />
         </header>
         {loadError && (
@@ -126,6 +161,11 @@ export function App() {
           chatId={currentId}
           loading={restoring}
           onPick={(text) => composer.current?.setText(text)}
+        />
+        <ContextMeter
+          context={currentId ? context.data : undefined}
+          onSetWindow={() => setSettingsOpen(true)}
+          onSummarize={() => setStory({ open: true, tab: "summary" })}
         />
         <Composer
           ref={composer}

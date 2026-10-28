@@ -55,6 +55,20 @@ def clean_data_dir():
     shutil.rmtree(data / "images", ignore_errors=True)
 
 
+@pytest.fixture(autouse=True)
+def reset_stream_options():
+    server._no_stream_options.clear()
+    yield
+    server._no_stream_options.clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_stream_options():
+    server._no_stream_options.clear()
+    yield
+    server._no_stream_options.clear()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def remove_tmp_dir():
     yield
@@ -101,7 +115,7 @@ def fake_client(monkeypatch):
 def calls(fake_client):
     seen = []
 
-    def fake_create(model, messages, stream):
+    def fake_create(model, messages, stream, **kw):
         assert stream is True
         seen.append(messages)
         return FakeStream(REPLY_PIECES)
