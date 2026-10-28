@@ -1,0 +1,9 @@
+.venv/
+.env
+__pycache__/
+.history.json
+data/
+.claude/.check-stamp
+.pytest_cache/
+profiles.json
+profiles.corrupt

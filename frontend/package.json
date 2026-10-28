@@ -1,0 +1,47 @@
+{
+  "name": "dolphinllm-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@react-spring/web": "10.1.2",
+    "@tanstack/react-query": "5.104.2",
+    "highlight.js": "11.12.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-markdown": "10.1.0",
+    "rehype-highlight": "7.0.2",
+    "rehype-raw": "7.0.0",
+    "rehype-sanitize": "6.0.0",
+    "remark-breaks": "4.0.0",
+    "remark-gfm": "4.0.1",
+    "ts-pattern": "5.9.0",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@tailwindcss/typography": "0.5.20",
+    "@types/hast": "^3.0.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "4.7.0",
+    "autoprefixer": "10.6.1",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "5.2.0",
+    "eslint-plugin-react-refresh": "0.4.26",
+    "globals": "15.15.0",
+    "postcss": "8.5.30",
+    "tailwindcss": "3.4.19",
+    "typescript": "5.7.3",
+    "typescript-eslint": "8.71.2",
+    "unified": "^11.0.5",
+    "vite": "6.4.4",
+    "vitest": "3.2.7"
+  }
+}
