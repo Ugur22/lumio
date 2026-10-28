@@ -11,6 +11,7 @@ import { Turn, type Reply } from "./Turn";
 interface Props {
   messages: Message[];
   chatId: string | null;
+  loading?: boolean;
   onPick: (text: string) => void;
 }
 
@@ -21,7 +22,7 @@ const SUGGESTIONS = [
   { title: "Explain simply", text: "Explain a hard idea to me as if I'm new to it, with one concrete example." },
 ];
 
-export function MessageList({ messages, chatId, onPick }: Props) {
+export function MessageList({ messages, chatId, loading = false, onPick }: Props) {
   const ref = useRef<HTMLElement>(null);
   const stored = useStream((s) => s.pending);
   const liveSources = useStream((s) => s.sources);
@@ -77,7 +78,7 @@ export function MessageList({ messages, chatId, onPick }: Props) {
     >
       <div className="mx-auto max-w-[720px]">
         {turns.length === 0 ? (
-          <EmptyState onPick={onPick} />
+          loading ? null : <EmptyState onPick={onPick} />
         ) : (
           turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} />)
         )}

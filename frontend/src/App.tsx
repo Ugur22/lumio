@@ -12,6 +12,7 @@ import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTheme } from "./hooks/useTheme";
 import type { Attachment } from "./lib/images";
+import { isRestoring } from "./lib/restoring";
 import type { ChatSummary } from "./types";
 
 export function App() {
@@ -23,6 +24,7 @@ export function App() {
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
   const currentId = chosen === undefined ? (chats[0]?.id ?? null) : chosen;
   const chat = useChat(currentId);
+  const restoring = isRestoring({ chosen, listPending: list.isPending, currentId, chatPending: chat.isPending });
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -58,7 +60,11 @@ export function App() {
     remove.mutate(c.id, { onSuccess: () => c.id === currentId && select(null) });
   }
 
-  const title = currentId ? (chat.data?.title ?? chats.find((c) => c.id === currentId)?.title ?? "") : "New chat";
+  const title = currentId
+    ? (chat.data?.title ?? chats.find((c) => c.id === currentId)?.title ?? "")
+    : restoring
+      ? ""
+      : "New chat";
   const loadError = list.error ?? chat.error;
 
   const scrim = useTransition(menuOpen, {
@@ -118,6 +124,7 @@ export function App() {
         <MessageList
           messages={currentId ? (chat.data?.messages ?? []) : []}
           chatId={currentId}
+          loading={restoring}
           onPick={(text) => composer.current?.setText(text)}
         />
         <Composer
