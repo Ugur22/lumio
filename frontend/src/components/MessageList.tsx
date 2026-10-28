@@ -68,6 +68,7 @@ export function MessageList({ messages, chatId, onPick }: Props) {
   return (
     <section
       ref={ref}
+      data-image-bounds
       aria-live={streaming ? "off" : "polite"}
       onScroll={(e) => {
         const el = e.currentTarget;
