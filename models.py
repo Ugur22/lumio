@@ -161,7 +161,7 @@ def clean_base_url(url: str) -> str:
     return url
 
 
-XAI_IMAGE_MODEL = "grok-2-image"
+XAI_IMAGE_MODEL = "grok-imagine-image-2.0"
 
 
 def blank_to_none(v):

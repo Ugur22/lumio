@@ -428,7 +428,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
         <input
           value={imageModel}
           onChange={(e) => setImageModel(e.target.value)}
-          placeholder="e.g. grok-2-image"
+          placeholder="e.g. grok-imagine-image-2.0"
           spellCheck={false}
           className={field}
         />

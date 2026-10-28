@@ -43,7 +43,7 @@ describe("vision defaults", () => {
 describe("image model defaults", () => {
   it("prefills only the xAI preset", () => {
     const models = Object.fromEntries(PRESETS.map((p) => [p.id, p.imageModel]));
-    expect(models.xai).toBe("grok-2-image");
+    expect(models.xai).toBe("grok-imagine-image-2.0");
     expect(models.openai).toBeUndefined();
     expect(models.custom).toBeUndefined();
   });

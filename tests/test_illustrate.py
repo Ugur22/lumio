@@ -66,7 +66,7 @@ STORY = "Once.\n\n[[image: a red barn at dawn]]\n\nThen.\n\n[[image: a fox in sn
 
 def test_image_model_defaults_and_xai_preset():
     assert Profile(id="a", name="x", base_url="https://api.openai.com/v1", model="m").image_model is None
-    assert Profile(id="b", name="x", base_url="https://api.x.ai/v1", model="m").image_model == "grok-2-image"
+    assert Profile(id="b", name="x", base_url="https://api.x.ai/v1", model="m").image_model == "grok-imagine-image-2.0"
     assert Profile(id="c", name="x", base_url="https://api.x.ai/v1", model="m", image_model=None).image_model is None
 
 
