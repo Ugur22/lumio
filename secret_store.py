@@ -1,3 +1,4 @@
+import e2e
 import keyring
 from keyring.errors import KeyringError, PasswordDeleteError
 
@@ -12,6 +13,8 @@ def profile_account(profile_id: str) -> str:
 
 
 def get_key(account: str = LEGACY_ACCOUNT) -> str | None:
+    if e2e.enabled():
+        return None
     # A missing or locked keychain must not stop the server: fall back to the env key.
     try:
         return keyring.get_password(SERVICE, account) or None
@@ -20,10 +23,14 @@ def get_key(account: str = LEGACY_ACCOUNT) -> str | None:
 
 
 def set_key(key: str, account: str = LEGACY_ACCOUNT) -> None:
+    if e2e.enabled():
+        return
     keyring.set_password(SERVICE, account, key)
 
 
 def delete_key(account: str = LEGACY_ACCOUNT) -> None:
+    if e2e.enabled():
+        return
     try:
         keyring.delete_password(SERVICE, account)
     except PasswordDeleteError:

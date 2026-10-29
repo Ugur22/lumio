@@ -48,3 +48,12 @@ describe("image model defaults", () => {
     expect(models.custom).toBeUndefined();
   });
 });
+
+describe("DeepSeek preset", () => {
+  it("points at the DeepSeek API and leaves sk- keys to the OpenAI hint", () => {
+    const p = PRESETS.find((x) => x.id === "deepseek");
+    expect(p?.baseUrl).toBe("https://api.deepseek.com/v1");
+    expect(p?.model).toBe("deepseek-chat");
+    expect(detectPreset("sk-abc123")?.id).toBe("openai");
+  });
+});

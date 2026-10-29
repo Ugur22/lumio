@@ -16,6 +16,7 @@ export const PRESETS: Preset[] = [
   { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", needsKey: true, vision: true, keyPrefixes: ["sk-"] },
   { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", needsKey: true, vision: true, keyPrefixes: ["sk-or-"] },
   { id: "groq", label: "Groq", baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", needsKey: true, vision: false, keyPrefixes: ["gsk_"] },
+  { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat", needsKey: true, vision: false, keyPrefixes: [] },
   { id: "xai", label: "xAI (Grok)", baseUrl: "https://api.x.ai/v1", model: "grok-4", needsKey: true, vision: true, imageModel: "grok-imagine-image-2.0", keyPrefixes: ["xai-"] },
   { id: "together", label: "Together", baseUrl: "https://api.together.xyz/v1", model: "meta-llama/Llama-3.3-70B-Instruct-Turbo", needsKey: true, vision: false, keyPrefixes: [] },
   { id: "anthropic", label: "Anthropic (OpenAI-compatible)", baseUrl: "https://api.anthropic.com/v1", model: "claude-sonnet-5-5", needsKey: true, vision: true, keyPrefixes: ["sk-ant-"] },

@@ -12,3 +12,4 @@ profiles.corrupt
 .claude/skills/
 skills-lock.json
 .taste-skill/
+logs/

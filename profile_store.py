@@ -1,5 +1,6 @@
 import logging
 
+import e2e
 import secret_store
 from models import Profile, ProfileStore, Settings
 from pydantic import ValidationError
@@ -11,6 +12,8 @@ DEFAULT_ID = "default"
 
 
 def load_store(settings: Settings) -> ProfileStore:
+    if e2e.enabled():
+        return e2e.store()
     path = settings.profiles_file
     if path.exists():
         try:
@@ -27,6 +30,8 @@ def load_store(settings: Settings) -> ProfileStore:
 
 
 def save_store(settings: Settings, store: ProfileStore) -> None:
+    if e2e.enabled():
+        return
     path = settings.profiles_file
     tmp = path.with_suffix(".tmp")
     tmp.write_text(store.model_dump_json(indent=2))
@@ -35,6 +40,8 @@ def save_store(settings: Settings, store: ProfileStore) -> None:
 
 def resolve_key(settings: Settings, profile: Profile) -> tuple[str | None, str | None]:
     """Returns (key, source). The keychain wins so a saved key overrides a stale .env one."""
+    if e2e.enabled():
+        return e2e.DUMMY_KEY, "env"
     if key := secret_store.get_key(secret_store.profile_account(profile.id)):
         return key, "keychain"
     if profile.id == DEFAULT_ID:
