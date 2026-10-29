@@ -1,12 +1,33 @@
 import { animated, config, useSpring, useTrail } from "@react-spring/web";
-import { createContext, useContext, useRef, useState, type ComponentProps } from "react";
+import {
+  createContext,
+  isValidElement,
+  useContext,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
+import { useCodeRunner } from "../hooks/useCodeRunner";
+import { runtimeFor } from "../lib/runner/languages";
 import { prepare } from "../lib/markup/tags";
 import { rehypePlugins, remarkPlugins } from "../lib/markup/plugins";
+import { blockButton, OutputPanel, RunButtons } from "./CodeRunner";
+
+function explicitLanguage(children: ReactNode): string | undefined {
+  if (!isValidElement<{ "data-lang"?: unknown }>(children)) return undefined;
+  const lang = children.props["data-lang"];
+  return typeof lang === "string" ? lang : undefined;
+}
 
 function CodeBlock({ children }: ComponentProps<"pre">) {
   const ref = useRef<HTMLPreElement>(null);
   const [label, setLabel] = useState("Copy");
+  const streaming = useContext(StreamingContext);
+  // A block that is still streaming is incomplete code, so it cannot be run yet.
+  const runtime = streaming ? null : runtimeFor(explicitLanguage(children));
+  const runner = useCodeRunner(runtime);
 
   async function copy() {
     try {
@@ -18,19 +39,30 @@ function CodeBlock({ children }: ComponentProps<"pre">) {
     setTimeout(() => setLabel("Copy"), 1500);
   }
 
+  const run = () => runner.run(ref.current?.textContent ?? "");
+
   return (
     <div className="relative my-4">
-      <pre ref={ref} className="overflow-x-auto">
-        {children}
-      </pre>
-      <button
-        type="button"
-        onClick={copy}
-        aria-label="Copy code"
-        className="absolute right-1.5 top-1.5 rounded-lg border border-[#444c56] px-2 py-0.5 font-sans text-xs text-[#c9d1d9] hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-      >
-        {label}
-      </button>
+      <div className="overflow-hidden rounded-[10px]">
+        <pre ref={ref} className="overflow-x-auto">
+          {children}
+        </pre>
+        {runtime && (
+          <OutputPanel
+            state={runner.state}
+            runtime={runtime}
+            onClear={runner.clear}
+            onRerun={run}
+            onAnswer={runner.submitAnswer}
+          />
+        )}
+      </div>
+      <div className="absolute right-1.5 top-1.5 flex items-center gap-1.5">
+        {runtime && <RunButtons runtime={runtime} busy={runner.busy} onRun={run} onStop={runner.stop} />}
+        <button type="button" onClick={copy} aria-label="Copy code" className={blockButton}>
+          {label}
+        </button>
+      </div>
     </div>
   );
 }

@@ -13,6 +13,7 @@
     "@react-spring/web": "10.1.2",
     "@tanstack/react-query": "5.104.2",
     "highlight.js": "11.12.0",
+    "pyodide": "314.0.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "10.1.0",

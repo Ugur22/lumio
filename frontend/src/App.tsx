@@ -1,5 +1,6 @@
 import { animated, useTransition } from "@react-spring/web";
 import { useRef, useState } from "react";
+import { CodeActionsContext } from "./components/CodeActionsContext";
 import { ContextMeter } from "./components/ContextMeter";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { BookIcon, MenuIcon } from "./components/icons";
@@ -156,13 +157,15 @@ export function App() {
             Failed: {loadError.message}
           </div>
         )}
-        <MessageList
-          messages={currentId ? (chat.data?.messages ?? []) : []}
-          chatId={currentId}
-          loading={restoring}
-          onPick={(text) => composer.current?.setText(text)}
-          onStory={openStory}
-        />
+        <CodeActionsContext.Provider value={{ askAboutRun: (text) => onSend(text, [], false, false), busy: sending }}>
+          <MessageList
+            messages={currentId ? (chat.data?.messages ?? []) : []}
+            chatId={currentId}
+            loading={restoring}
+            onPick={(text) => composer.current?.setText(text)}
+            onStory={openStory}
+          />
+        </CodeActionsContext.Provider>
         <ContextMeter
           context={currentId ? context.data : undefined}
           onSetWindow={() => setSettingsOpen(true)}

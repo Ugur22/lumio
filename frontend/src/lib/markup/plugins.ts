@@ -4,6 +4,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { rehypeExplicitLanguage } from "./codeLang";
 import { rehypeDialogue } from "./dialogue";
 import { schema } from "./sanitize";
 import { rehypeSafeStyle } from "./style";
@@ -17,5 +18,6 @@ export const rehypePlugins: PluggableList = [
   [rehypeSanitize, schema],
   rehypeSafeStyle,
   rehypeDialogue,
+  rehypeExplicitLanguage,
   [rehypeHighlight, { detect: true, ignoreMissing: true }],
 ];

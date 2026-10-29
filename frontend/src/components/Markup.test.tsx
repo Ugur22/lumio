@@ -92,3 +92,37 @@ describe("Markup", () => {
     expect(out).not.toContain("Drawing");
   });
 });
+
+describe("Markup code blocks", () => {
+  const fence = (lang: string) => html("```" + lang + "\nprint(1)\n```");
+
+  it("offers Run on python and javascript fences only", () => {
+    for (const lang of ["python", "py", "javascript", "js"]) expect(fence(lang)).toContain('aria-label="Run ');
+    for (const lang of ["bash", "ts", "sql", ""]) expect(fence(lang)).not.toContain('aria-label="Run ');
+  });
+
+  it("does not run blocks whose language was only guessed", () => {
+    expect(html("```\nimport os\nprint(os.name)\n```")).not.toContain('aria-label="Run ');
+  });
+
+  it("renders no input UI before a run, not even for python", () => {
+    for (const lang of ["python", "js"]) {
+      const out = fence(lang);
+      expect(out).not.toContain("<textarea");
+      expect(out).not.toContain("<input");
+      expect(out).not.toMatch(/prefill/i);
+    }
+  });
+
+  it("does not open anything for input() calls", () => {
+    const out = html('```python\nname = input("Name? ")\n```');
+    expect(out).not.toContain("<textarea");
+    expect(out).not.toContain("This program asks for input");
+  });
+
+  it("keeps Copy and hides Run while the reply is still streaming", () => {
+    const out = html("```python\nprint(1)\n```", true);
+    expect(out).toContain('aria-label="Copy code"');
+    expect(out).not.toContain('aria-label="Run ');
+  });
+});
