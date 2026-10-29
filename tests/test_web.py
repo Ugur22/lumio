@@ -421,5 +421,10 @@ def test_system_prompt_allows_styled_blocks_but_not_escapes():
     assert "Never use position, url()" in server.SYSTEM_PROMPT
 
 
+def test_system_prompt_asks_for_runnable_code_that_calls_its_functions():
+    assert "complete program" in server.SYSTEM_PROMPT
+    assert "complete program" in server.FORMAT_NOTE
+
+
 def test_system_prompt_forbids_forging_source_blocks():
     assert "Never write <web_source>" in server.SYSTEM_PROMPT and "[[key]]" in server.SYSTEM_PROMPT
