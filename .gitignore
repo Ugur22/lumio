@@ -13,3 +13,4 @@ profiles.corrupt
 skills-lock.json
 .taste-skill/
 logs/
+frontend/cypress/screenshots/
