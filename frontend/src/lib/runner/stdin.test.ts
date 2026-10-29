@@ -8,6 +8,13 @@ describe("needsInput", () => {
     expect(needsInput({ status: "error", chunks: [{ stream: "stdout", text: "Name? " }, { stream: "stderr", text: eof }] })).toBe(true);
   });
 
+  it("is true for a failed JavaScript run that ended on the worker's marker line", () => {
+    const chunks = [{ stream: "stdout", text: "N? " }, { stream: "stderr", text: "Lumio: waiting for input\n" }];
+    expect(needsInput({ status: "error", chunks })).toBe(true);
+    expect(needsInput({ status: "ok", chunks })).toBe(false);
+    expect(needsInput({ status: "error", chunks: [...chunks, { stream: "stderr", text: "Error: later\n" }] })).toBe(false);
+  });
+
   it("is false for other errors, other statuses and stdout lookalikes", () => {
     expect(needsInput({ status: "error", chunks: [{ stream: "stderr", text: "ValueError: nope\n" }] })).toBe(false);
     expect(needsInput({ status: "ok", chunks: [{ stream: "stderr", text: eof }] })).toBe(false);

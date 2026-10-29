@@ -57,7 +57,7 @@ export function useCodeRunner(runtime: Runtime | null) {
     (line: string) => {
       const s = session.current;
       const cur = latest.current;
-      if (!runtime || !s || !canReplay(cur, runtime) || atCap(cur.answers.length)) return;
+      if (!runtime || !s || !canReplay(cur) || atCap(cur.answers.length)) return;
       const answer = line.replace(/[\r\n]+/g, " ");
       const next = reduceRun(cur, { type: "replay", answer });
       if (next === cur) return;

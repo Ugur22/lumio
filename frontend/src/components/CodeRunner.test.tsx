@@ -48,6 +48,39 @@ describe("OutputPanel", () => {
     expect(out).toContain("(no output)");
   });
 
+  describe("when a JavaScript program ran out of input", () => {
+    const marker = { type: "stderr", text: "Lumio: waiting for input\n" } as const;
+    const done = { type: "done", ok: false, elapsedMs: 4 } as const;
+    const PROMPT = 'aria-label="Answer to the program&#x27;s prompt"';
+
+    it("shows the prompt row, hides the marker and reports waiting", () => {
+      const out = render([{ type: "stdout", text: "Enter a number: " } as const, marker, done].reduce(reduceRun, startState("javascript")));
+      expect(out).toContain(PROMPT);
+      expect(out).toContain("Waiting for your answer");
+      expect(out).not.toContain("Lumio: waiting");
+      expect(out).not.toContain("Exited with error");
+    });
+
+    it("shows no prompt row for a plain run or an ordinary error", () => {
+      const plain = render([{ type: "stdout", text: "hi\n" } as const, { type: "done", ok: true, elapsedMs: 1 } as const].reduce(reduceRun, startState("javascript")));
+      expect(plain).not.toContain(PROMPT);
+      const failed = render([{ type: "stderr", text: "ReferenceError: x\n" } as const, done].reduce(reduceRun, startState("javascript")));
+      expect(failed).not.toContain(PROMPT);
+      expect(failed).toContain("Exited with error");
+    });
+
+    it("shows the answer feedback note after a replay settles", () => {
+      const waiting = [{ type: "stdout", text: "N? " } as const, marker, done].reduce(reduceRun, startState("javascript"));
+      const replayed = [
+        { type: "replay", answer: "5" } as const,
+        { type: "stdout", text: "N? " } as const,
+        { type: "echo", text: "5\n" } as const,
+        { type: "done", ok: true, elapsedMs: 2 } as const,
+      ].reduce<Props["state"]>(reduceRun, waiting);
+      expect(render(replayed)).toContain("Answer received. The program printed nothing in response.");
+    });
+  });
+
   describe("when the program ran out of input", () => {
     const eofTrace = { type: "stderr", text: "Traceback (most recent call last):\nEOFError: EOF when reading a line\n" } as const;
     const done = { type: "done", ok: false, elapsedMs: 40 } as const;
@@ -121,8 +154,7 @@ describe("OutputPanel", () => {
       expect(out).not.toContain("Ctrl/");
     });
 
-    it("has no prompt row for JavaScript, after finishing, or while running", () => {
-      expect(render(waitingAfter({ type: "stdout", text: "Name? " }))).not.toContain("<input");
+    it("has no prompt row after finishing or while running", () => {
       const finished = [{ type: "stdout", text: "bye\n" } as const, { type: "done", ok: true, elapsedMs: 3 } as const].reduce(reduceRun, startState("python"));
       expect(renderPy(finished)).not.toContain("<input");
       expect(renderPy(startState("python"))).not.toContain("<input");
@@ -170,12 +202,10 @@ describe("OutputPanel", () => {
         expect(renderPy(waitingAfter({ type: "stdout", text: "Op: " }))).not.toContain("Answer received");
       });
 
-      it("has no note after an error or a timeout, nor for JavaScript", () => {
+      it("has no note after an error or a timeout", () => {
         const boom = { type: "stderr", text: "ValueError: no\n" } as const;
         expect(renderPy(replayedWith(...asked, boom, done))).not.toContain("Answer received");
         expect(renderPy(replayedWith(...asked, { type: "timeout", phase: "running", limitMs: 10_000 }))).not.toContain("Answer received");
-        const js = { ...replayedWith(...asked, eofTrace, done) };
-        expect(render(js)).not.toContain("Answer received");
       });
     });
 

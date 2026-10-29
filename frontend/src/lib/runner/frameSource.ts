@@ -19,8 +19,12 @@ export const FRAME_CSP = [
 export const WORKER_SOURCE = String.raw`
 const LIMIT = 1000000;
 let sent = 0;
+// Set once a prompt() ran dry: the run is over, so nothing after it may reach the page.
+let closed = false;
+// Printed on stderr when the program ran out of stdin lines; stdin.ts looks for this exact line.
+const WAIT_MARKER = "Lumio: waiting for input";
 function emit(type, text) {
-  if (sent >= LIMIT) return;
+  if (closed || sent >= LIMIT) return;
   // Count a fixed cost per message too, so a loop of empty prints is bounded as well.
   sent += text.length + 80;
   postMessage({ type, text });
@@ -39,12 +43,34 @@ function describe(e) {
 self.addEventListener("unhandledrejection", (e) => emit("stderr", "Unhandled rejection: " + describe(e.reason) + "\n"));
 self.addEventListener("error", (e) => emit("stderr", "Uncaught " + (e.message || "error") + "\n"));
 
-async function runJavascript(code) {
+function parseStdin(stdin) {
+  return stdin === "" ? [] : stdin.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
+}
+
+async function runJavascript(m) {
+  const lines = parseStdin(m.stdin);
   const to = (type) => (...args) => emit(type, args.map(show).join(" ") + "\n");
   const con = { log: to("stdout"), info: to("stdout"), debug: to("stdout"), warn: to("stderr"), error: to("stderr") };
+  const alertFn = (message) => { emit("stdout", (message === undefined ? "" : String(message)) + "\n"); };
+  const promptFn = (message) => {
+    emit("stdout", message === undefined ? "" : String(message));
+    if (!lines.length) {
+      // The user's code may catch the exception below, or sit in a loop, so throwing alone cannot
+      // end the run. Report "waiting" and "done" right here and mute the worker; the page then
+      // tears the frame down, which kills the worker whatever the code is still doing.
+      emit("stderr", WAIT_MARKER + "\n");
+      postMessage({ type: "done", ok: false });
+      closed = true;
+      self.close();
+      throw new Error(WAIT_MARKER);
+    }
+    const line = lines.shift();
+    emit("echo", line + "\n");
+    return line;
+  };
   postMessage({ type: "started" });
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  await new AsyncFunction("console", code)(con);
+  await new AsyncFunction("console", "prompt", "alert", m.code)(con, promptFn, alertFn);
   return true;
 }
 
@@ -76,7 +102,7 @@ async function runPython(m) {
   });
   py.setStdout(writer("stdout"));
   py.setStderr(writer("stderr"));
-  const lines = m.stdin === "" ? [] : m.stdin.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
+  const lines = parseStdin(m.stdin);
   // input() has already written and flushed its prompt when it reads, so the echo lands right after
   // the prompt; Pyodide adds the newline to the returned line itself.
   py.setStdin({
@@ -110,11 +136,12 @@ self.onmessage = async (event) => {
   const m = event.data;
   let ok = true;
   try {
-    ok = m.runtime === "python" ? await runPython(m) : await runJavascript(m.code);
+    ok = m.runtime === "python" ? await runPython(m) : await runJavascript(m);
   } catch (e) {
     ok = false;
     emit("stderr", describe(e) + "\n");
   }
+  if (closed) return;
   postMessage({ type: "done", ok });
 };
 `;

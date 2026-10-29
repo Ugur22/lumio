@@ -61,10 +61,14 @@ describe("replay", () => {
   const done = { type: "done", ok: false, elapsedMs: 5 } as const;
   const waiting = apply(startState("python"), { type: "stdout", text: "A? " }, eof, done);
 
-  it("recognises the waiting state for python only", () => {
-    expect(canReplay(waiting, "python")).toBe(true);
-    expect(canReplay(waiting, "javascript")).toBe(false);
-    expect(canReplay(apply(startState("python"), { type: "done", ok: true, elapsedMs: 1 }), "python")).toBe(false);
+  it("recognises the waiting state for both runtimes", () => {
+    expect(canReplay(waiting)).toBe(true);
+    expect(canReplay(apply(startState("python"), { type: "done", ok: true, elapsedMs: 1 }))).toBe(false);
+    const jsWaiting = apply(startState("javascript"), { type: "stdout", text: "N? " }, { type: "stderr", text: "Lumio: waiting for input\n" }, done);
+    expect(canReplay(jsWaiting)).toBe(true);
+    expect(describeStatus(jsWaiting, "javascript")).toBe("Waiting for your answer");
+    expect(canReplay(apply(startState("javascript"), { type: "stderr", text: "Boom\n" }, done))).toBe(false);
+    expect(canReplay(apply(startState("javascript"), { type: "done", ok: true, elapsedMs: 1 }))).toBe(false);
   });
 
   it("keeps the previous output on screen while the replay runs, then swaps it in at the next wait", () => {
@@ -82,7 +86,7 @@ describe("replay", () => {
     expect(next.held).toBeNull();
     expect(next.diverged).toBe(false);
     expect(next.answers).toEqual(["4"]);
-    expect(canReplay(next, "python")).toBe(true);
+    expect(canReplay(next)).toBe(true);
     expect(describeStatus(next, "python")).toBe("Waiting for your answer");
   });
 

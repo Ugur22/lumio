@@ -52,8 +52,8 @@ export const isBusy = (s: RunState) => s.status === "loading" || s.status === "r
 
 export type RunAction = RunEvent | { type: "stopped" } | { type: "replay"; answer: string };
 
-// Python, ran out of input, and not running: the one state the prompt row can answer.
-export const canReplay = (s: RunState, runtime: Runtime): boolean => runtime === "python" && needsInput(s);
+// Ran out of input and not running: the one state the prompt row can answer.
+export const canReplay = (s: RunState): boolean => needsInput(s);
 
 // Swap the replay's output in for the held one. Only a run that got to its end is comparable.
 function settle(state: RunState, compare: boolean): RunState {
@@ -125,7 +125,7 @@ export function describeStatus(state: RunState, runtime: Runtime): string {
     case "ok":
       return `Finished${took}${cut}`;
     case "error":
-      if (runtime === "python" && needsInput(state)) return `Waiting for your answer${cut}`;
+      if (needsInput(state)) return `Waiting for your answer${cut}`;
       return `Exited with error${took}${cut}`;
     case "timeout":
       return `Timed out after ${Math.round((state.timeoutMs ?? 0) / 1000)} s${cut}`;

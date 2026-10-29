@@ -138,7 +138,7 @@ export function OutputPanel({
 
   if (idle) return null;
 
-  const waiting = runtime === "python" && needsInput(state);
+  const waiting = needsInput(state);
   const replaying = state.held !== null && busy;
   const capped = atCap(state.answers.length);
   const prompt = replaying || (waiting && !capped);
@@ -210,7 +210,7 @@ export function OutputPanel({
         {!busy && !prompt && shown.chunks.length === 0 && <span className="italic text-[#8c8377]">(no output)</span>}
       </div>
       {state.diverged && !busy && <p className={mutedNote}>{DIVERGED_NOTE}</p>}
-      {state.feedback && !busy && runtime === "python" && <p className={mutedNote}>{FEEDBACK_NOTE[state.feedback]}</p>}
+      {state.feedback && !busy && <p className={mutedNote}>{FEEDBACK_NOTE[state.feedback]}</p>}
       {waiting && capped && <p className={mutedNote}>{CAP_NOTE}</p>}
     </div>
   );
