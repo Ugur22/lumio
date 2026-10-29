@@ -16,6 +16,7 @@ import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTheme } from "./hooks/useTheme";
 import type { Attachment } from "./lib/images";
 import { isRestoring } from "./lib/restoring";
+import { useStream } from "./store/stream";
 import type { ChatSummary } from "./types";
 
 export function App() {
@@ -44,6 +45,7 @@ export function App() {
   const activeProfile = profiles?.profiles.find((p) => p.id === profiles.active);
 
   const select = (id: string | null) => {
+    useStream.getState().clearFailures();
     setChosen(id);
     setMenuOpen(false);
     if (id === null) composer.current?.focus();

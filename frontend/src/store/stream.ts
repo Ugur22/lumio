@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SourceRef } from "../types";
+import type { IllustrationFailure, SourceRef } from "../types";
 
 // A discriminated union, so consumers can match it exhaustively. "Succeeded" is `pending: null`:
 // the saved chat then supplies the reply.
@@ -16,6 +16,14 @@ interface StreamState {
   sources: SourceRef[];
   notes: string[];
   query: string | null;
+  // Failed illustrations of the turn just sent. They outlive `clear` (the saved chat replaces the
+  // pending turn) and go away on the next send or when the chat changes. `failuresChatId` is null
+  // until the chat is known.
+  failures: IllustrationFailure[];
+  failuresChatId: string | null;
+  addFailure: (failure: IllustrationFailure) => void;
+  settleFailures: (chatId: string) => void;
+  clearFailures: () => void;
   start: (chatId: string | null, text: string, images?: string[]) => void;
   setReply: (reply: string) => void;
   setSources: (sources: SourceRef[], notes: string[], query?: string | null) => void;
@@ -33,9 +41,21 @@ export const useStream = create<StreamState>((set, get) => ({
   sources: [],
   notes: [],
   query: null,
+  failures: [],
+  failuresChatId: null,
+  addFailure: (failure) => set((s) => (s.pending ? { failures: [...s.failures, failure] } : s)),
+  settleFailures: (chatId) => set((s) => (s.failures.length ? { failuresChatId: chatId } : s)),
+  clearFailures: () => set({ failures: [], failuresChatId: null }),
   start: (chatId, text, images = []) => {
     revoke(get().pending);
-    set({ pending: { text, chatId, images, status: "thinking" }, sources: [], notes: [], query: null });
+    set({
+      pending: { text, chatId, images, status: "thinking" },
+      sources: [],
+      notes: [],
+      query: null,
+      failures: [],
+      failuresChatId: chatId,
+    });
   },
   setSources: (sources, notes, query = null) => set((s) => (s.pending ? { sources, notes, query } : s)),
   // A failed turn keeps showing its error; a late frame must not turn it back into a reply.

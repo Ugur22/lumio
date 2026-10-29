@@ -1,6 +1,13 @@
 // Mirrors models.py. Datetimes arrive as ISO-8601 strings.
 export type Role = "user" | "assistant";
 
+// Live-only: the server reports a failed illustration but does not store it.
+export interface IllustrationFailure {
+  prompt: string;
+  status: number | null;
+  detail: string;
+}
+
 export interface SourceRef {
   url: string;
   title: string;

@@ -77,3 +77,36 @@ describe("stream store", () => {
     expect(get().pending).toBeNull();
   });
 });
+
+describe("illustration failures", () => {
+  const fail = { prompt: "a harbour", status: 400, detail: "blocked" };
+  beforeEach(() => get().clearFailures());
+
+  it("collects failures for the turn in flight and ignores them without one", () => {
+    get().addFailure(fail);
+    expect(get().failures).toEqual([]);
+    get().start("c1", "hi");
+    get().addFailure(fail);
+    expect(get().failures).toEqual([fail]);
+  });
+
+  it("survives clear after done, tied to the saved chat", () => {
+    get().start(null, "hi");
+    get().addFailure(fail);
+    get().settleFailures("new-chat");
+    get().clear();
+    expect(get().failures).toEqual([fail]);
+    expect(get().failuresChatId).toBe("new-chat");
+  });
+
+  it("is cleared by the next send and by a chat change", () => {
+    get().start("c1", "hi");
+    get().addFailure(fail);
+    get().clear();
+    get().start("c1", "again");
+    expect(get().failures).toEqual([]);
+    get().addFailure(fail);
+    get().clearFailures();
+    expect(get().failures).toEqual([]);
+  });
+});

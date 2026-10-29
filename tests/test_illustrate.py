@@ -228,3 +228,58 @@ def test_illustrating_drops_html_block_instruction():
     assert "style attributes" in plain
     assert "style attributes" not in illustrated
     assert "[[image:" in illustrated and "[[key]]" in illustrated
+
+
+# --- failure events ---
+
+def test_failed_image_emits_illustration_failed_before_done(api, fake_client):
+    setup_profile(api)
+    reply_with(fake_client, "A\n\n[[image: a red barn]]\n\nB")
+
+    class Rejected(OpenAIError):
+        status_code = 400
+        response = type("R", (), {"text": '{"error":\n "prompt rejected k' + "k" * 20 + '"}'})()
+
+    def generate(**kw):
+        raise Rejected("Error code: 400")
+
+    fake_client.images.generate = generate
+    cid = new_chat(api)
+    evs = events(post(api, cid, content="x", illustrate=True))
+    names = [n for n, _ in evs]
+    assert names.count("illustration_failed") == 1 and names[-1] == "done"
+    data = dict(evs)["illustration_failed"]
+    assert data["prompt"] == "a red barn" and data["status"] == 400
+    assert "prompt rejected" in data["detail"] and "k" * 20 not in json.dumps(evs) and "\n" not in data["detail"]
+    assert len(data["detail"]) <= 200
+    assert "illustration" not in api.get(f"/api/chats/{cid}").text
+
+
+def test_value_error_failure_has_null_status(api, fake_client):
+    setup_profile(api)
+    reply_with(fake_client, "A\n\n[[image: x]]\n\nB")
+    generator(fake_client, data="")
+    evs = events(post(api, new_chat(api), content="x", illustrate=True))
+    assert dict(evs)["illustration_failed"] == {"prompt": "x", "status": None, "detail": "the provider returned no image data"}
+
+
+def test_successful_illustrations_emit_no_failure(api, fake_client):
+    setup_profile(api)
+    reply_with(fake_client, STORY)
+    generator(fake_client)
+    assert "illustration_failed" not in [n for n, _ in events(post(api, new_chat(api), content="x", illustrate=True))]
+
+
+def test_capped_extras_emit_no_failure(api, fake_client):
+    setup_profile(api)
+    reply_with(fake_client, "\n\n".join(f"P{i}\n\n[[image: scene {i}]]" for i in range(5)))
+    generator(fake_client)
+    assert "illustration_failed" not in [n for n, _ in events(post(api, new_chat(api), content="x", illustrate=True))]
+
+
+def test_readable_reason_unwraps_json_error_bodies():
+    body = '{"code":"imagine:content-moderated","error":"Generated image rejected by content moderation.","usage":{"cost_in_usd_ticks":1}}'
+    assert server.readable_reason(body) == "Generated image rejected by content moderation."
+    assert server.readable_reason('{"error":{"message":"bad  prompt"}}') == "bad prompt"
+    assert server.readable_reason("plain text") == "plain text"
+    assert server.readable_reason('{"other":1}') == '{"other":1}'

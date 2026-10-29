@@ -43,10 +43,15 @@ export function useStreamingSend() {
           images: attachments.map((a) => a.upload),
           web,
           illustrate,
-          signal: controller.signal, onDelta, onSources: useStream.getState().setSources },
+          signal: controller.signal,
+          onDelta,
+          onSources: useStream.getState().setSources,
+          onIllustrationFailed: useStream.getState().addFailure,
+        },
         {
           onSuccess: (saved) => {
             endStream();
+            useStream.getState().settleFailures(saved.id);
             useStream.getState().clear();
             onSaved(saved);
           },

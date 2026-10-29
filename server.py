@@ -15,7 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI, OpenAIError
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 import images
 import profile_store
@@ -346,21 +346,54 @@ def generate_image(client: OpenAI, model: str, prompt: str) -> ImageData:
     return ImageData(media_type=media_type, data=encoded)
 
 
-def describe_provider_error(e: Exception, key: str | None) -> str:
-    """Status and raw body of a failed provider call: the SDK's own message drops both when the body is not OpenAI-shaped."""
+def provider_error_parts(e: Exception, key: str | None, limit: int = 500) -> tuple[int | None, str]:
+    """HTTP status and whitespace-collapsed, redacted body of a failed provider call: the SDK's own message drops both when the body is not OpenAI-shaped."""
     status = getattr(e, "status_code", None)
-    body = getattr(getattr(e, "response", None), "text", "") or getattr(e, "message", str(e))
-    return redact(f"{status or type(e).__name__}: {' '.join(body.split())[:500]}", key)
+    if not isinstance(status, int) or isinstance(status, bool):
+        status = None
+    if isinstance(e, ValueError) and not isinstance(e, ValidationError):
+        body = str(e)
+    elif isinstance(e, OpenAIError):
+        body = getattr(getattr(e, "response", None), "text", "") or getattr(e, "message", str(e))
+    else:
+        # Parsing errors can echo the provider payload; give a fixed reason instead.
+        body = "the provider returned an unusable image response"
+    return status, redact(" ".join(str(body).split()), key)[:limit]
+
+
+def describe_provider_error(e: Exception, key: str | None) -> str:
+    status, detail = provider_error_parts(e, key)
+    return f"{status or type(e).__name__}: {detail}"
+
+
+def readable_reason(detail: str) -> str:
+    """The message inside a JSON error body ({"error": "..."} or {"error": {"message": "..."}}), else the text as is."""
+    try:
+        body = json.loads(detail)
+    except ValueError:
+        return detail
+    err = body.get("error") if isinstance(body, dict) else None
+    if isinstance(err, dict):
+        err = err.get("message")
+    return " ".join(err.split()) if isinstance(err, str) and err.strip() else detail
+
+
+class IllustrationFailure(BaseModel):
+    prompt: str
+    status: int | None
+    detail: str
 
 
 async def illustrate_reply(
     chat_id: str, text: str, client: OpenAI, model: str, key: str | None
-) -> tuple[str, list[ImageRef]]:
+) -> tuple[str, list[ImageRef], list[IllustrationFailure]]:
     """Turns [[image: ...]] directives into stored images and [[img:<id>]] markers.
 
-    A directive that fails (provider error, bad data) or exceeds the cap is removed and the text kept.
+    A directive that fails (provider error, bad data) or exceeds the cap is removed and the text kept;
+    real failures are returned so the caller can report them (directives over the cap are not failures).
     """
     refs: list[ImageRef] = []
+    failures: list[IllustrationFailure] = []
     wanted = 0
 
     async def replace(match: re.Match) -> str:
@@ -373,6 +406,8 @@ async def illustrate_reply(
             data = await run_in_threadpool(generate_image, client, model, prompt)
         except (OpenAIError, ValueError, ValidationError, IndexError, AttributeError) as e:
             log.warning("Illustration failed (%s) for prompt %r", describe_provider_error(e, key), prompt[:200])
+            status, detail = provider_error_parts(e, key, 2000)
+            failures.append(IllustrationFailure(prompt=prompt[:200], status=status, detail=readable_reason(detail)[:200]))
             return ""
         ref = images.save_images(settings, chat_id, [data])[0].model_copy(update={"prompt": prompt})
         refs.append(ref)
@@ -383,7 +418,7 @@ async def illustrate_reply(
         out += [text[last : match.start()], await replace(match)]
         last = match.end()
     out.append(text[last:])
-    return (tidy("".join(out)) if last else text), refs
+    return (tidy("".join(out)) if last else text), refs, failures
 
 
 def history_for(chat: Chat, vision: bool = False) -> list[dict]:
@@ -499,14 +534,17 @@ async def stream_reply(
         # Saved only after success so a failed request leaves no dangling question.
         reply = "".join(parts)
         reply_images: list[ImageRef] = []
+        failures: list[IllustrationFailure] = []
         if illustrate:
-            reply, reply_images = await illustrate_reply(chat.id, reply, *illustrate)
+            reply, reply_images, failures = await illustrate_reply(chat.id, reply, *illustrate)
         else:
             reply = strip_directives(reply)
         append_turn(chat, content, reply, sources, uploads, query, usage, reply_images)
         finished = True
         for ref in reply_images:
             yield sse("image", {"id": ref.id, "media_type": ref.media_type, "prompt": ref.prompt})
+        for failure in failures:
+            yield sse("illustration_failed", failure.model_dump())
         # Extra keys are additive: the chat fields stay where the existing frontend reads them.
         yield sse(
             "done",

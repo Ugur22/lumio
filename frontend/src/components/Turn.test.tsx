@@ -91,3 +91,44 @@ describe("Turn illustrations", () => {
     expect(out).not.toContain("lighthouse");
   });
 });
+
+describe("Turn illustration failures", () => {
+  const reply = { kind: "text", content: "hi" } as const;
+
+  it("shows status and detail as a status note with the prompt as secondary text", () => {
+    const out = renderToStaticMarkup(
+      <Turn question="q" reply={reply} failures={[{ prompt: "a harbour", status: 400, detail: "blocked" }]} />,
+    );
+    expect(out).toContain('role="status"');
+    expect(out).toContain("Couldn&#x27;t generate an image (400): blocked");
+    expect(out).toContain("<details");
+    expect(out).toContain("a harbour");
+  });
+
+  it("omits the status when unknown", () => {
+    const out = renderToStaticMarkup(
+      <Turn question="q" reply={reply} failures={[{ prompt: "", status: null, detail: "timeout" }]} />,
+    );
+    expect(out).toContain("Couldn&#x27;t generate an image: timeout");
+    expect(out).not.toContain("<details");
+  });
+
+  it("renders detail and prompt as plain text", () => {
+    const out = renderToStaticMarkup(
+      <Turn
+        question="q"
+        reply={reply}
+        failures={[{ prompt: "<img src=x onerror=1> **bold**", status: 500, detail: "<script>alert(1)</script>" }]}
+      />,
+    );
+    expect(out).not.toContain("<script>");
+    expect(out).not.toContain("<img");
+    expect(out).not.toContain("<strong>");
+    expect(out).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(out).toContain("**bold**");
+  });
+
+  it("shows nothing without failures", () => {
+    expect(renderToStaticMarkup(<Turn question="q" reply={reply} />)).not.toContain("generate an image");
+  });
+});

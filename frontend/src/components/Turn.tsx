@@ -6,9 +6,10 @@ import { APP_NAME } from "../lib/brand";
 import { copyText } from "../lib/illustrations";
 import { hostOf } from "../lib/providers";
 import type { Illustration } from "../lib/illustrations";
-import type { SourceRef } from "../types";
+import type { IllustrationFailure, SourceRef } from "../types";
 import { CheckIcon, CopyIcon, LumioMark } from "./icons";
 import { AttachedImage } from "./AttachedImage";
+import { IllustrationNotes } from "./IllustrationNotes";
 import { ReplyBody } from "./ReplyBody";
 
 export type Reply =
@@ -38,9 +39,11 @@ interface TurnProps {
   notes?: string[];
   // The rewritten search query the app sent, shown next to the sources.
   query?: string | null;
+  // Illustrations that failed during the send that produced this reply (live only).
+  failures?: IllustrationFailure[];
 }
 
-export function Turn({ question, images = [], reply, sources = [], notes = [], query = null }: TurnProps) {
+export function Turn({ question, images = [], reply, sources = [], notes = [], query = null, failures = [] }: TurnProps) {
   // A turn that mounts while still waiting for its reply is new; history mounts with its reply.
   const [live] = useState(reply.kind === "thinking");
 
@@ -61,6 +64,7 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
           <Appear live={live} className="mt-5">
             <Who />
             <ReplyBody content={r.content} illustrations={r.illustrations} streaming={r.streaming} />
+            {!r.streaming && <IllustrationNotes failures={failures} />}
             {!r.streaming && <CopyButton text={copyText(r.content)} />}
           </Appear>
         ))

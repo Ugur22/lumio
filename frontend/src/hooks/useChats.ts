@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Chat, ContextInfo, ImageUpload, SourceRef } from "../types";
+import type { Chat, ContextInfo, IllustrationFailure, ImageUpload, SourceRef } from "../types";
 
 export const chatsKey = ["chats"] as const;
 export const chatKey = (id: string) => ["chat", id] as const;
@@ -73,6 +73,7 @@ interface SendVars {
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
+  onIllustrationFailed: (failure: IllustrationFailure) => void;
 }
 
 // After Stop the server saves the partial reply on its own schedule, so poll briefly for it.
@@ -89,7 +90,7 @@ async function savedAfterStop(id: string, knownCount: number): Promise<Chat> {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation<SentChat, Error, SendVars>({
-    mutationFn: async ({ chatId, content, images, web, illustrate, signal, onDelta, onSources }) => {
+    mutationFn: async ({ chatId, content, images, web, illustrate, signal, onDelta, onSources, onIllustrationFailed }) => {
       const id = chatId ?? (await api.createChat()).id;
       const knownCount = chatId === null ? 0 : (qc.getQueryData<Chat>(chatKey(id))?.messages.length ?? 0);
       let received = false;
@@ -100,6 +101,7 @@ export function useSendMessage() {
           illustrate,
           signal,
           onSources,
+          onIllustrationFailed,
           onDelta: (text) => {
             received = true;
             onDelta(text);

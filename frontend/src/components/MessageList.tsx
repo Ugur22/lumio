@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { match } from "ts-pattern";
 import { imageUrl } from "../api";
 import { useStream } from "../store/stream";
-import type { Message, SourceRef } from "../types";
+import type { IllustrationFailure, Message, SourceRef } from "../types";
 import { PressButton } from "./PressButton";
 import { Turn, type Reply } from "./Turn";
 
@@ -28,6 +28,8 @@ export function MessageList({ messages, chatId, loading = false, onPick, onStory
   const liveSources = useStream((s) => s.sources);
   const liveNotes = useStream((s) => s.notes);
   const liveQuery = useStream((s) => s.query);
+  const failures = useStream((s) => s.failures);
+  const failuresChatId = useStream((s) => s.failuresChatId);
   // A reply still streaming for another chat must not show up here.
   const pending = stored && stored.chatId === chatId ? stored : null;
 
@@ -42,7 +44,7 @@ export function MessageList({ messages, chatId, loading = false, onPick, onStory
   }, [messages, pending, streaming]);
 
   // Messages alternate user/assistant, so pairing them gives one visual turn each.
-  const turns: { question: string; images: string[]; reply: Reply; sources: SourceRef[]; notes: string[]; query: string | null }[] = [];
+  const turns: { question: string; images: string[]; reply: Reply; sources: SourceRef[]; notes: string[]; query: string | null; failures: IllustrationFailure[] }[] = [];
   for (let i = 0; i < messages.length; i += 2) {
     const q = messages[i];
     const a = messages[i + 1];
@@ -50,7 +52,7 @@ export function MessageList({ messages, chatId, loading = false, onPick, onStory
       const illustrations = chatId && a ? a.images.map((r) => ({ id: r.id, url: imageUrl(chatId, r.id), prompt: r.prompt ?? null })) : [];
       const reply: Reply = a ? { kind: "text", content: a.content, illustrations } : { kind: "none" };
       const images = chatId ? q.images.map((r) => imageUrl(chatId, r.id)) : [];
-      turns.push({ question: q.content, images, reply, sources: q.sources, notes: [], query: q.query ?? null });
+      turns.push({ question: q.content, images, reply, sources: q.sources, notes: [], query: q.query ?? null, failures: [] });
     }
   }
   if (pending) {
@@ -66,7 +68,12 @@ export function MessageList({ messages, chatId, loading = false, onPick, onStory
       sources: liveSources,
       notes: liveNotes,
       query: liveQuery,
+      failures: pending.chatId === failuresChatId ? failures : [],
     });
+  } else if (chatId && failuresChatId === chatId) {
+    // The turn just sent is now saved; the notes stay on its reply until the next send or chat switch.
+    const last = turns[turns.length - 1];
+    if (last && last.reply.kind === "text") last.failures = failures;
   }
 
   return (
@@ -83,7 +90,7 @@ export function MessageList({ messages, chatId, loading = false, onPick, onStory
         {turns.length === 0 ? (
           loading ? null : <EmptyState onPick={onPick} onStory={onStory} />
         ) : (
-          turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} query={t.query} />)
+          turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} query={t.query} failures={t.failures} />)
         )}
       </div>
     </section>
