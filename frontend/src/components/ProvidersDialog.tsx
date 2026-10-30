@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { isBackdropClick } from "../lib/backdrop";
+import { shouldAutoFetch } from "../lib/modelOptions";
 import { useProfileActions, useProfiles } from "../hooks/useProfiles";
 import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
 import { formatTokens } from "../lib/context";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
 import type { Profile } from "../types";
+import { ModelCombobox } from "./ModelCombobox";
 import { PressButton } from "./PressButton";
 
 interface Props {
@@ -31,6 +34,7 @@ function keyLabel(p: Profile): string {
 export function ProvidersDialog({ open, onClose }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const [view, setView] = useState<View>({ kind: "list" });
+  const pressTarget = useRef<EventTarget | null>(null);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -49,7 +53,12 @@ export function ProvidersDialog({ open, onClose }: Props) {
       ref={ref}
       aria-labelledby="providers-title"
       onClose={close}
-      onClick={(e) => e.target === ref.current && close()}
+      onMouseDown={(e) => (pressTarget.current = e.target)}
+      onClick={(e) => {
+        // A drag that began in a field and ended on the backdrop also targets the dialog, so the press must match too.
+        if (isBackdropClick(pressTarget.current, e.target, ref.current)) close();
+        pressTarget.current = null;
+      }}
       className="m-auto w-[min(92vw,30rem)] rounded-2xl border border-border bg-surface p-0 text-text shadow-lift backdrop:bg-black/40"
     >
       {view.kind === "list" ? (
@@ -237,6 +246,10 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
   const [windowTouched, setWindowTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+  const [keyCommitted, setKeyCommitted] = useState(false);
+  const latestFetch = useRef<() => Promise<void>>(async () => undefined);
+  const fetched = useRef("");
+  const request = useRef(0);
 
   const hint = !editing && preset === "custom" ? detectPreset(key) : undefined;
 
@@ -275,20 +288,38 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     }
   }
 
-  const fetchModels = () =>
-    run(async () => {
+  const fetchModels = () => {
+    const mine = ++request.current;
+    return run(async () => {
       const res = await actions.models({
         profile_id: profile?.id,
         base_url: baseUrl.trim() || undefined,
         key: key.trim() || undefined,
         needs_key: needsKey,
       });
+      if (mine !== request.current) return;
       setModels(res.models);
       const reported = res.context_windows ?? {};
       setWindows(reported);
       chooseModel(model, reported);
       setNotice({ kind: "ok", text: `Connected. ${res.models.length} models found.` });
     });
+  };
+  latestFetch.current = fetchModels;
+
+  // Debounced, and keyed on what the request depends on so typing elsewhere never refires it.
+  // The key only counts once its field was left, and a saved key is only used for the saved URL.
+  const savedUrl = profile?.base_url;
+  useEffect(() => {
+    if (!shouldAutoFetch({ baseUrl, needsKey, keyCommitted, saved: savedUrl === undefined ? null : { baseUrl: savedUrl } })) return;
+    const signature = `${baseUrl.trim()}|${needsKey}|${keyCommitted}`;
+    if (fetched.current === signature) return;
+    const timer = setTimeout(() => {
+      fetched.current = signature;
+      void latestFetch.current();
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [baseUrl, needsKey, keyCommitted, savedUrl]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -363,7 +394,11 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
           <input
             type="password"
             value={key}
-            onChange={(e) => setKey(e.target.value)}
+            onChange={(e) => {
+              setKey(e.target.value);
+              setKeyCommitted(false);
+            }}
+            onBlur={() => setKeyCommitted(key.trim() !== "")}
             autoComplete="off"
             spellCheck={false}
             placeholder={editing ? "Leave blank to keep the saved key" : "Paste your API key"}
@@ -384,21 +419,10 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
         </label>
       )}
 
-      <label className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
         <span className="text-[13px] font-medium">Model</span>
-        <input
-          value={model}
-          onChange={(e) => chooseModel(e.target.value)}
-          list="model-options"
-          spellCheck={false}
-          className={field}
-        />
-        <datalist id="model-options">
-          {models.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-      </label>
+        <ModelCombobox value={model} models={models} onChange={chooseModel} className={field} />
+      </div>
 
       <label className="flex flex-col gap-1.5">
         <span className="text-[13px] font-medium">Context window (tokens, optional)</span>
