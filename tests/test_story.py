@@ -342,7 +342,7 @@ def test_editing_story_or_summary_invalidates_provider_usage(api, fake_client):
 
 def test_context_estimates_by_part_and_reports_the_profile_window(api, monkeypatch):
     monkeypatch.setattr(
-        server, "active_profile", lambda: Profile(id="p", name="P", base_url="https://x.example/v1", model="m", context_window=8000)
+        server, "profile_for", lambda chat: Profile(id="p", name="P", base_url="https://x.example/v1", model="m", context_window=8000)
     )
     cid = seed(api, 2)  # "m0", "m1": 4 characters, one token
     api.put(

@@ -12,14 +12,22 @@ describe("ContextMeter", () => {
   it("shows used / window, the source and the breakdown", () => {
     const out = html(info({}));
     expect(out).toContain("34k / 128k");
-    expect(out).toContain("exact");
+    expect(out).toContain("27%");
+    expect(out).not.toContain("Estimated");
     expect(out).toContain("Story bible");
     expect(out).toContain('aria-valuenow="27"');
     expect(out).not.toContain("Summarize older chapters");
   });
 
   it("marks estimates", () => {
-    expect(html(info({ source: "estimate" }))).toContain("~estimate");
+    expect(html(info({ source: "estimate" }))).toContain("Estimated");
+  });
+
+  it("keeps tiny usage visible without changing the aria values", () => {
+    const out = html(info({ used: 780, window: 1_000_000 }));
+    expect(out).toContain("min-w-1.5");
+    expect(out).toContain('aria-valuenow="0"');
+    expect(html(info({ used: 0 }))).not.toContain("min-w-1.5");
   });
 
   it("goes amber then red and offers to summarize from 70%", () => {

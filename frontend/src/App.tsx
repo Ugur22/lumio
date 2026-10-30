@@ -15,6 +15,7 @@ import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTheme } from "./hooks/useTheme";
 import type { Attachment } from "./lib/images";
+import { effectiveProfile } from "./lib/providers";
 import { isRestoring } from "./lib/restoring";
 import { useStream } from "./store/stream";
 import type { ChatSummary } from "./types";
@@ -44,7 +45,7 @@ export function App() {
   const remove = useDeleteChat();
   const { send, stop, isPending: sending } = useStreamingSend();
   const profiles = useProfiles().data;
-  const activeProfile = profiles?.profiles.find((p) => p.id === profiles.active);
+  const activeProfile = effectiveProfile(profiles, chat.data?.profile_id).profile;
 
   const select = (id: string | null) => {
     useStream.getState().clearFailures();
@@ -171,7 +172,7 @@ export function App() {
             <BookIcon width={16} height={16} />
             <span className="max-[480px]:hidden">Story</span>
           </Button>
-          <ProviderSwitcher onManage={() => setSettingsOpen(true)} />
+          <ProviderSwitcher chatId={currentId} onManage={() => setSettingsOpen(true)} />
         </header>
         {loadError && (
           <div role="alert" className="px-5 py-2 text-warn-bar">

@@ -85,8 +85,8 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
           <li key={p.id} className="flex items-center gap-3 rounded-xl border border-border bg-bg px-3 py-2.5">
             <input
               type="radio"
-              name="active-provider"
-              aria-label={`Use ${p.name}`}
+              name="default-provider"
+              aria-label={`Use ${p.name} as default for new chats`}
               checked={data.active === p.id}
               onChange={() => activate(p.id)}
               className={`accent-[var(--accent)] ${focusRing}`}

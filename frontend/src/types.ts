@@ -67,6 +67,8 @@ export interface Chat {
   top_p: number | null;
   frequency_penalty: number | null;
   max_tokens: number | null;
+  // The provider this chat talks to; null follows the global default.
+  profile_id: string | null;
 }
 
 export interface BehaviorBody {
@@ -75,6 +77,8 @@ export interface BehaviorBody {
   top_p: number | null;
   frequency_penalty: number | null;
   max_tokens: number | null;
+  // Omitted leaves the chat's provider alone; null clears it (follow the default).
+  profile_id?: string | null;
 }
 
 export interface StoryBody {

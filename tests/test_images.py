@@ -121,7 +121,7 @@ def test_history_downgrades_images_on_text_only_profiles(api, calls):
     use_profile(api, vision=True)
     cid = new_chat(api)
     post(api, cid, content="one", images=[IMG])
-    api.post("/api/profiles/default/activate")
+    api.put(f"/api/chats/{cid}/behavior", json={"profile_id": "default"})
     post(api, cid, content="two")
 
     assert calls[1][1]["content"] == f"one\n\n{server.IMAGE_UNSUPPORTED}"

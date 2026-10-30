@@ -112,7 +112,7 @@ export const BEHAVIOR_LIMITS = {
 
 const text = (n: number | null) => (n === null ? "" : String(n));
 
-export function toBehaviorDraft(chat: Pick<Chat, keyof BehaviorBody>): BehaviorDraft {
+export function toBehaviorDraft(chat: Pick<Chat, Exclude<keyof BehaviorBody, "profile_id">>): BehaviorDraft {
   return {
     systemPrompt: chat.system_prompt,
     temperature: text(chat.temperature),
@@ -184,7 +184,7 @@ export function toBehaviorBody(d: BehaviorDraft): BehaviorBody {
 }
 
 // Compared as numbers, so ".85" typed against a saved 0.85 isn't mistaken for an edit.
-export function isBehaviorDirty(chat: Pick<Chat, keyof BehaviorBody>, d: BehaviorDraft): boolean {
+export function isBehaviorDirty(chat: Pick<Chat, Exclude<keyof BehaviorBody, "profile_id">>, d: BehaviorDraft): boolean {
   if (Object.keys(behaviorProblems(d)).length > 0) return true;
   return JSON.stringify(toBehaviorBody(d)) !== JSON.stringify(toBehaviorBody(toBehaviorDraft(chat)));
 }

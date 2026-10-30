@@ -155,6 +155,8 @@ class Chat(BaseModel):
     top_p: float | None = None
     frequency_penalty: float | None = None
     max_tokens: int | None = None
+    # None follows the global default provider, so chats saved before this existed keep working.
+    profile_id: str | None = None
 
 
 class ChatSummary(BaseModel):
@@ -311,6 +313,8 @@ class BehaviorUpdate(BaseModel):
     top_p: float | None = Field(default=None, ge=0, le=1)
     frequency_penalty: float | None = Field(default=None, ge=-2, le=2)
     max_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
+    # Only applied when sent (see update_behavior), so a client that predates it can't clear the chat's provider.
+    profile_id: str | None = Field(default=None, pattern=r"^[0-9a-z]{1,32}$")
 
 
 class SummaryUpdate(BaseModel):

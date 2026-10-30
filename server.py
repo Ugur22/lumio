@@ -154,6 +154,16 @@ def active_profile() -> Profile:
     return profile
 
 
+def profile_for(chat: Chat) -> Profile:
+    """The chat's own provider, falling back to the default when it has none or it was deleted."""
+    store = profile_store.load_store(settings)
+    wanted = chat.profile_id if chat.profile_id in {p.id for p in store.profiles} else store.active
+    profile = next((p for p in store.profiles if p.id == wanted), None)
+    if profile is None:
+        raise HTTPException(409, "No provider configured. Add one in Providers.")
+    return profile
+
+
 def profile_key(profile: Profile) -> str | None:
     if not profile.needs_key:
         return NO_KEY
@@ -294,7 +304,8 @@ def list_chats():
 
 @app.post("/api/chats", response_model=Chat, status_code=201)
 def create_chat():
-    chat = Chat(id=uuid.uuid4().hex)
+    store = profile_store.load_store(settings)
+    chat = Chat(id=uuid.uuid4().hex, profile_id=store.active)
     save_chat(chat)
     return chat
 
@@ -569,9 +580,9 @@ def context_info(chat: Chat, window: int | None) -> ContextInfo:
     return ContextInfo(used=used, window=window, source=source, parts=ContextParts(**sizes))
 
 
-def profile_window() -> int | None:
+def profile_window(chat: Chat) -> int | None:
     try:
-        return active_profile().context_window
+        return profile_for(chat).context_window
     except HTTPException:
         return None
 
@@ -698,8 +709,11 @@ def update_story(chat_id: ChatId, body: StoryUpdate):
 @app.put("/api/chats/{chat_id}/behavior", response_model=Chat)
 def update_behavior(chat_id: ChatId, body: BehaviorUpdate):
     chat = load_chat(chat_id)
+    if body.profile_id is not None:
+        find(profile_store.load_store(settings), body.profile_id)
     for field, value in body:
-        setattr(chat, field, value)
+        if field != "profile_id" or "profile_id" in body.model_fields_set:
+            setattr(chat, field, value)
     chat.last_usage = None  # measured against the old prompt
     save_chat(chat)
     return chat
@@ -712,7 +726,7 @@ def summarize_chat(chat_id: ChatId):
     upto = len(chat.messages) - SUMMARY_KEEP
     if upto <= chat.summary_upto:
         raise HTTPException(409, "Not enough new messages to summarize yet")
-    profile = active_profile()
+    profile = profile_for(chat)
     client = get_client(profile)
     transcript = "\n\n".join(
         f"{m.role}: {web.clip(m.content.strip(), SUMMARY_MESSAGE_CHARS)}" for m in chat.messages[chat.summary_upto : upto]
@@ -750,13 +764,14 @@ def update_summary(chat_id: ChatId, body: SummaryUpdate):
 
 @app.get("/api/chats/{chat_id}/context", response_model=ContextInfo)
 def get_context(chat_id: ChatId):
-    return context_info(load_chat(chat_id), profile_window())
+    chat = load_chat(chat_id)
+    return context_info(chat, profile_window(chat))
 
 
 @app.post("/api/chats/{chat_id}/messages")
 def send_message(chat_id: ChatId, body: NewMessage):
     chat = load_chat(chat_id)
-    profile = active_profile()
+    profile = profile_for(chat)
     if body.images and not profile.vision:
         raise HTTPException(422, f"{profile.name} can't read images. Switch to a vision-capable provider.")
     if body.illustrate and not profile.image_model:
