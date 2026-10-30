@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Chat, StoryBody, SummaryBody } from "../types";
+import type { BehaviorBody, Chat, StoryBody, SummaryBody } from "../types";
 import { chatKey, chatsKey, contextKey } from "./useChats";
 
 // Story, summary and the context meter all derive from the saved chat, so every save refreshes the three.
@@ -16,6 +16,11 @@ function useStored(chatId: string) {
 export function useSaveStory(chatId: string) {
   const stored = useStored(chatId);
   return useMutation({ mutationFn: (body: StoryBody) => api.saveStory(chatId, body), onSuccess: stored });
+}
+
+export function useSaveBehavior(chatId: string) {
+  const stored = useStored(chatId);
+  return useMutation({ mutationFn: (body: BehaviorBody) => api.saveBehavior(chatId, body), onSuccess: stored });
 }
 
 export function useSaveSummary(chatId: string) {

@@ -12,6 +12,7 @@ import type {
   NewProfileBody,
   ProfileList,
   SourceRef,
+  BehaviorBody,
   StoryBody,
   SummaryBody,
   WebStatus,
@@ -127,6 +128,8 @@ export const api = {
   sendMessage: streamMessage,
   saveStory: (id: string, body: StoryBody) =>
     request<Chat>(`/chats/${id}/story`, { method: "PUT", body: JSON.stringify(body) }),
+  saveBehavior: (id: string, body: BehaviorBody) =>
+    request<Chat>(`/chats/${id}/behavior`, { method: "PUT", body: JSON.stringify(body) }),
   // Proposes a summary; nothing is saved until saveSummary.
   summarize: (id: string) => request<SummaryBody>(`/chats/${id}/summarize`, { method: "POST" }),
   saveSummary: (id: string, body: SummaryBody) =>

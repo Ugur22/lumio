@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatTokens, meterView, partRows, type ContextLevel } from "../lib/context";
 import type { ContextInfo } from "../types";
+import { Button, focusRing } from "./ui";
 
 interface Props {
   // Undefined while the first measurement is loading or if it failed; the meter then stays out of the way.
@@ -9,13 +10,27 @@ interface Props {
   onSummarize: () => void;
 }
 
-const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
 const BAR: Record<ContextLevel, string> = { ok: "bg-accent", warn: "bg-caution", high: "bg-warn-bar" };
 const TEXT: Record<ContextLevel, string> = { ok: "text-muted", warn: "text-caution", high: "text-warn-bar" };
 
 export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
   const [pinned, setPinned] = useState(false);
+  const tip = useRef<HTMLDivElement>(null);
+
+  // A pinned tip would otherwise stay until the same bar is clicked again.
+  useEffect(() => {
+    if (!pinned) return;
+    const unpinOutside = (e: PointerEvent) => !tip.current?.contains(e.target as Node) && setPinned(false);
+    const unpinOnEscape = (e: KeyboardEvent) => e.key === "Escape" && setPinned(false);
+    document.addEventListener("pointerdown", unpinOutside);
+    document.addEventListener("keydown", unpinOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", unpinOutside);
+      document.removeEventListener("keydown", unpinOnEscape);
+    };
+  }, [pinned]);
+
   if (!context) return null;
 
   const view = meterView(context);
@@ -24,9 +39,9 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
     return (
       <p className="mx-auto w-full max-w-[720px] px-5 pt-2 text-center text-xs text-muted">
         {formatUsed(context)}
-        <button type="button" onClick={onSetWindow} className={`rounded underline hover:text-text ${focus}`}>
+        <Button variant="bare" type="button" onClick={onSetWindow} className={`rounded underline hover:text-text ${focusRing}`}>
           Set context size
-        </button>
+        </Button>
       </p>
     );
   }
@@ -34,13 +49,13 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-2 text-xs">
       {/* Hover and keyboard focus reveal the tip like the Composer's; a click pins it for touch screens. */}
-      <div className="group relative min-w-[11rem] flex-1" onKeyDown={(e) => e.key === "Escape" && setPinned(false)}>
-        <button
+      <div ref={tip} className="group relative min-w-[11rem] flex-1">
+        <Button variant="bare"
           type="button"
           aria-expanded={pinned}
           aria-describedby="context-tip"
           onClick={() => setPinned((on) => !on)}
-          className={`flex w-full flex-col gap-1 rounded text-left ${focus}`}
+          className={`flex w-full flex-col gap-1 rounded text-left ${focusRing}`}
         >
           <span className="flex items-baseline justify-between gap-2">
             <span className={`font-medium ${TEXT[view.level]}`}>
@@ -62,7 +77,7 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
               style={{ width: `${view.barPercent}%` }}
             />
           </span>
-        </button>
+        </Button>
         <div
           id="context-tip"
           role="tooltip"
@@ -89,13 +104,13 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
         </div>
       </div>
       {view.suggestSummary && (
-        <button
+        <Button variant="bare"
           type="button"
           onClick={onSummarize}
-          className={`rounded-lg border border-border bg-surface px-2.5 py-1 font-medium shadow-soft hover:text-accent ${focus}`}
+          className={`rounded-lg border border-border bg-surface px-2.5 py-1 font-medium shadow-soft hover:text-accent ${focusRing}`}
         >
           Summarize older chapters
-        </button>
+        </Button>
       )}
     </div>
   );

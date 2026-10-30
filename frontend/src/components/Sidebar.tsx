@@ -5,7 +5,7 @@ import type { Theme } from "../hooks/useTheme";
 import type { ChatSummary } from "../types";
 import { KeyIcon, LumioMark, MoonIcon, PencilIcon, PlusIcon, SunIcon, TrashIcon } from "./icons";
 import { APP_NAME } from "../lib/brand";
-import { PressButton } from "./PressButton";
+import { Button, PressButton, focusRing } from "./ui";
 
 interface Props {
   chats: ChatSummary[];
@@ -27,7 +27,6 @@ type Row =
 const HEADER_HEIGHT = 30;
 const CHAT_HEIGHT = 40;
 
-const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
 const DAY = 86_400_000;
 
@@ -108,7 +107,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         onClick={onNew}
         hover={1.02}
         press={0.97}
-        className={`flex items-center justify-center gap-2 rounded-xl bg-accent px-3.5 py-2.5 font-semibold text-on-accent hover:brightness-90 ${focus} focus-visible:outline-offset-2`}
+        className={`flex items-center justify-center gap-2 rounded-xl bg-accent px-3.5 py-2.5 font-semibold text-on-accent hover:brightness-90 ${focusRing} focus-visible:outline-offset-2`}
       >
         <PlusIcon /> New chat
       </PressButton>
@@ -140,7 +139,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         type="button"
         onClick={onOpenSettings}
         press={0.97}
-        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text ${focus}`}
+        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text ${focusRing}`}
       >
         <KeyIcon /> Providers
       </PressButton>
@@ -150,7 +149,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         aria-label="Toggle theme"
         onClick={onToggleTheme}
         press={0.97}
-        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text ${focus}`}
+        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text ${focusRing}`}
       >
         <ThemeIcon theme={theme} />
         {theme === "dark" ? "Light mode" : "Dark mode"}
@@ -167,7 +166,7 @@ interface RowProps {
   onDelete: (chat: ChatSummary) => void;
 }
 
-const iconBtn = `rounded-lg p-1.5 text-muted transition-colors duration-200 hover:bg-bubble ${focus}`;
+const iconBtn = `rounded-lg p-1.5 text-muted transition-colors duration-200 hover:bg-bubble ${focusRing}`;
 
 function ChatRow({ chat, active, onOpen, onRename, onDelete }: RowProps) {
   return (
@@ -176,15 +175,15 @@ function ChatRow({ chat, active, onOpen, onRename, onDelete }: RowProps) {
         active ? "bg-border" : "hover:bg-bubble"
       }`}
     >
-      <button
+      <Button variant="bare"
         type="button"
         onClick={() => onOpen(chat.id)}
         title={chat.title}
         aria-current={active ? "page" : undefined}
-        className={`flex-1 truncate rounded text-left ${active ? "font-medium" : ""} ${focus}`}
+        className={`flex-1 truncate rounded text-left ${active ? "font-medium" : ""} ${focusRing}`}
       >
         {chat.title}
-      </button>
+      </Button>
       <div
         className={`flex items-center gap-0.5 transition-opacity duration-200 ease-out min-[721px]:absolute min-[721px]:inset-y-0 min-[721px]:right-0 min-[721px]:rounded-r-lg min-[721px]:bg-gradient-to-l min-[721px]:to-transparent min-[721px]:pl-10 min-[721px]:pr-1.5 min-[721px]:opacity-0 min-[721px]:group-hover:opacity-100 min-[721px]:group-focus-within:opacity-100 ${
           active ? "min-[721px]:from-border min-[721px]:from-55%" : "min-[721px]:from-bubble min-[721px]:from-55%"

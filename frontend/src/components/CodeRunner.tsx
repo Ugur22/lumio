@@ -6,6 +6,7 @@ import { describeStatus, isBusy, type RunState } from "../lib/runner/state";
 import { needsInput } from "../lib/runner/stdin";
 import { useCodeActions } from "./CodeActionsContext";
 import { CloseIcon, PlayIcon, SparklesIcon, SpinnerIcon, StopIcon } from "./icons";
+import { Button } from "./ui";
 
 // The code block is dark in both themes, so these are fixed colours like the ones in Markup.
 export const blockButton =
@@ -27,7 +28,7 @@ export function RunButtons({
   const label = RUNTIME_LABEL[runtime];
   if (!busy) {
     return (
-      <button
+      <Button variant="none"
         type="button"
         onClick={onRun}
         aria-label={`Run ${label} code`}
@@ -36,19 +37,19 @@ export function RunButtons({
       >
         <PlayIcon width={11} height={11} />
         Run
-      </button>
+      </Button>
     );
   }
   return (
     <>
-      <button type="button" disabled className={blockButton}>
+      <Button variant="none" type="button" disabled className={blockButton}>
         <SpinnerIcon width={12} height={12} className="motion-safe:animate-spin" />
         Running…
-      </button>
-      <button type="button" onClick={onStop} aria-label="Stop running code" title="Stop" className={blockButton}>
+      </Button>
+      <Button variant="none" type="button" onClick={onStop} aria-label="Stop running code" title="Stop" className={blockButton}>
         <StopIcon width={11} height={11} />
         Stop
-      </button>
+      </Button>
     </>
   );
 }
@@ -158,7 +159,7 @@ export function OutputPanel({
         </span>
         <span className="flex shrink-0 items-center gap-1">
           {actions && !busy && canFix(state) && (
-            <button
+            <Button variant="none"
               type="button"
               onClick={() => actions.askAboutRun(buildFixPrompt(state, runtime, buildStdin(state.answers)))}
               disabled={actions.busy}
@@ -168,15 +169,15 @@ export function OutputPanel({
             >
               <SparklesIcon width={12} height={12} />
               Fix with AI
-            </button>
+            </Button>
           )}
           {!busy && (
-            <button type="button" onClick={onRerun} aria-label={`Run ${RUNTIME_LABEL[runtime]} code again`} title="Run again" className={blockButton}>
+            <Button variant="none" type="button" onClick={onRerun} aria-label={`Run ${RUNTIME_LABEL[runtime]} code again`} title="Run again" className={blockButton}>
               <PlayIcon width={11} height={11} />
               Run again
-            </button>
+            </Button>
           )}
-          <button
+          <Button variant="none"
             type="button"
             onClick={onClear}
             aria-label="Clear output"
@@ -184,7 +185,7 @@ export function OutputPanel({
             className="-mr-1 rounded p-1 text-[#9d9486] transition-colors motion-reduce:transition-none hover:bg-white/10 hover:text-[#e7dfd0] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7ec4ae]"
           >
           <CloseIcon width={12} height={12} />
-          </button>
+          </Button>
         </span>
       </div>
       <div

@@ -5,7 +5,7 @@ import { ContextMeter } from "./components/ContextMeter";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { BookIcon, MenuIcon } from "./components/icons";
 import { MessageList } from "./components/MessageList";
-import { PressButton } from "./components/PressButton";
+import { Button, ConfirmDialog, PressButton, PromptDialog } from "./components/ui";
 import { ProviderSwitcher } from "./components/ProviderSwitcher";
 import { ProvidersDialog } from "./components/ProvidersDialog";
 import { Sidebar } from "./components/Sidebar";
@@ -33,6 +33,8 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [story, setStory] = useState<{ open: boolean; tab: StoryTab }>({ open: false, tab: "bible" });
+  const [renaming, setRenaming] = useState<ChatSummary | null>(null);
+  const [deleting, setDeleting] = useState<ChatSummary | null>(null);
   const composer = useRef<ComposerHandle>(null);
 
   const context = useChatContext(currentId);
@@ -71,13 +73,8 @@ export function App() {
     });
   }
 
-  function onRename(c: ChatSummary) {
-    const title = window.prompt("Rename chat", c.title)?.trim();
-    if (title) rename.mutate({ id: c.id, title });
-  }
-
-  function onDelete(c: ChatSummary) {
-    if (!window.confirm(`Delete "${c.title}"?`)) return;
+  function confirmDelete(c: ChatSummary) {
+    setDeleting(null);
     remove.mutate(c.id, { onSuccess: () => c.id === currentId && select(null) });
   }
 
@@ -104,8 +101,8 @@ export function App() {
         theme={theme}
         onNew={() => select(null)}
         onOpen={select}
-        onRename={onRename}
-        onDelete={onDelete}
+        onRename={setRenaming}
+        onDelete={setDeleting}
         onToggleTheme={toggle}
         onOpenSettings={() => {
           setMenuOpen(false);
@@ -113,6 +110,28 @@ export function App() {
         }}
       />
       <ProvidersDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <PromptDialog
+        open={renaming !== null}
+        title="Rename chat"
+        label="Title"
+        initialValue={renaming?.title ?? ""}
+        submitLabel="Rename"
+        maxLength={100}
+        onSubmit={(title) => {
+          if (renaming) rename.mutate({ id: renaming.id, title });
+          setRenaming(null);
+        }}
+        onCancel={() => setRenaming(null)}
+      />
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete this chat?"
+        description={deleting ? `"${deleting.title}" and its messages will be removed.` : undefined}
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => deleting && confirmDelete(deleting)}
+        onCancel={() => setDeleting(null)}
+      />
       <StoryDialog
         open={story.open}
         chatId={currentId}
@@ -141,17 +160,17 @@ export function App() {
             <MenuIcon />
           </PressButton>
           <h1 className="min-w-0 truncate font-display text-lg font-semibold">{title}</h1>
-          <button
+          <Button variant="bare"
             type="button"
             aria-label="Story"
             title="Story bible, lore and summary"
             disabled={create.isPending}
             onClick={openStory}
-            className="ml-auto flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted hover:bg-bubble hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
+            className="ml-auto flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted hover:bg-bubble hover:text-text disabled:opacity-60"
           >
             <BookIcon width={16} height={16} />
             <span className="max-[480px]:hidden">Story</span>
-          </button>
+          </Button>
           <ProviderSwitcher onManage={() => setSettingsOpen(true)} />
         </header>
         {loadError && (
