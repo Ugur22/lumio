@@ -34,7 +34,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,7 +55,7 @@ jobs:
       # The Cypress binary comes from npm's postinstall, so the cache above is restored before this runs.
       - run: cd frontend && npm ci
       - run: make e2e
-      - if: failure()
+      - if: failure() || cancelled()
         run: tail -n 60 logs/app.jsonl logs/e2e-server.out 2>/dev/null || true
 
   secrets:

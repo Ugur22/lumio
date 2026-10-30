@@ -41,6 +41,9 @@ e2e-server:
 
 # Smoke journey in Cypress. Not part of `make check` (needs the Cypress binary and free ports).
 # Builds dist/, starts the e2e server, waits for it, always stops it, and tails logs/app.jsonl on failure.
+# Bash on purpose: the teardown relies on `set -m` giving the server its own process group, and dash (/bin/sh on
+# Ubuntu CI) silently ignores it without a terminal, so the kill misses and `wait` hangs until the job times out.
+e2e: SHELL := /bin/bash
 e2e: build
 	@mkdir -p logs; : > logs/e2e-server.out; set -m; \
 	$(MAKE) --no-print-directory e2e-server > logs/e2e-server.out 2>&1 & srv=$$!; \
