@@ -40,7 +40,7 @@ export function Select({ value, onChange, options, variant = "field", className,
         <ListboxOptions
           anchor="bottom start"
           modal={false}
-          className="z-[60] max-h-60 w-[var(--button-width)] overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-lift [--anchor-gap:4px] focus:outline-none"
+          className="z-[60] max-h-60 w-max min-w-[var(--button-width)] max-w-[min(20rem,90vw)] overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-lift [--anchor-gap:4px] focus:outline-none"
         >
           {options.map((o) => (
             <ListboxOption

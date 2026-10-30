@@ -90,7 +90,7 @@ export default {
             },
             table: { display: "block", overflowX: "auto" },
             "th, td": { border: `1px solid ${v("border")}`, padding: "0.3rem 0.7rem" },
-            pre: { margin: "0", padding: "0", backgroundColor: "#1f1b16", color: "#e7dfd0", borderRadius: "10px" },
+            pre: { margin: "0", padding: "0", backgroundColor: "#1f1b16", color: "#e7dfd0", borderRadius: "0" },
             "pre code": {
               backgroundColor: "transparent",
               padding: "1rem",
