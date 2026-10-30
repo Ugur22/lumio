@@ -812,7 +812,7 @@ def require_local_origin(request: Request) -> None:
         return
     host_header = request.headers.get("host", "")
     origin = request.headers.get("origin")
-    if request.url.hostname not in LOCAL_HOSTS:
+    if request.url.hostname not in LOCAL_HOSTS and request.url.hostname != settings.public_host:
         raise HTTPException(403, f"Host {host_header!r} is not a local address")
     if origin is None:
         raise HTTPException(403, "Missing Origin header")
@@ -859,6 +859,12 @@ def find(store, profile_id: str) -> Profile:
     return profile
 
 
+def refuse_key_redirect(profile: Profile, base_url: str | None) -> None:
+    # With shared access to a server, "keep the saved key but use another URL" would hand the key to that URL.
+    if base_url is not None and base_url != profile.base_url:
+        raise HTTPException(403, "Changing the base URL needs the API key entered again")
+
+
 @profiles.get("", response_model=ProfileList)
 def list_profiles():
     return listing()
@@ -879,6 +885,8 @@ def create_profile(body: NewProfile):
 def edit_profile(profile_id: ProfileId, body: EditProfile):
     store = profile_store.load_store(settings)
     profile = find(store, profile_id)
+    if settings.deployed and not body.key:
+        refuse_key_redirect(profile, body.base_url)
     for field, value in body.model_dump(exclude={"key"}, exclude_none=True).items():
         setattr(profile, field, value)
     if "context_window" in body.model_fields_set:  # an explicit null clears it
@@ -929,6 +937,8 @@ async def list_models(body: ModelsQuery):
         key = body.key.get_secret_value().strip() or None
     if body.profile_id:
         profile = find(profile_store.load_store(settings), body.profile_id)
+        if settings.deployed and not body.key:
+            refuse_key_redirect(profile, base_url)
         base_url = base_url or profile.base_url
         needs_key = profile.needs_key
         key = key or profile_store.resolve_key(settings, profile)[0]

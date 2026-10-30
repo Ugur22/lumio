@@ -1,0 +1,2 @@
+# Fake key used by the offline tests; it is not a credential.
+00d6e6ded23a9da55e502a1e247249e60ac37445:tests/test_deploy.py:generic-api-key:10
