@@ -37,8 +37,15 @@ class Settings(BaseSettings):
     model: str = "uncensored"
     data_dir: Path = BASE_DIR / "data" / "chats"
     profiles_file: Path = BASE_DIR / "profiles.json"
+    # Set on a server: the hostname browsers use. It is also accepted by require_local_origin and
+    # switches on the checks that stop a stored key being sent to a different base URL.
+    public_host: str | None = None
     # Images are only kept so follow-up questions keep working; they are pruned after this.
     image_retention_days: int = Field(default=30, ge=1)
+
+    @property
+    def deployed(self) -> bool:
+        return self.public_host is not None
 
     @property
     def images_dir(self) -> Path:
