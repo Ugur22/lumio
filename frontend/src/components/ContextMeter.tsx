@@ -37,7 +37,7 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
 
   if (!view) {
     return (
-      <p className="mx-auto w-full max-w-[720px] px-5 pt-2 text-center text-xs text-muted">
+      <p className="mx-auto w-full max-w-[760px] px-5 pt-2 text-center text-xs text-muted">
         {formatUsed(context)}
         <Button variant="bare" type="button" onClick={onSetWindow} className={`rounded underline hover:text-text ${focusRing}`}>
           Set context size
@@ -47,7 +47,7 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-2 text-xs">
+    <div className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-2 text-xs">
       {/* Hover and keyboard focus reveal the tip like the Composer's; a click pins it for touch screens. */}
       <div ref={tip} className="group relative min-w-[11rem] flex-1">
         <Button variant="bare"
@@ -55,13 +55,16 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
           aria-expanded={pinned}
           aria-describedby="context-tip"
           onClick={() => setPinned((on) => !on)}
-          className={`flex w-full flex-col gap-1 rounded text-left ${focusRing}`}
+          className={`flex w-full flex-col gap-1.5 rounded px-0.5 text-left ${focusRing}`}
         >
           <span className="flex items-baseline justify-between gap-2">
-            <span className={`font-medium ${TEXT[view.level]}`}>
-              {view.label} <span className="font-normal">tokens</span>
+            <span className="flex items-baseline gap-2">
+              <span className={`text-[13px] font-semibold tabular-nums ${TEXT[view.level]}`}>{view.percent}%</span>
+              <span className="tabular-nums text-muted">
+                {view.label} <span>tokens</span>
+              </span>
             </span>
-            <span className="text-muted">{view.sourceLabel}</span>
+            {view.sourceLabel === "estimated" && <span className="text-[11px] text-muted">Estimated</span>}
           </span>
           <span
             role="meter"
@@ -70,10 +73,13 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
             aria-valuemax={100}
             aria-valuenow={view.barPercent}
             aria-valuetext={`${view.percent}% of the context window, ${view.sourceLabel}`}
-            className="block h-1 overflow-hidden rounded-full bg-bubble"
+            className="block h-2 overflow-hidden rounded-full border border-border bg-bubble"
           >
+            {/* The min width keeps a nonzero usage visible; the aria values above stay true. */}
             <span
-              className={`block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-300 ${BAR[view.level]}`}
+              className={`block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-out ${
+                context.used > 0 ? "min-w-1.5" : ""
+              } ${BAR[view.level]}`}
               style={{ width: `${view.barPercent}%` }}
             />
           </span>

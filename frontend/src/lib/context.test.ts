@@ -43,7 +43,7 @@ describe("meterView", () => {
   it("formats the label and labels the source", () => {
     const v = meterView(info({}));
     expect(v).toMatchObject({ label: "34k / 128k", percent: 27, level: "ok", sourceLabel: "exact", suggestSummary: false });
-    expect(meterView(info({ source: "estimate" }))?.sourceLabel).toBe("~estimate");
+    expect(meterView(info({ source: "estimate" }))?.sourceLabel).toBe("estimated");
   });
 
   it("suggests summarizing from 70% up", () => {

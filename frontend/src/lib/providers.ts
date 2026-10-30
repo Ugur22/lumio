@@ -1,3 +1,5 @@
+import type { Profile, ProfileList } from "../types";
+
 export interface Preset {
   id: string;
   label: string;
@@ -24,6 +26,19 @@ export const PRESETS: Preset[] = [
   { id: "ollama", label: "Ollama (local)", baseUrl: "http://localhost:11434/v1", model: "llama3.2", needsKey: false, vision: false, keyPrefixes: [] },
   { id: "custom", label: "Custom", baseUrl: "", model: "", needsKey: true, vision: false, keyPrefixes: [] },
 ];
+
+// A chat's own provider wins unless it was deleted, in which case the chat quietly follows the default.
+export function effectiveProfile(
+  list: ProfileList | undefined,
+  chatProfileId: string | null | undefined,
+): { profile: Profile | undefined; fellBack: boolean } {
+  const own = chatProfileId ? list?.profiles.find((p) => p.id === chatProfileId) : undefined;
+  if (own) return { profile: own, fellBack: false };
+  return {
+    profile: list?.profiles.find((p) => p.id === list.active),
+    fellBack: Boolean(chatProfileId) && list !== undefined,
+  };
+}
 
 export const presetById = (id: string) => PRESETS.find((p) => p.id === id);
 

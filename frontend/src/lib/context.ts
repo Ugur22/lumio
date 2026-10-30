@@ -28,7 +28,7 @@ export interface MeterView {
   percent: number;
   barPercent: number;
   level: ContextLevel;
-  sourceLabel: "exact" | "~estimate";
+  sourceLabel: "exact" | "estimated";
   suggestSummary: boolean;
 }
 
@@ -42,7 +42,7 @@ export function meterView(ctx: ContextInfo): MeterView | null {
     percent,
     barPercent: Math.min(100, percent),
     level,
-    sourceLabel: ctx.source === "provider" ? "exact" : "~estimate",
+    sourceLabel: ctx.source === "provider" ? "exact" : "estimated",
     suggestSummary: level !== "ok",
   };
 }
