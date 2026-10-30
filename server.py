@@ -831,7 +831,7 @@ def view(profile: Profile) -> ProfileView:
     key, source = profile_store.resolve_key(settings, profile)
     configured = key is not None or not profile.needs_key
     last4 = key[-4:] if key and len(key) >= 12 else None
-    return ProfileView(**profile.model_dump(), configured=configured, last4=last4, source=source)
+    return ProfileView(**profile.model_dump(), configured=configured, last4=last4, source=source, key_store=secret_store.store_kind())
 
 
 def listing(store=None) -> ProfileList:
@@ -966,7 +966,11 @@ web_settings = APIRouter(prefix="/api/web", dependencies=[Depends(require_local_
 
 def web_status() -> WebStatus:
     key = secret_store.get_key(secret_store.TAVILY_ACCOUNT)
-    return WebStatus(configured=key is not None, last4=key[-4:] if key and len(key) >= 12 else None)
+    return WebStatus(
+        configured=key is not None,
+        last4=key[-4:] if key and len(key) >= 12 else None,
+        key_store=secret_store.store_kind(),
+    )
 
 
 @web_settings.get("", response_model=WebStatus)

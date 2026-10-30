@@ -12,7 +12,7 @@ A local chat UI for any OpenAI-compatible LLM. Built for writing: dialogue, acti
 - Streaming LLM replies from any OpenAI-compatible provider with Markdown, syntax highlighting and styled dialogue
 - Image input: attach, paste or drop images and the model reads them (with a vision-capable model)
 - Optional web search: add a Tavily key to turn on the Web toggle; links you paste are always read
-- Your API keys live in the OS keychain, never in a file and never in the browser
+- Your API keys live in the OS keychain (on a deployed server, an owner-only file outside the repo) and never in the browser
 - Saved chats with rename and delete, light and dark themes
 
 Lumio still works with any OpenAI-compatible API: providers are profiles (name, base URL, model), switchable from the header.

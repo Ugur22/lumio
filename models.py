@@ -220,6 +220,8 @@ class ProfileView(Profile):
     configured: bool
     last4: str | None = None
     source: Literal["keychain", "env"] | None = None
+    # Where saved keys live: the OS keychain locally, a file on a server.
+    key_store: Literal["keychain", "file"] = "keychain"
 
 
 class ProfileList(BaseModel):
@@ -291,6 +293,7 @@ class WebKey(BaseModel):
 class WebStatus(BaseModel):
     configured: bool
     last4: str | None = None
+    key_store: Literal["keychain", "file"] = "keychain"
 
 
 class RenameChat(BaseModel):

@@ -305,11 +305,11 @@ def test_search_key_is_kept_in_the_keychain_and_never_returned(api, memory_keyri
 
     res = api.put("/api/web/key", json={"key": key})
 
-    assert res.json() == {"configured": True, "last4": "abcd"}
+    assert res.json() == {"configured": True, "last4": "abcd", "key_store": "keychain"}
     assert key not in res.text and key not in api.get("/api/web").text
     assert memory_keyring.store[(secret_store.SERVICE, secret_store.TAVILY_ACCOUNT)] == key
 
-    assert api.delete("/api/web/key").json() == {"configured": False, "last4": None}
+    assert api.delete("/api/web/key").json() == {"configured": False, "last4": None, "key_store": "keychain"}
     assert (secret_store.SERVICE, secret_store.TAVILY_ACCOUNT) not in memory_keyring.store
 
 

@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from typing import Literal
 
 import e2e
 import keyring
@@ -12,6 +13,10 @@ LEGACY_ACCOUNT = "api-key"
 TAVILY_ACCOUNT = "tavily"
 # A server has no OS keychain: when this points at a file, keys live there instead (mode 0600).
 SECRETS_FILE_ENV = "DOLPHINLLM_SECRETS_FILE"
+
+
+def store_kind() -> Literal["keychain", "file"]:
+    return "file" if _secrets_file() else "keychain"
 
 
 def profile_account(profile_id: str) -> str:
