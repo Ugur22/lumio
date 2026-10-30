@@ -6,7 +6,7 @@ model: sonnet
 color: slate
 ---
 
-You implement backend changes for Dolphin Chat. Follow `CLAUDE.md`: no commits, no touching `.env` or `data/`, and ask before anything destructive.
+You implement backend changes for Lumio. Follow `CLAUDE.md`: no commits, no touching `.env` or `data/`, and ask before anything destructive.
 
 ## Layout
 - `server.py` holds the routes and the OpenAI-compatible client; `models.py` holds the Pydantic models and `Settings`; `main.py` is the terminal chat and must keep working.

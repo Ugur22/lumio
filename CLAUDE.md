@@ -19,3 +19,5 @@ Run `make check` (about 15 seconds, offline: syntax lint, ESLint, pytest, tsc) b
 
 ## Agents
 `.claude/agents/frontend-developer.md` (anything under `frontend/`) and `backend-developer.md` (`server.py`, `models.py`, `tests/`). Use them for scoped changes; use `bug-fixer`-style work (reproduce, root cause, smallest fix, regression test) for bugs.
+
+Changes that span both stacks start with a written contract (route, request/response shape, the `models.py` and `types.ts` fields) agreed in the plan before delegating; `types.ts` mirrors `models.py` by hand, so that is where parallel agents drift. Run parallel agents with `isolation: "worktree"`, and finish with `.claude/agents/reviewer.md` (read-only) on the diff.
