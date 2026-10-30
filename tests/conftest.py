@@ -62,13 +62,6 @@ def reset_stream_options():
     server._no_stream_options.clear()
 
 
-@pytest.fixture(autouse=True)
-def reset_stream_options():
-    server._no_stream_options.clear()
-    yield
-    server._no_stream_options.clear()
-
-
 @pytest.fixture(scope="session", autouse=True)
 def remove_tmp_dir():
     yield

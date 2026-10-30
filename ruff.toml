@@ -1,0 +1,6 @@
+# Bug-finding rules only: syntax errors and pyflakes (unused imports, redefinitions, undefined names).
+# Style rules stay off so existing code is not reformatted.
+extend-exclude = ["frontend", "data"]
+
+[lint]
+select = ["E9", "F"]
