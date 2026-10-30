@@ -5,7 +5,7 @@ import { useProfileActions, useProfiles } from "../hooks/useProfiles";
 import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
 import { formatTokens } from "../lib/context";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
-import type { Profile } from "../types";
+import type { KeyStore, Profile } from "../types";
 import { ModelCombobox } from "./ModelCombobox";
 import { Button, CheckboxField, ConfirmDialog, Modal, PressButton, Select, TextField, TextInput, fieldClass, focusRing } from "./ui";
 
@@ -19,11 +19,15 @@ type Notice = { kind: "ok" | "error"; text: string } | null;
 
 const MIN_WINDOW = 1000;
 
+function keyHome(store: KeyStore): string {
+  return store === "file" ? "saved on the server" : "in keychain";
+}
+
 function keyLabel(p: Profile): string {
   if (!p.needs_key) return "No key needed";
   if (!p.configured) return "No key";
   const tail = p.last4 ? ` ending in ${p.last4}` : "";
-  return p.source === "env" ? `Key from .env${tail}` : `Key in keychain${tail}`;
+  return p.source === "env" ? `Key from .env${tail}` : `Key ${keyHome(p.key_store)}${tail}`;
 }
 
 export function ProvidersDialog({ open, onClose }: Props) {
@@ -155,7 +159,7 @@ function WebSearchSection() {
           <div className="min-w-0 flex-1">
             <div className="truncate font-medium">Tavily</div>
             <div className="truncate text-[12px] text-muted">
-              Key in keychain{data.last4 ? ` ending in ${data.last4}` : ""}
+              Key {keyHome(data.key_store)}{data.last4 ? ` ending in ${data.last4}` : ""}
             </div>
           </div>
           <Button onClick={() => setReplacing((on) => !on)}>{replacing ? "Cancel" : "Replace"}</Button>
@@ -362,7 +366,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
             autoComplete="off"
             spellCheck={false}
             placeholder={editing ? "Leave blank to keep the saved key" : "Paste your API key"}
-            description="Stored by the server in your system keychain. It is never sent back to the browser."
+            description="Stored by the server. It is never sent back to the browser."
           >
             {hint && (
               <Button variant="link" onClick={() => applyPreset(hint.id)} className="self-start">
@@ -443,7 +447,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
       <ConfirmDialog
         open={confirmRemove}
         title={`Remove ${profile?.name ?? "provider"}?`}
-        description="This also deletes its saved API key from your keychain."
+        description={`This also deletes its saved API key from ${profile?.key_store === "file" ? "the server" : "your keychain"}.`}
         confirmLabel="Remove"
         danger
         onConfirm={onDelete}

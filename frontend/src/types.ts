@@ -123,10 +123,14 @@ export interface Profile {
   configured: boolean;
   last4: string | null;
   source: "keychain" | "env" | null;
+  key_store: KeyStore;
   context_window: number | null;
   // Set when the provider can generate images; enables the Illustrate toggle.
   image_model: string | null;
 }
+
+// Where the server keeps saved keys: the OS keychain locally, a file on a deployed host.
+export type KeyStore = "keychain" | "file";
 
 export interface ProfileList {
   active: string | null;
@@ -152,6 +156,7 @@ export type EditProfileBody = Partial<
 export interface WebStatus {
   configured: boolean;
   last4: string | null;
+  key_store: KeyStore;
 }
 
 export interface ModelsQuery {

@@ -69,6 +69,15 @@ def test_profile_keys_land_in_the_file_and_never_in_profiles_json(api, secrets_f
     assert SECRET not in server.settings.profiles_file.read_text() and SECRET not in res.text
 
 
+def test_key_store_reports_file_on_a_server_and_keychain_locally(api, memory_keyring, monkeypatch):
+    local = make(api).json()["profiles"][-1]
+    assert (local["key_store"], api.get("/api/web").json()["key_store"]) == ("keychain", "keychain")
+
+    monkeypatch.setenv(secret_store.SECRETS_FILE_ENV, "/unused/secrets.json")
+    assert api.get("/api/web").json()["key_store"] == "file"
+    assert {p["key_store"] for p in api.get("/api/profiles").json()["profiles"]} == {"file"}
+
+
 def test_public_host_may_write_but_other_hosts_still_may_not(remote, api):
     assert make(remote).status_code == 201
 
