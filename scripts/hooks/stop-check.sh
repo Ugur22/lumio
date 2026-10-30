@@ -5,8 +5,8 @@ set -u
 
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}" || exit 0
 
-# This project has no git yet, so "something changed" means a source file is newer
-# than the stamp left by the last green run.
+# "Something changed" means a source file is newer than the stamp left by the last green run
+# (by mtime, so edits made through Bash count too).
 stamp=".claude/.check-stamp"
 if [ -f "$stamp" ] && [ -z "$(find . \
     \( -path ./.venv -o -path ./frontend/node_modules -o -path ./frontend/dist -o -path ./data -o -path ./.claude \) -prune -o \

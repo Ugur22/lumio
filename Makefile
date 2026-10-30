@@ -2,16 +2,21 @@
 
 PY ?= .venv/bin/python
 
-.PHONY: check check-fast lint-backend lint-frontend test-backend typecheck-frontend build dev e2e-server e2e
+.PHONY: check check-fast lint-backend lint-frontend test-backend typecheck-frontend test-count build dev e2e-server e2e
 
 check-fast: lint-backend lint-frontend
 
-check: check-fast test-backend typecheck-frontend
+check: check-fast test-backend typecheck-frontend test-count
 
-# Syntax-only (ast.parse): no linter is configured and this writes no .pyc files.
+# Syntax check (ast.parse, writes no .pyc files), then ruff for the bug-finding rules in ruff.toml.
 lint-backend:
 	@find . \( -path ./.venv -o -path ./frontend/node_modules -o -path ./data \) -prune -o -name '*.py' -print0 \
 		| xargs -0 $(PY) -c "import ast, sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]"
+	@$(PY) -m ruff check --no-cache .
+
+# Fails when fewer tests exist than scripts/test-baseline.txt records, so deleting tests cannot go green.
+test-count:
+	@PY=$(PY) scripts/check-test-count.sh
 
 lint-frontend:
 	@cd frontend && npx eslint .
