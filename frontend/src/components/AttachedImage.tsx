@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { ImageLightbox } from "./ImageLightbox";
+import { Button } from "./ui";
 
 // Images are pruned after a while; the server then answers 410 and the chat keeps a placeholder.
 export function AttachedImage({ url, label }: { url: string; label: string }) {
@@ -16,7 +17,7 @@ export function AttachedImage({ url, label }: { url: string; label: string }) {
   }
   return (
     <>
-      <button
+      <Button variant="none"
         ref={thumb}
         type="button"
         aria-label={`View ${label.toLowerCase()} full size`}
@@ -33,7 +34,7 @@ export function AttachedImage({ url, label }: { url: string; label: string }) {
           onError={() => setExpired(true)}
           className="max-h-48 max-w-full rounded-xl border border-border object-cover shadow-soft sm:max-h-56"
         />
-      </button>
+      </Button>
       {open && (
         <ImageLightbox
           src={url}

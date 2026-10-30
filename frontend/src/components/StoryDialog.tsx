@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { DialogTitle, Tab, TabGroup, TabList, TabPanel, TabPanels } from "@headlessui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api";
 import { useChat } from "../hooks/useChats";
-import { useSaveStory, useSaveSummary, useSummarize } from "../hooks/useStory";
+import { useSaveBehavior, useSaveStory, useSaveSummary, useSummarize } from "../hooks/useStory";
 import {
+  behaviorProblems,
   blankDraft,
+  isBehaviorDirty,
   isStoryDirty,
   loreProblems,
   MAX_BIBLE,
@@ -11,17 +14,24 @@ import {
   MAX_LORE,
   MAX_NAME,
   MAX_SUMMARY,
+  MAX_SYSTEM_PROMPT,
+  sanitizeNumber,
+  stepNumber,
+  BEHAVIOR_LIMITS,
   storyErrorText,
+  toBehaviorBody,
+  toBehaviorDraft,
   toBody,
   toDraft,
+  type BehaviorDraft,
   type LoreDraft,
   type StoryAction,
 } from "../lib/story";
 import type { Chat, StoryBody } from "../types";
-import { TrashIcon } from "./icons";
-import { PressButton } from "./PressButton";
+import { CloseIcon, TrashIcon } from "./icons";
+import { Button, CheckboxField, Modal, PressButton, TextArea, TextAreaField, TextField, TextInput, focusRing } from "./ui";
 
-export type StoryTab = "bible" | "lore" | "summary";
+export type StoryTab = "bible" | "lore" | "summary" | "behavior";
 
 interface Props {
   open: boolean;
@@ -31,32 +41,21 @@ interface Props {
   onClose: () => void;
 }
 
-const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
-const field = `rounded-xl border border-border bg-bg px-3 py-2 ${focus}`;
-const secondary = `rounded-xl border border-border bg-surface px-3.5 py-2 text-muted shadow-soft hover:text-text disabled:opacity-50 ${focus}`;
-const primary = `rounded-xl bg-accent px-3.5 py-2 font-semibold text-on-accent shadow-soft disabled:opacity-50 ${focus} focus-visible:outline-offset-2`;
 
 const TABS: { id: StoryTab; label: string }[] = [
   { id: "bible", label: "Bible" },
   { id: "lore", label: "Lore" },
   { id: "summary", label: "Summary" },
+  { id: "behavior", label: "Behavior" },
 ];
 
 const failure = (action: StoryAction, err: unknown) =>
   storyErrorText(action, err instanceof ApiError ? err.status : undefined, (err as Error).message);
 
 export function StoryDialog({ open, chatId, tab, onClose }: Props) {
-  const ref = useRef<HTMLDialogElement>(null);
-  // A ref as well as state: the native close/cancel events must see the latest value synchronously.
+  // A ref as well as state: the close handler must see the latest value synchronously.
   const dirty = useRef(false);
   const [warn, setWarn] = useState(false);
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
 
   const onDirty = useCallback((d: boolean) => {
     dirty.current = d;
@@ -69,32 +68,15 @@ export function StoryDialog({ open, chatId, tab, onClose }: Props) {
     onClose();
   }
 
+  // Escape and backdrop clicks land here: with unsaved edits the dialog stays open and explains, instead of dropping them.
   function requestClose() {
     if (dirty.current) setWarn(true);
     else finish();
   }
 
   return (
-    <dialog
-      ref={ref}
-      aria-labelledby="story-title"
-      // Escape: keep the dialog and explain, instead of silently dropping the edits.
-      onCancel={(e) => {
-        if (!dirty.current) return;
-        e.preventDefault();
-        setWarn(true);
-      }}
-      // Some browsers close on a second Escape regardless; reopen so the edits survive.
-      onClose={() => {
-        if (dirty.current) {
-          ref.current?.showModal();
-          setWarn(true);
-        } else finish();
-      }}
-      onClick={(e) => e.target === ref.current && requestClose()}
-      className="m-auto w-[min(94vw,40rem)] rounded-2xl border border-border bg-surface p-0 text-text shadow-lift backdrop:bg-black/40"
-    >
-      {open && chatId && (
+    <Modal open={open && chatId !== null} onClose={requestClose} className="w-[min(94vw,40rem)]">
+      {chatId && (
         <StoryBody
           key={chatId}
           chatId={chatId}
@@ -106,7 +88,7 @@ export function StoryDialog({ open, chatId, tab, onClose }: Props) {
           onKeepEditing={() => setWarn(false)}
         />
       )}
-    </dialog>
+    </Modal>
   );
 }
 
@@ -125,11 +107,11 @@ function StoryBody({ chatId, initialTab, ...rest }: BodyProps) {
   if (!data) {
     return (
       <div className="flex flex-col gap-3 p-5">
-        <h2 id="story-title" className="font-display text-lg font-semibold">Story</h2>
+        <div className="flex items-center justify-between gap-2">
+          <DialogTitle as="h2" className="font-display text-lg font-semibold">Story</DialogTitle>
+          <CloseButton onClick={rest.onClose} />
+        </div>
         {error ? <p role="alert" className="text-warn-bar">{error.message}</p> : <p className="text-muted">Loading…</p>}
-        <button type="button" onClick={rest.onClose} className={`self-end rounded px-2 py-1 text-muted hover:text-text ${focus}`}>
-          Close
-        </button>
       </div>
     );
   }
@@ -156,51 +138,43 @@ function StoryEditor({
   const [bible, setBible] = useState(chat.bible);
   const [lore, setLore] = useState<LoreDraft[]>(() => chat.lore.map(toDraft));
   const [summary, setSummary] = useState<SummaryDraft>({ text: chat.summary, upto: chat.summary_upto, proposed: false });
+  const [behavior, setBehavior] = useState<BehaviorDraft>(() => toBehaviorDraft(chat));
 
   const storyDirty = isStoryDirty(chat, bible, lore);
   const summaryDirty = summary.proposed || summary.text !== chat.summary;
-  const dirty = storyDirty || summaryDirty;
+  const behaviorDirty = isBehaviorDirty(chat, behavior);
+  const dirty = storyDirty || summaryDirty || behaviorDirty;
 
   useEffect(() => {
     onDirty(dirty);
     return () => onDirty(false);
   }, [dirty, onDirty]);
 
-  function onTabKey(e: KeyboardEvent) {
-    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    const next = TABS[(TABS.findIndex((t) => t.id === tab) + step + TABS.length) % TABS.length]?.id ?? tab;
-    setTab(next);
-    document.getElementById(`story-tab-${next}`)?.focus();
-  }
-
   const unsaved: Record<StoryTab, boolean> = {
     bible: bible !== chat.bible,
     lore: isStoryDirty(chat, chat.bible, lore),
     summary: summaryDirty,
+    behavior: behaviorDirty,
   };
 
   return (
-    <div className="flex max-h-[min(90dvh,48rem)] flex-col">
+    <TabGroup
+      selectedIndex={TABS.findIndex((t) => t.id === tab)}
+      onChange={(i) => setTab(TABS[i]?.id ?? tab)}
+      className="flex max-h-[min(90dvh,48rem)] flex-col"
+    >
       <div className="flex flex-col gap-3 px-5 pt-5">
-        <h2 id="story-title" className="font-display text-lg font-semibold">
-          Story
-        </h2>
-        <div role="tablist" aria-label="Story sections" onKeyDown={onTabKey} className="flex gap-1 border-b border-border">
+        <div className="flex items-center justify-between gap-2">
+          <DialogTitle as="h2" className="font-display text-lg font-semibold">
+            Story
+          </DialogTitle>
+          <CloseButton onClick={onClose} />
+        </div>
+        <TabList aria-label="Story sections" className="flex gap-1 border-b border-border">
           {TABS.map((t) => (
-            <button
+            <Tab
               key={t.id}
-              id={`story-tab-${t.id}`}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.id}
-              aria-controls={`story-panel-${t.id}`}
-              tabIndex={tab === t.id ? 0 : -1}
-              onClick={() => setTab(t.id)}
-              className={`-mb-px rounded-t-lg border-b-2 px-3 py-2 text-[13px] font-medium ${focus} ${
-                tab === t.id ? "border-accent text-text" : "border-transparent text-muted hover:text-text"
-              }`}
+              className={`-mb-px rounded-t-lg border-b-2 border-transparent px-3 py-2 text-[13px] font-medium text-muted hover:text-text data-[selected]:border-accent data-[selected]:text-text ${focusRing}`}
             >
               {t.label}
               {unsaved[t.id] && (
@@ -209,53 +183,77 @@ function StoryEditor({
                   <span className="sr-only"> (unsaved changes)</span>
                 </>
               )}
-            </button>
+            </Tab>
           ))}
-        </div>
+        </TabList>
       </div>
 
-      <div
-        id={`story-panel-${tab}`}
-        role="tabpanel"
-        aria-labelledby={`story-tab-${tab}`}
-        className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
-      >
-        {tab === "bible" && <BibleTab value={bible} onChange={setBible} />}
-        {tab === "lore" && <LoreTab drafts={lore} onChange={setLore} />}
-        {tab === "summary" && <SummaryTab chat={chat} draft={summary} onChange={setSummary} />}
-      </div>
+      <TabPanels className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <TabPanel>
+          <BibleTab value={bible} onChange={setBible} />
+        </TabPanel>
+        <TabPanel>
+          <LoreTab drafts={lore} onChange={setLore} />
+        </TabPanel>
+        <TabPanel>
+          <SummaryTab chat={chat} draft={summary} onChange={setSummary} />
+        </TabPanel>
+        <TabPanel>
+          <BehaviorTab draft={behavior} onChange={setBehavior} />
+        </TabPanel>
+      </TabPanels>
 
-      <div className="flex flex-col gap-2 border-t border-border px-5 py-3">
-        {warn && dirty && (
-          <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-warn-bg px-3 py-2 text-[13px] text-warn-bar">
-            <span className="min-w-0 flex-1">You have unsaved changes. Save them first, or discard them to close.</span>
-            <button type="button" onClick={onKeepEditing} className={`rounded px-2 py-1 font-medium ${focus}`}>
-              Keep editing
-            </button>
-            <button type="button" onClick={onDiscard} className={`rounded px-2 py-1 font-medium underline ${focus}`}>
-              Discard and close
-            </button>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          {tab !== "summary" && (
-            <StoryActions
-              chatId={chat.id}
-              dirty={storyDirty}
-              problems={loreProblems(lore).size > 0}
-              body={toBody(bible, lore)}
-              onRevert={() => {
-                setBible(chat.bible);
-                setLore(chat.lore.map(toDraft));
-              }}
-            />
+      {(tab !== "summary" || (warn && dirty)) && (
+        <div className="flex flex-col gap-2 border-t border-border px-5 py-3">
+          {warn && dirty && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-warn-bg px-3 py-2 text-[13px] text-warn-bar">
+              <span className="min-w-0 flex-1">You have unsaved changes. Save them first, or discard them to close.</span>
+              <Button variant="bare" onClick={onKeepEditing} className="rounded px-2 py-1 font-medium">
+                Keep editing
+              </Button>
+              <Button variant="bare" onClick={onDiscard} className="rounded px-2 py-1 font-medium underline">
+                Discard and close
+              </Button>
+            </div>
           )}
-          <button type="button" onClick={onClose} className={`ml-auto rounded px-2 py-1 text-muted hover:text-text ${focus}`}>
-            Close
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {tab === "behavior" && (
+              <BehaviorActions
+                chat={chat}
+                draft={behavior}
+                onRevert={() => setBehavior(toBehaviorDraft(chat))}
+                onSaved={onDiscard}
+              />
+            )}
+            {(tab === "bible" || tab === "lore") && (
+              <StoryActions
+                chatId={chat.id}
+                dirty={storyDirty}
+                problems={loreProblems(lore).size > 0}
+                body={toBody(bible, lore)}
+                onRevert={() => {
+                  setBible(chat.bible);
+                  setLore(chat.lore.map(toDraft));
+                }}
+              />
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </TabGroup>
+  );
+}
+
+function CloseButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button
+      variant="bare"
+      aria-label="Close"
+      onClick={onClick}
+      className="-mr-1.5 grid size-8 place-items-center rounded-full text-muted hover:bg-bubble hover:text-text"
+    >
+      <CloseIcon width={18} height={18} />
+    </Button>
   );
 }
 
@@ -294,41 +292,132 @@ function StoryActions({
 
   return (
     <>
-      <PressButton type="button" onClick={run} disabled={!dirty || problems || save.isPending} hover={1.02} press={0.97} className={primary}>
-        {save.isPending ? "Saving…" : "Save story"}
-      </PressButton>
-      <button type="button" onClick={onRevert} disabled={!dirty || save.isPending} className={`rounded px-2 py-1 text-muted hover:text-text disabled:opacity-50 ${focus}`}>
-        Revert
-      </button>
       <span role="status" className="text-[12px] text-muted">
         {error ? "" : dirty ? (problems ? "Fix the highlighted entries to save." : "Unsaved changes") : save.isSuccess ? "Saved" : ""}
       </span>
+      <Button onClick={onRevert} disabled={!dirty || save.isPending}>
+        Revert
+      </Button>
+      <PressButton type="button" onClick={run} disabled={!dirty || problems} loading={save.isPending} hover={1.02} press={0.97} variant="primary">
+        {save.isPending ? "Saving…" : "Save story"}
+      </PressButton>
       {error && <p role="alert" className="basis-full text-warn-bar">{error}</p>}
     </>
   );
 }
 
-function BibleTab({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+const NUMBER_FIELDS = [
+  { key: "temperature", label: "Temperature", hint: "0 to 2. Lower is steadier, higher is wilder." },
+  { key: "topP", label: "Top P", hint: "0 to 1. Lower keeps word choice safer." },
+  { key: "frequencyPenalty", label: "Frequency penalty", hint: "-2 to 2. Higher repeats words less." },
+  { key: "maxTokens", label: "Max reply tokens", hint: "Caps one reply's length. Reasoning models may count hidden thinking too." },
+] as const;
+
+function BehaviorActions({
+  chat,
+  draft,
+  onRevert,
+  onSaved,
+}: {
+  chat: Chat;
+  draft: BehaviorDraft;
+  onRevert: () => void;
+  onSaved: () => void;
+}) {
+  const save = useSaveBehavior(chat.id);
+  const [error, setError] = useState<string | null>(null);
+  const hasProblems = Object.keys(behaviorProblems(draft)).length > 0;
+  const dirty = isBehaviorDirty(chat, draft);
+
+  async function run() {
+    setError(null);
+    try {
+      await save.mutateAsync(toBehaviorBody(draft));
+      onSaved();
+    } catch (err) {
+      setError(failure("save-behavior", err));
+    }
+  }
+
   return (
-    <div className="flex flex-col gap-2">
-      <label htmlFor="story-bible" className="text-[13px] font-medium">
-        Story bible
-      </label>
-      <p className="text-[12px] text-muted">
-        Canon the model should always keep in mind: setting, characters, tone, rules. It is sent with every message.
-      </p>
-      <textarea
-        id="story-bible"
-        value={value}
-        maxLength={MAX_BIBLE}
-        rows={12}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${field} min-h-48 resize-y`}
+    <>
+      <span role="status" className="text-[12px] text-muted">
+        {error ? "" : dirty ? (hasProblems ? "Fix the highlighted fields to save." : "Unsaved changes") : ""}
+      </span>
+      <Button onClick={onRevert} disabled={!dirty || save.isPending}>
+        Revert
+      </Button>
+      <PressButton type="button" onClick={run} disabled={!dirty || hasProblems} loading={save.isPending} hover={1.02} press={0.97} variant="primary">
+        {save.isPending ? "Saving…" : "Save behavior"}
+      </PressButton>
+      {error && <p role="alert" className="basis-full text-warn-bar">{error}</p>}
+    </>
+  );
+}
+
+function BehaviorTab({ draft, onChange }: { draft: BehaviorDraft; onChange: (d: BehaviorDraft) => void }) {
+  const problems = behaviorProblems(draft);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <TextAreaField
+        label="Instructions for this chat"
+        description="How the model should behave here: voice, style, rules. It leads the system message on every send, so a change applies from the next reply. Use the bible for facts about the story."
+        value={draft.systemPrompt}
+        maxLength={MAX_SYSTEM_PROMPT}
+        rows={8}
+        onChange={(e) => onChange({ ...draft, systemPrompt: e.target.value })}
+        className="min-h-36"
+        footer={<Counter n={draft.systemPrompt.length} max={MAX_SYSTEM_PROMPT} />}
       />
-      <div className="self-end">
-        <Counter n={value.length} max={MAX_BIBLE} />
+
+      <p className="text-[12px] text-muted">Leave a number blank to use the provider's default.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {NUMBER_FIELDS.map((f) => {
+          const problem = problems[f.key];
+          return (
+            <TextField
+              key={f.key}
+              label={f.label}
+              description={f.hint}
+              error={problem}
+              type="text"
+              // The iOS decimal keypad has no minus sign, so the one field that takes negatives gets the full keyboard.
+              inputMode={f.key === "frequencyPenalty" ? "text" : f.key === "maxTokens" ? "numeric" : "decimal"}
+              autoComplete="off"
+              spellCheck={false}
+              value={draft[f.key]}
+              role="spinbutton"
+              aria-valuemin={BEHAVIOR_LIMITS[f.key].min}
+              aria-valuemax={BEHAVIOR_LIMITS[f.key].max}
+              aria-valuenow={draft[f.key].trim() && !problem ? Number(draft[f.key]) : undefined}
+              onKeyDown={(e) => {
+                if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                e.preventDefault();
+                onChange({ ...draft, [f.key]: stepNumber(draft[f.key], f.key, e.key === "ArrowUp" ? 1 : -1, e.shiftKey) });
+              }}
+              onChange={(e) => onChange({ ...draft, [f.key]: sanitizeNumber(e.target.value, f.key) })}
+              fieldClassName="gap-1"
+            />
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+function BibleTab({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <TextAreaField
+      label="Story bible"
+      description="Canon the model should always keep in mind: setting, characters, tone, rules. It is sent with every message."
+      value={value}
+      maxLength={MAX_BIBLE}
+      rows={12}
+      onChange={(e) => onChange(e.target.value)}
+      className="min-h-48"
+      footer={<Counter n={value.length} max={MAX_BIBLE} />}
+    />
   );
 }
 
@@ -353,47 +442,40 @@ function LoreTab({ drafts, onChange }: { drafts: LoreDraft[]; onChange: (d: Lore
               className={`flex flex-col gap-2 rounded-xl border bg-bg p-3 ${problem ? "border-warn-bar" : "border-border"} ${d.enabled ? "" : "opacity-70"}`}
             >
               <div className="flex items-center gap-2">
-                <input
+                <TextInput
+                  surface
                   aria-label={`Name of entry ${i + 1}`}
                   value={d.name}
                   maxLength={MAX_NAME}
                   placeholder="Name"
                   onChange={(e) => update(d.id, { name: e.target.value })}
-                  className={`${field} min-w-0 flex-1 bg-surface`}
+                  className="min-w-0 flex-1"
                 />
-                <label className="flex flex-none items-center gap-1.5 text-[13px]">
-                  <input
-                    type="checkbox"
-                    checked={d.enabled}
-                    onChange={(e) => update(d.id, { enabled: e.target.checked })}
-                    className="size-4 accent-accent"
-                  />
-                  Enabled
-                </label>
-                <button
-                  type="button"
+                <CheckboxField compact label="Enabled" checked={d.enabled} onChange={(enabled) => update(d.id, { enabled })} className="flex-none" />
+                <Button
+                  variant="bare"
                   aria-label={`Delete ${d.name.trim() || `entry ${i + 1}`}`}
                   onClick={() => onChange(drafts.filter((x) => x.id !== d.id))}
-                  className={`flex-none rounded p-1.5 text-muted hover:text-warn-bar ${focus}`}
+                  className="flex-none rounded p-1.5 text-muted hover:text-warn-bar"
                 >
                   <TrashIcon width={16} height={16} />
-                </button>
+                </Button>
               </div>
-              <input
+              <TextInput
+                surface
                 aria-label={`Trigger keys for entry ${i + 1}`}
                 value={d.keysText}
                 placeholder="Trigger keys, comma separated"
                 spellCheck={false}
                 onChange={(e) => update(d.id, { keysText: e.target.value })}
-                className={`${field} bg-surface`}
               />
-              <textarea
+              <TextArea
+                surface
                 aria-label={`Content of entry ${i + 1}`}
                 value={d.content}
                 rows={3}
                 placeholder="What the model should know when this comes up"
                 onChange={(e) => update(d.id, { content: e.target.value })}
-                className={`${field} resize-y bg-surface`}
               />
               <div className="flex items-center justify-between gap-2">
                 <span role={problem ? "alert" : undefined} className="text-[12px] text-warn-bar">
@@ -411,7 +493,8 @@ function LoreTab({ drafts, onChange }: { drafts: LoreDraft[]; onChange: (d: Lore
         onClick={() => onChange([...drafts, blankDraft()])}
         hover={1.02}
         press={0.97}
-        className={`${secondary} self-start`}
+        variant="secondary"
+        className="self-start"
       >
         Add entry
       </PressButton>
@@ -457,39 +540,34 @@ function SummaryTab({ chat, draft, onChange }: { chat: Chat; draft: SummaryDraft
 
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor="story-summary" className="text-[13px] font-medium">
-        Story so far
-      </label>
-      <p className="text-[12px] text-muted">
-        Replaces the older messages in what the model reads, which frees up context. Your chat itself is not changed.
-      </p>
-      <p
-        role="status"
-        className={`rounded-xl px-3 py-2 text-[13px] ${draft.proposed ? "bg-note-bg text-text" : "text-muted"}`}
-      >
-        {status}
-      </p>
-      <textarea
-        id="story-summary"
+      <TextAreaField
+        label="Story so far"
+        description="Replaces the older messages in what the model reads, which frees up context. Your chat itself is not changed."
         value={draft.text}
         maxLength={MAX_SUMMARY}
         rows={10}
         onChange={(e) => onChange({ ...draft, text: e.target.value })}
-        className={`${field} min-h-40 resize-y ${draft.proposed ? "border-accent" : ""}`}
-      />
-      <div className="self-end">
-        <Counter n={draft.text.length} max={MAX_SUMMARY} />
-      </div>
+        className={`min-h-40 ${draft.proposed ? "border-accent" : ""}`}
+        footer={<Counter n={draft.text.length} max={MAX_SUMMARY} />}
+      >
+        <p
+          role="status"
+          className={`rounded-xl px-3 py-2 text-[13px] ${draft.proposed ? "bg-note-bg text-text" : "text-muted"}`}
+        >
+          {status}
+        </p>
+      </TextAreaField>
       {error && <p role="alert" className="text-warn-bar">{error}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <PressButton
           type="button"
           onClick={generate}
           disabled={busy || edited}
+          loading={summarize.isPending}
           title={edited ? "Save or discard your edits first" : undefined}
           hover={1.02}
           press={0.97}
-          className={secondary}
+          variant="secondary"
         >
           {summarize.isPending ? "Generating…" : "Generate"}
         </PressButton>
@@ -497,30 +575,26 @@ function SummaryTab({ chat, draft, onChange }: { chat: Chat; draft: SummaryDraft
           type="button"
           onClick={() => persist({ summary: draft.text, summary_upto: draft.text.trim() ? draft.upto : 0 })}
           disabled={busy || !(draft.proposed || edited)}
+          loading={save.isPending}
           hover={1.02}
           press={0.97}
-          className={primary}
+          variant="primary"
         >
           {save.isPending ? "Saving…" : "Save"}
         </PressButton>
         {(draft.proposed || edited) && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onChange({ text: chat.summary, upto: chat.summary_upto, proposed: false })}
-            className={`rounded px-2 py-1 text-muted hover:text-text disabled:opacity-50 ${focus}`}
-          >
+          <Button disabled={busy} onClick={() => onChange({ text: chat.summary, upto: chat.summary_upto, proposed: false })}>
             Discard changes
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
+        <Button
+          variant="danger"
           disabled={busy || (chat.summary_upto === 0 && !chat.summary && !draft.text)}
           onClick={() => persist({ summary: "", summary_upto: 0 })}
-          className={`ml-auto rounded px-2 py-1 text-warn-bar disabled:opacity-50 ${focus}`}
+          className="ml-auto"
         >
           Reset
-        </button>
+        </Button>
       </div>
     </div>
   );

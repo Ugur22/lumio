@@ -4,7 +4,7 @@ import { match } from "ts-pattern";
 import { imageUrl } from "../api";
 import { useStream } from "../store/stream";
 import type { IllustrationFailure, Message, SourceRef } from "../types";
-import { PressButton } from "./PressButton";
+import { Button, PressButton } from "./ui";
 import { Turn, type Reply } from "./Turn";
 
 interface Props {
@@ -132,13 +132,13 @@ function EmptyState({ onPick, onStory }: { onPick: (text: string) => void; onSto
       </div>
       <p className="mt-6 text-sm text-muted">
         Writing something longer?{" "}
-        <button
+        <Button variant="bare"
           type="button"
           onClick={onStory}
-          className="rounded text-accent underline underline-offset-2 hover:brightness-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          className="rounded text-accent underline underline-offset-2 hover:brightness-90"
         >
           Set up your story
-        </button>{" "}
+        </Button>{" "}
         so the characters and world stay consistent.
       </p>
     </div>

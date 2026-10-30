@@ -61,6 +61,20 @@ export interface Chat {
   summary: string;
   summary_upto: number;
   last_usage: { prompt_tokens: number } | null;
+  // Per-chat behavior; null means the setting is not sent and the provider's default applies.
+  system_prompt: string;
+  temperature: number | null;
+  top_p: number | null;
+  frequency_penalty: number | null;
+  max_tokens: number | null;
+}
+
+export interface BehaviorBody {
+  system_prompt: string;
+  temperature: number | null;
+  top_p: number | null;
+  frequency_penalty: number | null;
+  max_tokens: number | null;
 }
 
 export interface StoryBody {

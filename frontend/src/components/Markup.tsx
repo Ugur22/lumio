@@ -14,6 +14,7 @@ import { runtimeFor } from "../lib/runner/languages";
 import { prepare } from "../lib/markup/tags";
 import { rehypePlugins, remarkPlugins } from "../lib/markup/plugins";
 import { blockButton, OutputPanel, RunButtons } from "./CodeRunner";
+import { Button } from "./ui";
 
 function explicitLanguage(children: ReactNode): string | undefined {
   if (!isValidElement<{ "data-lang"?: unknown }>(children)) return undefined;
@@ -59,9 +60,9 @@ function CodeBlock({ children }: ComponentProps<"pre">) {
       </div>
       <div className="absolute right-1.5 top-1.5 flex items-center gap-1.5">
         {runtime && <RunButtons runtime={runtime} busy={runner.busy} onRun={run} onStop={runner.stop} />}
-        <button type="button" onClick={copy} aria-label="Copy code" className={blockButton}>
+        <Button variant="none" type="button" onClick={copy} aria-label="Copy code" className={blockButton}>
           {label}
-        </button>
+        </Button>
       </div>
     </div>
   );

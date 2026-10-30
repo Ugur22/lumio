@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { isBackdropClick } from "../lib/backdrop";
+import { DialogTitle, Field, Label } from "@headlessui/react";
 import { shouldAutoFetch } from "../lib/modelOptions";
 import { useProfileActions, useProfiles } from "../hooks/useProfiles";
 import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
@@ -7,7 +7,7 @@ import { formatTokens } from "../lib/context";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
 import type { Profile } from "../types";
 import { ModelCombobox } from "./ModelCombobox";
-import { PressButton } from "./PressButton";
+import { Button, CheckboxField, ConfirmDialog, Modal, PressButton, Select, TextField, TextInput, fieldClass, focusRing } from "./ui";
 
 interface Props {
   open: boolean;
@@ -19,11 +19,6 @@ type Notice = { kind: "ok" | "error"; text: string } | null;
 
 const MIN_WINDOW = 1000;
 
-const focus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
-const field = `rounded-xl border border-border bg-bg px-3 py-2 ${focus}`;
-const secondary = `rounded-xl border border-border bg-surface px-3.5 py-2 text-muted shadow-soft hover:text-text disabled:opacity-50 ${focus}`;
-const primary = `rounded-xl bg-accent px-3.5 py-2 font-semibold text-on-accent shadow-soft disabled:opacity-50 ${focus} focus-visible:outline-offset-2`;
-
 function keyLabel(p: Profile): string {
   if (!p.needs_key) return "No key needed";
   if (!p.configured) return "No key";
@@ -32,16 +27,7 @@ function keyLabel(p: Profile): string {
 }
 
 export function ProvidersDialog({ open, onClose }: Props) {
-  const ref = useRef<HTMLDialogElement>(null);
   const [view, setView] = useState<View>({ kind: "list" });
-  const pressTarget = useRef<EventTarget | null>(null);
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
 
   function close() {
     setView({ kind: "list" });
@@ -49,25 +35,14 @@ export function ProvidersDialog({ open, onClose }: Props) {
   }
 
   return (
-    <dialog
-      ref={ref}
-      aria-labelledby="providers-title"
-      onClose={close}
-      onMouseDown={(e) => (pressTarget.current = e.target)}
-      onClick={(e) => {
-        // A drag that began in a field and ended on the backdrop also targets the dialog, so the press must match too.
-        if (isBackdropClick(pressTarget.current, e.target, ref.current)) close();
-        pressTarget.current = null;
-      }}
-      className="m-auto w-[min(92vw,30rem)] rounded-2xl border border-border bg-surface p-0 text-text shadow-lift backdrop:bg-black/40"
-    >
+    <Modal open={open} onClose={close} className="w-[min(92vw,30rem)]">
       {view.kind === "list" ? (
         <ProfileListView onAdd={() => setView({ kind: "form", profile: null })} onEdit={(p) => setView({ kind: "form", profile: p })} onClose={close} />
       ) : (
         // Keyed so switching between profiles never carries a typed key over.
         <ProfileForm key={view.profile?.id ?? "new"} profile={view.profile} onDone={() => setView({ kind: "list" })} />
       )}
-    </dialog>
+    </Modal>
   );
 }
 
@@ -93,9 +68,9 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
 
   return (
     <div className="flex flex-col gap-4 p-5">
-      <h2 id="providers-title" className="font-display text-lg font-semibold">
+      <DialogTitle as="h2" className="font-display text-lg font-semibold">
         Providers
-      </h2>
+      </DialogTitle>
       {isPending && <p className="text-muted">Loading…</p>}
       {error && <p role="alert" className="text-warn-bar">{error.message}</p>}
       {data && data.profiles.length === 0 && (
@@ -110,7 +85,7 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
               aria-label={`Use ${p.name}`}
               checked={data.active === p.id}
               onChange={() => activate(p.id)}
-              className={`accent-[var(--accent)] ${focus}`}
+              className={`accent-[var(--accent)] ${focusRing}`}
             />
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium">{p.name}</div>
@@ -119,21 +94,19 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
                 {p.context_window ? ` · ${formatTokens(p.context_window)} context` : ""}
               </div>
             </div>
-            <button type="button" onClick={() => onEdit(p)} className={`rounded px-2 py-1 text-muted hover:text-text ${focus}`}>
-              Edit
-            </button>
+            <Button onClick={() => onEdit(p)}>Edit</Button>
           </li>
         ))}
       </ul>
       {failure && <p role="alert" className="text-warn-bar">{failure}</p>}
       <WebSearchSection />
       <div className="flex items-center gap-2">
-        <PressButton type="button" onClick={onAdd} hover={1.02} press={0.97} className={primary}>
+        <PressButton type="button" onClick={onAdd} hover={1.02} press={0.97} variant="primary">
           Add provider
         </PressButton>
-        <button type="button" onClick={onClose} className={`ml-auto rounded px-2 py-1 text-muted hover:text-text ${focus}`}>
+        <Button onClick={onClose} className="ml-auto">
           Close
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -185,21 +158,10 @@ function WebSearchSection() {
               Key in keychain{data.last4 ? ` ending in ${data.last4}` : ""}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setReplacing((on) => !on)}
-            className={`rounded px-2 py-1 text-muted hover:text-text ${focus}`}
-          >
-            {replacing ? "Cancel" : "Replace"}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => run(actions.remove)}
-            className={`rounded px-2 py-1 text-warn-bar disabled:opacity-50 ${focus}`}
-          >
+          <Button onClick={() => setReplacing((on) => !on)}>{replacing ? "Cancel" : "Replace"}</Button>
+          <Button variant="danger" disabled={busy} onClick={() => run(actions.remove)}>
             Remove
-          </button>
+          </Button>
         </div>
       )}
       {data && !data.configured && (
@@ -207,7 +169,7 @@ function WebSearchSection() {
       )}
       {showForm && (
         <form onSubmit={onSubmit} className="flex items-center gap-2">
-          <input
+          <TextInput
             type="password"
             aria-label="Tavily API key"
             value={key}
@@ -215,9 +177,9 @@ function WebSearchSection() {
             autoComplete="off"
             spellCheck={false}
             placeholder="Paste your Tavily API key"
-            className={`${field} min-w-0 flex-1`}
+            className="min-w-0 flex-1"
           />
-          <PressButton type="submit" disabled={busy || !key.trim()} hover={1.02} press={0.97} className={secondary}>
+          <PressButton type="submit" disabled={busy || !key.trim()} hover={1.02} press={0.97} variant="secondary">
             Save
           </PressButton>
         </form>
@@ -276,8 +238,14 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
     if (known && !windowTouched) setContextWindow(String(known));
   }
 
-  async function run(action: () => Promise<void>) {
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  // Which button's request is in flight, so only that one shows the spinner.
+  const [pending, setPending] = useState<"save" | "fetch" | null>(null);
+
+  async function run(action: () => Promise<void>, kind: "save" | "fetch" | null = null) {
     setBusy(true);
+    setPending(kind);
     setNotice(null);
     try {
       await action();
@@ -285,6 +253,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
       setNotice({ kind: "error", text: (err as Error).message });
     } finally {
       setBusy(false);
+      setPending(null);
     }
   }
 
@@ -303,7 +272,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
       setWindows(reported);
       chooseModel(model, reported);
       setNotice({ kind: "ok", text: `Connected. ${res.models.length} models found.` });
-    });
+    }, "fetch");
   };
   latestFetch.current = fetchModels;
 
@@ -332,11 +301,12 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
       if (profile) await actions.edit(profile.id, { ...body, context_window: windowValue, ...(typedKey && { key: typedKey }) });
       else await actions.create({ ...body, needs_key: needsKey, ...(windowValue !== null && { context_window: windowValue }), ...(typedKey && { key: typedKey }) });
       onDone();
-    });
+    }, "save");
   }
 
   function onDelete() {
-    if (!profile || !window.confirm(`Remove "${profile.name}" and its saved key?`)) return;
+    setConfirmRemove(false);
+    if (!profile) return;
     return run(async () => {
       await actions.remove(profile.id);
       onDone();
@@ -350,48 +320,38 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
   const canSave = !busy && windowValid && name.trim() && baseUrl.trim() && model.trim() && (editing || !needsKey || key.trim());
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3.5 p-5">
-      <h2 id="providers-title" className="font-display text-lg font-semibold">
-        {editing ? `Edit ${profile.name}` : "Add provider"}
-      </h2>
+    <>
+      <form onSubmit={onSubmit} className="flex flex-col gap-3.5 p-5">
+        <DialogTitle as="h2" className="font-display text-lg font-semibold">
+          {editing ? `Edit ${profile.name}` : "Add provider"}
+        </DialogTitle>
 
-      {!editing && (
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium">Provider</span>
-          <select value={preset} onChange={(e) => applyPreset(e.target.value)} className={field}>
-            {PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+        {!editing && (
+          <Field className="flex flex-col gap-1.5">
+            <Label className="text-[13px] font-medium">Provider</Label>
+            <Select
+              value={preset}
+              onChange={applyPreset}
+              options={PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+            />
+          </Field>
+        )}
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium">Name</span>
-        <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
-      </label>
+        <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} />
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium">Base URL</span>
-        <input
+        <TextField
+          label="Base URL"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder="https://api.example.com/v1"
           inputMode="url"
           spellCheck={false}
-          className={field}
+          description={baseUrl.trim() && `Your key is sent to ${hostOf(baseUrl.trim())}.`}
         />
-        {baseUrl.trim() && (
-          <span className="text-[12px] text-muted">Your key is sent to {hostOf(baseUrl.trim())}.</span>
-        )}
-      </label>
 
-      {needsKey && (
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium">API key</span>
-          <input
+        {needsKey && (
+          <TextField
+            label="API key"
             type="password"
             value={key}
             onChange={(e) => {
@@ -402,31 +362,23 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
             autoComplete="off"
             spellCheck={false}
             placeholder={editing ? "Leave blank to keep the saved key" : "Paste your API key"}
-            className={field}
-          />
-          {hint && (
-            <button
-              type="button"
-              onClick={() => applyPreset(hint.id)}
-              className={`self-start rounded text-[12px] text-accent underline ${focus}`}
-            >
-              Looks like a {hint.label} key — use that preset
-            </button>
-          )}
-          <span className="text-[12px] text-muted">
-            Stored by the server in your system keychain. It is never sent back to the browser.
-          </span>
-        </label>
-      )}
+            description="Stored by the server in your system keychain. It is never sent back to the browser."
+          >
+            {hint && (
+              <Button variant="link" onClick={() => applyPreset(hint.id)} className="self-start">
+                Looks like a {hint.label} key — use that preset
+              </Button>
+            )}
+          </TextField>
+        )}
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium">Model</span>
-        <ModelCombobox value={model} models={models} onChange={chooseModel} className={field} />
-      </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium">Model</span>
+          <ModelCombobox value={model} models={models} onChange={chooseModel} className={fieldClass} />
+        </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium">Context window (tokens, optional)</span>
-        <input
+        <TextField
+          label="Context window (tokens, optional)"
           type="number"
           inputMode="numeric"
           min={MIN_WINDOW}
@@ -437,76 +389,66 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
             setWindowTouched(true);
           }}
           placeholder="e.g. 128000"
-          aria-invalid={!windowValid}
-          className={field}
+          description="How much text the model can read at once. Lets Lumio show how full the context is. Some providers report it when you fetch models."
+          error={!windowValid && `Use a whole number of at least ${MIN_WINDOW.toLocaleString()}, or leave it blank.`}
         />
-        <span className={`text-[12px] ${windowValid ? "text-muted" : "text-warn-bar"}`}>
-          {windowValid
-            ? "How much text the model can read at once. Lets Lumio show how full the context is. Some providers report it when you fetch models."
-            : `Use a whole number of at least ${MIN_WINDOW.toLocaleString()}, or leave it blank.`}
-        </span>
-      </label>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium">Image model (optional)</span>
-        <input
+        <TextField
+          label="Image model (optional)"
           value={imageModel}
           onChange={(e) => setImageModel(e.target.value)}
           placeholder="e.g. grok-imagine-image-2.0"
           spellCheck={false}
-          className={field}
+          description="Lets the model illustrate its replies. Leave blank if this provider has no image generation; the Illustrate button then stays hidden."
         />
-        <span className="text-[12px] text-muted">
-          Lets the model illustrate its replies. Leave blank if this provider has no image generation; the Illustrate
-          button then stays hidden.
-        </span>
-      </label>
 
-      <label className="flex items-start gap-2.5">
-        <input
-          type="checkbox"
+        <CheckboxField
+          label="Can read images"
+          description="Turn on only if this model accepts image input (such as Grok, GPT-4o or LLaVA). Otherwise attaching images stays off."
           checked={vision}
-          onChange={(e) => setVision(e.target.checked)}
-          className="mt-1 size-4 accent-accent"
+          onChange={setVision}
         />
-        <span className="flex flex-col">
-          <span className="text-[13px] font-medium">Can read images</span>
-          <span className="text-[12px] text-muted">
-            Turn on only if this model accepts image input (such as Grok, GPT-4o or LLaVA). Otherwise attaching images
-            stays off.
-          </span>
-        </span>
-      </label>
 
-      {notice && (
-        <p role={notice.kind === "error" ? "alert" : "status"} className={notice.kind === "error" ? "text-warn-bar" : "text-note-bar"}>
-          {notice.text}
-        </p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <PressButton type="submit" disabled={!canSave} hover={1.02} press={0.97} className={primary}>
-          Save
-        </PressButton>
-        <PressButton
-          type="button"
-          disabled={busy || !baseUrl.trim()}
-          onClick={fetchModels}
-          hover={1.02}
-          press={0.97}
-          className={secondary}
-        >
-          Test &amp; fetch models
-        </PressButton>
-        {editing && (
-          <button type="button" disabled={busy} onClick={onDelete} className={`rounded px-2 py-1 text-warn-bar disabled:opacity-50 ${focus}`}>
-            Remove
-          </button>
+        {notice && (
+          <p role={notice.kind === "error" ? "alert" : "status"} className={notice.kind === "error" ? "text-warn-bar" : "text-note-bar"}>
+            {notice.text}
+          </p>
         )}
-        <button type="button" onClick={onDone} className={`ml-auto rounded px-2 py-1 text-muted hover:text-text ${focus}`}>
-          Back
-        </button>
-      </div>
-    </form>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <PressButton type="submit" disabled={!canSave && pending !== "save"} loading={pending === "save"} hover={1.02} press={0.97} variant="primary">
+            Save
+          </PressButton>
+          <PressButton
+            type="button"
+            disabled={(busy && pending !== "fetch") || !baseUrl.trim()}
+            loading={pending === "fetch"}
+            onClick={fetchModels}
+            hover={1.02}
+            press={0.97}
+            variant="secondary"
+          >
+            Test &amp; fetch models
+          </PressButton>
+          {editing && (
+            <Button variant="danger" disabled={busy} onClick={() => setConfirmRemove(true)}>
+              Remove
+            </Button>
+          )}
+          <Button onClick={onDone} className="ml-auto">
+            Back
+          </Button>
+        </div>
+      </form>
+      <ConfirmDialog
+        open={confirmRemove}
+        title={`Remove ${profile?.name ?? "provider"}?`}
+        description="This also deletes its saved API key from your keychain."
+        confirmLabel="Remove"
+        danger
+        onConfirm={onDelete}
+        onCancel={() => setConfirmRemove(false)}
+      />
+    </>
   );
 }

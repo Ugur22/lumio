@@ -109,6 +109,7 @@ class Message(BaseModel):
 
 MAX_BIBLE_CHARS = 20_000
 MAX_SUMMARY_CHARS = 20_000
+MAX_SYSTEM_PROMPT_CHARS = 10_000
 MAX_LORE_ENTRIES = 200
 LORE_ID = r"^[0-9a-f]{32}$"
 
@@ -141,6 +142,12 @@ class Chat(BaseModel):
     summary_upto: int = Field(default=0, ge=0)
     # Provider-reported size of the last prompt; cleared when the story or summary changes.
     last_usage: Usage | None = None
+    # How the model should behave in this chat. None means "don't send it", so the provider's default applies.
+    system_prompt: str = ""
+    temperature: float | None = None
+    top_p: float | None = None
+    frequency_penalty: float | None = None
+    max_tokens: int | None = None
 
 
 class ChatSummary(BaseModel):
@@ -286,6 +293,14 @@ class RenameChat(BaseModel):
 class StoryUpdate(BaseModel):
     bible: str = Field(default="", max_length=MAX_BIBLE_CHARS)
     lore: list[LoreEntry] = Field(default=[], max_length=MAX_LORE_ENTRIES)
+
+
+class BehaviorUpdate(BaseModel):
+    system_prompt: str = Field(default="", max_length=MAX_SYSTEM_PROMPT_CHARS)
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    frequency_penalty: float | None = Field(default=None, ge=-2, le=2)
+    max_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
 
 
 class SummaryUpdate(BaseModel):

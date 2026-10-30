@@ -11,6 +11,7 @@ import { CheckIcon, CopyIcon, LumioMark } from "./icons";
 import { AttachedImage } from "./AttachedImage";
 import { IllustrationNotes } from "./IllustrationNotes";
 import { ReplyBody } from "./ReplyBody";
+import { Button } from "./ui";
 
 export type Reply =
   | { kind: "text"; content: string; streaming?: boolean; illustrations?: Illustration[] }
@@ -167,15 +168,15 @@ function CopyButton({ text }: { text: string }) {
 
   const label = state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy message";
   return (
-    <button
+    <Button variant="bare"
       type="button"
       onClick={copy}
       aria-label={label}
       title={label}
-      className="-ml-1.5 mt-2 grid size-7 place-items-center rounded-lg text-muted hover:bg-surface hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      className="-ml-1.5 mt-2 grid size-7 place-items-center rounded-lg text-muted hover:bg-surface hover:text-text"
     >
       {state === "copied" ? <CheckIcon width={16} height={16} /> : <CopyIcon width={16} height={16} />}
-    </button>
+    </Button>
   );
 }
 

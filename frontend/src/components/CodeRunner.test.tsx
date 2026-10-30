@@ -258,9 +258,12 @@ describe("Fix with AI button", () => {
   });
 
   it("is enabled when idle and disabled with an explanation while a reply streams", () => {
-    expect(withActions(error, live)).not.toMatch(/disabled=""[^>]*aria-label="Ask the model/);
+    // Attribute order differs by renderer, so the button's own tag is matched and inspected whole.
+    const fixTag = (html: string) => html.match(/<button[^>]*aria-label="Ask the model to fix this code"[^>]*>/)?.[0];
+    expect(fixTag(withActions(error, live))).toBeDefined();
+    expect(fixTag(withActions(error, live))).not.toContain('disabled=""');
     const out = withActions(error, { ...live, busy: true });
     expect(out).toContain("Wait for the current reply to finish");
-    expect(out).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Ask the model to fix this code"/);
+    expect(fixTag(out)).toContain('disabled=""');
   });
 });

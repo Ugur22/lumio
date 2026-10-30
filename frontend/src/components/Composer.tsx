@@ -14,7 +14,7 @@ import {
 import { continueList, shiftList, type Edit } from "../lib/lists";
 import { ACCEPT_ATTR, prepareImage, rejectReason, type Attachment } from "../lib/images";
 import { CloseIcon, GlobeIcon, PaperclipIcon, SendIcon, SparklesIcon, StopIcon } from "./icons";
-import { PressButton } from "./PressButton";
+import { Button, PressButton } from "./ui";
 
 export interface ComposerHandle {
   focus: () => void;
@@ -238,14 +238,14 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                   alt={`Attached image ${i + 1}`}
                   className="size-16 rounded-lg border border-border object-cover"
                 />
-                <button
+                <Button variant="bare"
                   type="button"
                   aria-label={`Remove image ${i + 1}`}
                   onClick={() => remove(a.id)}
-                  className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-soft hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                  className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-soft hover:text-text"
                 >
                   <CloseIcon width={11} height={11} />
-                </button>
+                </Button>
               </li>
             ))}
             {Array.from({ length: preparing }, (_, i) => (

@@ -26,6 +26,7 @@ import web
 from models import (
     BASE_DIR,
     MAX_SUMMARY_CHARS,
+    BehaviorUpdate,
     LOCAL_HOSTS,
     Chat,
     ChatSummary,
@@ -380,6 +381,9 @@ def system_parts(chat: Chat, new_input: str = "", illustrate: bool = False) -> d
         "summary": tagged("story_so_far", chat.summary.strip()),
     }
     system = (FORMAT_NOTE + WEB_NOTE if illustrate else SYSTEM_PROMPT) + (" " + STORY_NOTE if any(blocks.values()) else "")
+    # The author's own instructions lead, so the formatting notes can't be read as overriding them.
+    if chat.system_prompt.strip():
+        system = chat.system_prompt.strip() + "\n\n" + system
     return {"system": system, **blocks}
 
 
@@ -434,6 +438,24 @@ def provider_error_parts(e: Exception, key: str | None, limit: int = 500) -> tup
         # Parsing errors can echo the provider payload; give a fixed reason instead.
         body = "the provider returned an unusable image response"
     return status, redact(" ".join(str(body).split()), key)[:limit]
+
+
+def error_text(e: Exception) -> str:
+    """The message for a failed chat call, with the upstream reason OpenRouter nests under metadata.raw ("Provider returned error" alone hides it)."""
+    message = getattr(e, "message", str(e))
+    body = getattr(e, "body", None)
+    meta = body.get("metadata") if isinstance(body, dict) else None
+    if not isinstance(meta, dict):
+        return message
+    raw = meta.get("raw")
+    if not isinstance(raw, str):
+        raw = json.dumps(raw) if raw else ""
+    reason = " ".join(readable_reason(raw.strip()).split())[:500]
+    provider = meta.get("provider_name")
+    inner = body.get("message")
+    head = inner if isinstance(inner, str) and inner else message
+    detail = f"{provider}: {reason}" if provider and reason else reason or (provider or "")
+    return f"{head} ({detail})" if detail else head
 
 
 def describe_provider_error(e: Exception, key: str | None) -> str:
@@ -631,7 +653,7 @@ async def stream_reply(
         )
     except OpenAIError as e:
         finished = True
-        yield sse("error", {"detail": getattr(e, "message", str(e))})
+        yield sse("error", {"detail": error_text(e)})
     finally:
         stream.close()
         # Reached unfinished when the client stops or disconnects: keep what it saw.
@@ -643,8 +665,13 @@ async def stream_reply(
 _no_stream_options: set[str] = set()
 
 
-def open_stream(client: OpenAI, profile: Profile, messages: list[dict]):
-    kwargs = {"model": profile.model, "messages": messages, "stream": True}
+def sampling_params(chat: Chat) -> dict:
+    fields = ("temperature", "top_p", "frequency_penalty", "max_tokens")
+    return {k: v for k in fields if (v := getattr(chat, k)) is not None}
+
+
+def open_stream(client: OpenAI, profile: Profile, messages: list[dict], sampling: dict | None = None):
+    kwargs = {"model": profile.model, "messages": messages, "stream": True, **(sampling or {})}
     if profile.base_url in _no_stream_options:
         return client.chat.completions.create(**kwargs)
     try:
@@ -663,6 +690,16 @@ def open_stream(client: OpenAI, profile: Profile, messages: list[dict]):
 def update_story(chat_id: ChatId, body: StoryUpdate):
     chat = load_chat(chat_id)
     chat.bible, chat.lore = body.bible, body.lore
+    chat.last_usage = None  # measured against the old prompt
+    save_chat(chat)
+    return chat
+
+
+@app.put("/api/chats/{chat_id}/behavior", response_model=Chat)
+def update_behavior(chat_id: ChatId, body: BehaviorUpdate):
+    chat = load_chat(chat_id)
+    for field, value in body:
+        setattr(chat, field, value)
     chat.last_usage = None  # measured against the old prompt
     save_chat(chat)
     return chat
@@ -692,7 +729,7 @@ def summarize_chat(chat_id: ChatId):
         )
         text = (res.choices[0].message.content or "").strip()
     except OpenAIError as e:
-        raise HTTPException(502, getattr(e, "message", str(e)))
+        raise HTTPException(502, error_text(e))
     if not text:
         raise HTTPException(502, "The model returned an empty summary")
     return SummaryProposal(summary=text[:MAX_SUMMARY_CHARS], summary_upto=upto)
@@ -741,9 +778,10 @@ def send_message(chat_id: ChatId, body: NewMessage):
             client,
             profile,
             [{"role": "system", "content": system_for(chat, body.content, body.illustrate)}, *history],
+            sampling_params(chat),
         )
     except OpenAIError as e:
-        raise HTTPException(502, getattr(e, "message", str(e)))
+        raise HTTPException(502, error_text(e))
 
     return StreamingResponse(
         stream_reply(

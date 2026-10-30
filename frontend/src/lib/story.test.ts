@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { Chat, LoreEntry } from "../types";
 import {
+  behaviorProblems,
   blankDraft,
+  isBehaviorDirty,
   isStoryDirty,
   loreProblems,
   newLoreId,
   parseKeys,
+  sanitizeNumber,
+  stepNumber,
   storyErrorText,
+  toBehaviorBody,
+  toBehaviorDraft,
   toBody,
   toDraft,
   type LoreDraft,
@@ -78,5 +84,83 @@ describe("storyErrorText", () => {
     expect(storyErrorText("summarize", 502, "rate limited")).toContain("rate limited");
     expect(storyErrorText("save-summary", 422, "x")).toMatch(/can't be saved/);
     expect(storyErrorText("save-story", 500, "boom")).toBe("boom");
+  });
+});
+
+describe("behavior drafts", () => {
+  const saved = { system_prompt: "Noir.", temperature: 0, top_p: null, frequency_penalty: -1.5, max_tokens: 4000 };
+
+  it("round-trips saved values, keeping 0 and nulls distinct", () => {
+    const draft = toBehaviorDraft(saved);
+
+    expect(draft).toEqual({ systemPrompt: "Noir.", temperature: "0", topP: "", frequencyPenalty: "-1.5", maxTokens: "4000" });
+    expect(toBehaviorBody(draft)).toEqual(saved);
+    expect(isBehaviorDirty(saved, draft)).toBe(false);
+  });
+
+  it("treats blank as unset and flags out-of-range or non-integer values", () => {
+    const base = toBehaviorDraft(saved);
+
+    expect(behaviorProblems({ ...base, temperature: "" })).toEqual({});
+    expect(toBehaviorBody({ ...base, temperature: "" }).temperature).toBeNull();
+    expect(Object.keys(behaviorProblems({ ...base, temperature: "2.5", topP: "abc", maxTokens: "1.5" }))).toEqual([
+      "temperature",
+      "topP",
+      "maxTokens",
+    ]);
+  });
+
+  it("ignores formatting-only differences from the saved numbers", () => {
+    const draft = { ...toBehaviorDraft({ ...saved, temperature: 0.85 }), temperature: ".850" };
+
+    expect(isBehaviorDirty({ ...saved, temperature: 0.85 }, draft)).toBe(false);
+  });
+
+  it("notices edits", () => {
+    expect(isBehaviorDirty(saved, { ...toBehaviorDraft(saved), temperature: "0.7" })).toBe(true);
+  });
+});
+
+describe("sanitizeNumber", () => {
+  it("strips letters and symbols", () => {
+    expect(sanitizeNumber("0ghgj", "frequencyPenalty")).toBe("0");
+    expect(sanitizeNumber("1e5!", "temperature")).toBe("15");
+  });
+
+  it("allows a minus only first, and only where the range goes below zero", () => {
+    expect(sanitizeNumber("-1.5", "frequencyPenalty")).toBe("-1.5");
+    expect(sanitizeNumber("1-5", "frequencyPenalty")).toBe("15");
+    expect(sanitizeNumber("-0.5", "temperature")).toBe("0.5");
+  });
+
+  it("keeps one decimal point, reads a comma as the point, and allows none for whole numbers", () => {
+    expect(sanitizeNumber("0,85", "temperature")).toBe("0.85");
+    expect(sanitizeNumber("1.2.3", "topP")).toBe("1.23");
+    expect(sanitizeNumber(".85", "temperature")).toBe(".85");
+    expect(sanitizeNumber("4096.5", "maxTokens")).toBe("40965");
+  });
+});
+
+describe("stepNumber", () => {
+  it("steps by the field's increment and avoids float noise", () => {
+    expect(stepNumber("0.85", "temperature", 1)).toBe("0.9");
+    expect(stepNumber("0.2", "frequencyPenalty", 1)).toBe("0.3");
+    expect(stepNumber("4096", "maxTokens", -1)).toBe("3996");
+  });
+
+  it("takes ten steps with Shift", () => {
+    expect(stepNumber("0.5", "temperature", 1, true)).toBe("1");
+  });
+
+  it("clamps to the range and crosses zero only where negatives are allowed", () => {
+    expect(stepNumber("2", "temperature", 1)).toBe("2");
+    expect(stepNumber("0", "temperature", -1)).toBe("0");
+    expect(stepNumber("0", "frequencyPenalty", -1)).toBe("-0.1");
+    expect(stepNumber("1", "maxTokens", -1, true)).toBe("1");
+  });
+
+  it("starts from zero when the field is blank or unreadable", () => {
+    expect(stepNumber("", "topP", 1)).toBe("0.05");
+    expect(stepNumber("-", "frequencyPenalty", 1)).toBe("0.1");
   });
 });
