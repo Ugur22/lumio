@@ -11,7 +11,7 @@ import { Button } from "./ui";
 // The code block is dark in both themes, so these are fixed colours like the ones in Markup.
 export const blockButton =
   "inline-flex items-center gap-1 rounded-lg border border-[#444c56] px-2 py-0.5 font-sans text-xs text-[#c9d1d9] transition-colors motion-reduce:transition-none hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7ec4ae] disabled:cursor-default disabled:opacity-70 disabled:hover:bg-transparent";
-const panel = "border-t border-[#3a342b] border-l-2";
+const panel = "border-t border-[#3a342b]";
 const sectionLabel = "font-mono text-[10px] font-semibold uppercase tracking-wider";
 
 export function RunButtons({
@@ -148,7 +148,7 @@ export function OutputPanel({
   const tone = waiting ? "" : (STATUS_TONE[state.status] ?? "");
   const status = waiting && capped ? "Answer limit reached" : describeStatus(state, runtime);
   return (
-    <div aria-live="polite" className={`${panel} border-l-[#6f675b] bg-[#171410] text-[#e7dfd0]`}>
+    <div aria-live="polite" className={`${panel} bg-[#171410] text-[#e7dfd0]`}>
       <div className="flex items-center justify-between gap-2 px-3 pt-1.5 font-sans text-[11px] text-[#9d9486]">
         <span className="flex min-w-0 items-center gap-2">
           <span className={`${sectionLabel} text-[#c9c1b2]`}>Output</span>
