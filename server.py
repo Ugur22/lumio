@@ -3,8 +3,10 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import sys
 import uuid
+import weakref
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,13 +17,16 @@ from fastapi import Path as PathParam
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+import chat_migration
 import e2e
 import images
 import profile_store
 import secret_store
+import storage
 import web
 from models import (
     BASE_DIR,
@@ -57,7 +62,6 @@ from models import (
     Usage,
     WebKey,
     WebStatus,
-    utcnow,
 )
 
 log = logging.getLogger("dolphinllm")
@@ -142,8 +146,30 @@ if (_path := _log_path()) is not None:
 settings = Settings()
 if e2e.enabled():
     settings.data_dir = e2e.data_dir()
+    settings.db_file = None  # never the real database
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 images.prune(settings)
+db = storage.Store(settings.database, acquire_wait=2.0)
+
+
+def import_legacy_chats() -> None:
+    """On the first start with a database, brings in chats saved as JSON by earlier releases.
+
+    Runs once (chat_migration records it), so a chat deleted later is not restored by the leftover file. It only
+    reads the files; the manual command in deploy/README.md does the same and can be run beforehand to see the report.
+    """
+    if db.get_meta(chat_migration.LEGACY_IMPORT_KEY):
+        return
+    if not any(settings.data_dir.glob("*.json")):
+        db.set_meta(chat_migration.LEGACY_IMPORT_KEY, "no files")
+        return
+    report = chat_migration.import_chats(settings.data_dir, db.path, apply=True)
+    log.info("Imported %d legacy chats (%d already present)", len(report.imported), len(report.already_present))
+    if not report.ok:
+        log.warning("%d legacy chat files were skipped or differed after import; run python -m chat_migration import", len(report.skipped) + len(report.mismatched))
+
+
+import_legacy_chats()
 _clients: dict[tuple[str, str], OpenAI] = {}
 NO_KEY = "not-needed"  # the OpenAI SDK insists on a non-empty key even for local servers
 
@@ -283,48 +309,26 @@ def make_title(content: str, limit: int = 50) -> str:
     return cut.rstrip(" ,;:-") + "…"
 
 
-def chat_path(chat_id: str) -> Path:
-    return settings.data_dir / f"{chat_id}.json"
-
-
 def load_chat(chat_id: str) -> Chat:
-    path = chat_path(chat_id)
-    if not path.exists():
+    try:
+        return db.get_chat(chat_id)
+    except storage.ChatNotFound:
         raise HTTPException(404, "Chat not found")
-    return Chat.model_validate_json(path.read_text())
 
 
-def save_chat(chat: Chat) -> None:
-    chat.updated = utcnow()
-    chat_path(chat.id).write_text(chat.model_dump_json(indent=2))
+def chat_gone() -> HTTPException:
+    return HTTPException(404, "Chat not found")
 
 
 @app.get("/api/chats", response_model=list[ChatSummary])
 def list_chats():
-    summaries = []
-    for path in settings.data_dir.glob("*.json"):
-        try:
-            chat = Chat.model_validate_json(path.read_text())
-        except ValidationError:
-            log.warning("Skipping unreadable chat file %s", path.name)
-            continue
-        summaries.append(
-            ChatSummary(
-                id=chat.id,
-                title=chat.title,
-                updated=chat.updated,
-                message_count=len(chat.messages),
-            )
-        )
-    return sorted(summaries, key=lambda c: c.updated, reverse=True)
+    return db.list_chats()
 
 
 @app.post("/api/chats", response_model=Chat, status_code=201)
 def create_chat():
     store = profile_store.load_store(settings)
-    chat = Chat(id=uuid.uuid4().hex, profile_id=store.active)
-    save_chat(chat)
-    return chat
+    return db.create_chat(store.active)
 
 
 @app.get("/api/chats/{chat_id}", response_model=Chat)
@@ -334,16 +338,19 @@ def get_chat(chat_id: ChatId):
 
 @app.patch("/api/chats/{chat_id}", response_model=Chat)
 def rename_chat(chat_id: ChatId, body: RenameChat):
-    chat = load_chat(chat_id)
-    chat.title = body.title
-    save_chat(chat)
-    return chat
+    try:
+        return db.rename(chat_id, body.title)
+    except storage.ChatNotFound:
+        raise chat_gone()
 
 
 @app.delete("/api/chats/{chat_id}", status_code=204)
 def delete_chat(chat_id: ChatId):
-    load_chat(chat_id)
-    chat_path(chat_id).unlink()
+    try:
+        db.delete_chat(chat_id)
+    except storage.ChatNotFound:
+        raise chat_gone()
+    # After the commit: a reply still streaming into this chat finds it gone and removes its own files.
     images.delete_chat_images(settings, chat_id)
 
 
@@ -352,15 +359,16 @@ ImageId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$")]
 
 @app.get("/api/chats/{chat_id}/images/{image_id}")
 def get_image(chat_id: ChatId, image_id: ImageId):
-    chat = load_chat(chat_id)
-    for message in chat.messages:
-        for ref in message.images:
-            if ref.id == image_id:
-                path = images.image_path(settings, chat_id, ref)
-                if not path.exists():
-                    raise HTTPException(410, "This image has expired")
-                return FileResponse(path, media_type=ref.media_type, headers={"Cache-Control": "private, max-age=3600"})
-    raise HTTPException(404, "Image not found")
+    try:
+        ref = db.find_image(chat_id, image_id)
+    except storage.ChatNotFound:
+        raise chat_gone()
+    if ref is None:
+        raise HTTPException(404, "Image not found")
+    path = images.image_path(settings, chat_id, ref)
+    if not path.exists():
+        raise HTTPException(410, "This image has expired")
+    return FileResponse(path, media_type=ref.media_type, headers={"Cache-Control": "private, max-age=3600"})
 
 
 def sse(event: str, data: dict) -> str:
@@ -618,14 +626,24 @@ def append_turn(
     query: str | None = None,
     usage: Usage | None = None,
     reply_images: list[ImageRef] = (),
-) -> None:
-    if not chat.messages:
-        chat.title = make_title(content)
+    rev: int | None = None,
+) -> Chat:
+    """Adds the question and its reply to the stored chat; raises storage.ChatNotFound if it was deleted meanwhile."""
     refs = images.save_images(settings, chat.id, list(uploads))
-    chat.messages.append(Message(role="user", content=content, sources=sources, images=refs, query=query))
-    chat.messages.append(Message(role="assistant", content=reply, images=list(reply_images)))
-    chat.last_usage = usage or chat.last_usage
-    save_chat(chat)
+    try:
+        return db.append_messages(
+            chat.id,
+            [
+                Message(role="user", content=content, sources=sources, images=refs, query=query),
+                Message(role="assistant", content=reply, images=list(reply_images)),
+            ],
+            title=make_title(content),
+            usage=usage,
+            rev=rev,
+        )
+    except BaseException:
+        images.delete_images(settings, chat.id, [*refs, *reply_images])
+        raise
 
 
 async def stream_reply(
@@ -638,10 +656,14 @@ async def stream_reply(
     query: str | None = None,
     window: int | None = None,
     illustrate: tuple[OpenAI, str, str | None] | None = None,
+    lease: storage.Lease | None = None,
+    rev: int | None = None,
 ) -> AsyncIterator[str]:
+    """Streams the reply, then appends it in one short transaction. `lease` is released on every exit path."""
     parts: list[str] = []
     usage: Usage | None = None
     finished = False
+    saving = False  # the final save runs in a worker thread that outlives a cancelled request and then releases the lease
     chunks = iter(stream)
     try:
         if sources or notes or query:
@@ -669,8 +691,28 @@ async def stream_reply(
             reply, reply_images, failures = await illustrate_reply(chat.id, reply, *illustrate)
         else:
             reply = strip_directives(reply)
-        append_turn(chat, content, reply, sources, uploads, query, usage, reply_images)
-        finished = True
+        finished = True  # whatever happens next, the partial-save fallback below must not run twice
+
+        def save_and_release() -> Chat:
+            # Released only once the commit is visible, so the next send never builds its history from a chat missing this turn.
+            try:
+                return append_turn(chat, content, reply, sources, uploads, query, usage, reply_images, rev)
+            finally:
+                if lease:
+                    lease.release()
+
+        saving = lease is not None
+        try:
+            saved = await run_in_threadpool(save_and_release)
+        except storage.ChatNotFound:
+            images.delete_images(settings, chat.id, reply_images)
+            yield sse("error", {"detail": "This chat was deleted while the reply was being written"})
+            return
+        except sqlite3.Error:
+            log.exception("Could not save the reply")
+            images.delete_images(settings, chat.id, reply_images)
+            yield sse("error", {"detail": "The reply could not be saved. Try again."})
+            return
         for ref in reply_images:
             yield sse("image", {"id": ref.id, "media_type": ref.media_type, "prompt": ref.prompt})
         for failure in failures:
@@ -678,20 +720,28 @@ async def stream_reply(
         # Extra keys are additive: the chat fields stay where the existing frontend reads them.
         yield sse(
             "done",
-            chat.model_dump(mode="json")
+            saved.model_dump(mode="json")
             | {
                 "usage": usage.model_dump() if usage else None,
-                "context": context_info(chat, window).model_dump(),
+                "context": context_info(saved, window).model_dump(),
             },
         )
     except OpenAIError as e:
         finished = True
         yield sse("error", {"detail": error_text(e)})
     finally:
-        stream.close()
-        # Reached unfinished when the client stops or disconnects: keep what it saw.
-        if not finished and parts:
-            append_turn(chat, content, strip_directives("".join(parts)), sources, uploads, query, usage)
+        # Plain synchronous calls only: this block also runs on cancellation, where an await would be cut short.
+        try:
+            stream.close()
+            # Reached unfinished when the client stops or disconnects: keep what it saw.
+            if not finished and parts:
+                try:
+                    append_turn(chat, content, strip_directives("".join(parts)), sources, uploads, query, usage, rev=rev)
+                except storage.ChatNotFound:
+                    pass  # deleted while generating: the partial reply goes with it
+        finally:
+            if lease and not saving:
+                lease.release()
 
 
 # Base URLs whose server rejected stream_options, so later requests skip it.
@@ -721,40 +771,33 @@ def open_stream(client: OpenAI, profile: Profile, messages: list[dict], sampling
 
 @app.put("/api/chats/{chat_id}/story", response_model=Chat)
 def update_story(chat_id: ChatId, body: StoryUpdate):
-    chat = load_chat(chat_id)
-    chat.bible, chat.lore = body.bible, body.lore
-    chat.last_usage = None  # measured against the old prompt
-    save_chat(chat)
-    return chat
+    try:
+        return db.update_story(chat_id, body.bible, body.lore)
+    except storage.ChatNotFound:
+        raise chat_gone()
 
 
 @app.put("/api/chats/{chat_id}/behavior", response_model=Chat)
 def update_behavior(chat_id: ChatId, body: BehaviorUpdate):
-    chat = load_chat(chat_id)
+    load_chat(chat_id)
     if body.profile_id is not None:
         find(profile_store.load_store(settings), body.profile_id)
-    if "profile_id" in body.model_fields_set and body.profile_id != chat.profile_id:
-        # A model ID only makes sense on its own provider.
-        chat.model = chat.context_window = None
-    for field, value in body:
-        if field != "profile_id" or "profile_id" in body.model_fields_set:
-            setattr(chat, field, value)
-    chat.last_usage = None  # measured against the old prompt
-    save_chat(chat)
-    return chat
+    values = body.model_dump(exclude={"profile_id"})
+    try:
+        return db.update_behavior(chat_id, values, "profile_id" in body.model_fields_set, body.profile_id)
+    except storage.ChatNotFound:
+        raise chat_gone()
 
 
 @app.put("/api/chats/{chat_id}/model", response_model=Chat)
 def update_chat_model(chat_id: ChatId, body: ChatModelUpdate):
     chat = load_chat(chat_id)
-    if body.model and chat.profile_id is None:
-        # Pin the provider the model was picked on, so a later change of default can't send it elsewhere.
-        chat.profile_id = profile_for(chat).id
-    chat.model = body.model
-    chat.context_window = body.context_window if body.model else None
-    chat.last_usage = None  # measured against the old model
-    save_chat(chat)
-    return chat
+    # Pin the provider the model was picked on, so a later change of default can't send it elsewhere.
+    pin = profile_for(chat).id if body.model and chat.profile_id is None else None
+    try:
+        return db.update_model(chat_id, body.model, body.context_window, pin)
+    except storage.ChatNotFound:
+        raise chat_gone()
 
 
 @app.post("/api/chats/{chat_id}/summarize", response_model=SummaryProposal)
@@ -789,15 +832,12 @@ def summarize_chat(chat_id: ChatId):
 
 @app.put("/api/chats/{chat_id}/summary", response_model=Chat)
 def update_summary(chat_id: ChatId, body: SummaryUpdate):
-    chat = load_chat(chat_id)
-    if body.summary_upto > len(chat.messages):
-        raise HTTPException(422, "summary_upto is beyond the end of the chat")
-    if body.summary_upto and not body.summary.strip():
-        raise HTTPException(422, "Write a summary before hiding earlier messages")
-    chat.summary, chat.summary_upto = body.summary, body.summary_upto
-    chat.last_usage = None
-    save_chat(chat)
-    return chat
+    try:
+        return db.update_summary(chat_id, body.summary, body.summary_upto)
+    except storage.ChatNotFound:
+        raise chat_gone()
+    except storage.InvalidUpdate as e:
+        raise HTTPException(422, str(e))
 
 
 @app.get("/api/chats/{chat_id}/context", response_model=ContextInfo)
@@ -808,48 +848,69 @@ def get_context(chat_id: ChatId):
 
 @app.post("/api/chats/{chat_id}/messages")
 def send_message(chat_id: ChatId, body: NewMessage):
-    chat = load_chat(chat_id)
-    profile = profile_for(chat)
-    if body.images and not profile.vision:
-        raise HTTPException(422, f"{profile.name} can't read images. Switch to a vision-capable provider.")
-    if body.illustrate and not profile.image_model:
-        raise HTTPException(422, f"{profile.name} has no image model. Set one in Providers.")
-    client = get_client(profile)
-
-    # Gathered before the model call; the pages are plain prompt text, so any provider works.
-    tavily_key = secret_store.get_key(secret_store.TAVILY_ACCOUNT) if body.web else None
-    query = None
-    if tavily_key and body.content.strip():
-        query = web.rewrite_query(client, profile.model, recent_for(chat), body.content)
-    sources, notes = web.gather(body.content, body.web, tavily_key, query)
-    history = history_for(chat, profile.vision)
-    uploaded = [f"data:{i.media_type};base64,{i.data}" for i in body.images]
-    message = content_for(web.with_context(body.content, sources, notes), uploaded, profile.vision)
-    history.append({"role": "user", "content": message})
+    # Taken before the chat is read, so the history sent is the one the previous reply left behind.
     try:
-        stream = open_stream(
-            client,
-            profile,
-            [{"role": "system", "content": system_for(chat, body.content, body.illustrate)}, *history],
-            sampling_params(chat),
-        )
-    except OpenAIError as e:
-        raise HTTPException(502, error_text(e))
+        lease = db.acquire(chat_id)
+    except storage.ChatNotFound:
+        raise chat_gone()
+    except storage.ChatBusy:
+        raise HTTPException(409, "A reply is already being generated in this chat")
+    try:
+        chat, rev = db.get_chat_rev(chat_id)
+        profile = profile_for(chat)
+        if body.images and not profile.vision:
+            raise HTTPException(422, f"{profile.name} can't read images. Switch to a vision-capable provider.")
+        if body.illustrate and not profile.image_model:
+            raise HTTPException(422, f"{profile.name} has no image model. Set one in Providers.")
+        client = get_client(profile)
 
+        # Gathered before the model call; the pages are plain prompt text, so any provider works.
+        tavily_key = secret_store.get_key(secret_store.TAVILY_ACCOUNT) if body.web else None
+        query = None
+        if tavily_key and body.content.strip():
+            query = web.rewrite_query(client, profile.model, recent_for(chat), body.content)
+        sources, notes = web.gather(body.content, body.web, tavily_key, query)
+        history = history_for(chat, profile.vision)
+        uploaded = [f"data:{i.media_type};base64,{i.data}" for i in body.images]
+        message = content_for(web.with_context(body.content, sources, notes), uploaded, profile.vision)
+        history.append({"role": "user", "content": message})
+        try:
+            stream = open_stream(
+                client,
+                profile,
+                [{"role": "system", "content": system_for(chat, body.content, body.illustrate)}, *history],
+                sampling_params(chat),
+            )
+        except OpenAIError as e:
+            raise HTTPException(502, error_text(e))
+    except storage.ChatNotFound:
+        lease.release()
+        raise chat_gone()
+    except BaseException:
+        lease.release()
+        raise
+
+    reply = stream_reply(
+        chat,
+        body.content,
+        stream,
+        sources,
+        notes,
+        body.images,
+        query,
+        window_for(chat, profile),
+        (client, profile.image_model, profile_key(profile)) if body.illustrate else None,
+        lease,
+        rev,
+    )
+    # A generator that never starts (client gone before the first byte) never reaches its own finally, and the
+    # lease thread would keep renewing; release is idempotent, so these are only backstops.
+    weakref.finalize(reply, lease.release)
     return StreamingResponse(
-        stream_reply(
-            chat,
-            body.content,
-            stream,
-            sources,
-            notes,
-            body.images,
-            query,
-            window_for(chat, profile),
-            (client, profile.image_model, profile_key(profile)) if body.illustrate else None,
-        ),
+        reply,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        background=BackgroundTask(lease.release),
     )
 
 

@@ -52,6 +52,6 @@ For hot reload, run `npm run dev` in `frontend/` as well and open http://localho
 
 ## Develop
 
-`make check` runs the offline checks: syntax lint, ESLint, pytest and tsc.
+`make check` runs the offline checks: syntax lint, ESLint, pytest, Vitest (frontend unit tests), generated-types freshness, tsc and the test-count baseline. CI runs it as the `check` job. The Cypress journey is separate (`make e2e`, the `e2e` CI job).
 
 **Stack:** FastAPI, React, TypeScript, Tailwind, Vite.

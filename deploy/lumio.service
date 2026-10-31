@@ -12,6 +12,7 @@ Restart=on-failure
 # Same hostname as in the Caddyfile. It unlocks the Providers dialog on that host and stops a saved key being sent to another URL.
 Environment=DOLPHINLLM_PUBLIC_HOST=16-192-71-141.sslip.io
 Environment=DOLPHINLLM_DATA_DIR=/var/lib/lumio/chats
+Environment=DOLPHINLLM_DB_FILE=/var/lib/lumio/lumio.db
 Environment=DOLPHINLLM_PROFILES_FILE=/var/lib/lumio/profiles.json
 Environment=DOLPHINLLM_SECRETS_FILE=/var/lib/lumio/secrets.json
 Environment=DOLPHINLLM_LOG_FILE=/var/lib/lumio/logs/app.jsonl

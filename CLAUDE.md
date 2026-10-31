@@ -16,7 +16,7 @@ Local chat UI for any OpenAI-compatible API. Providers are profiles (name, base 
 - Do not edit `.claude/settings.json` or `scripts/hooks/` to loosen the checks.
 
 ## Verify
-Run `make check` (about 15 seconds, offline: syntax lint, ESLint, pytest, generated-types freshness, tsc) before reporting a task done; a Stop hook enforces it. The real API is only ever called by hand.
+Run `make check` (about 20 seconds, offline: syntax lint, ESLint, pytest, Vitest, generated-types freshness, tsc, test-count baseline; Cypress stays in `make e2e`) before reporting a task done; a Stop hook enforces it. The real API is only ever called by hand.
 
 ## Pull requests
 `main` only takes changes through a PR, and `gh` fails inside Claude's sandbox, so Claude never opens one. After every push of a branch, end the reply with a ready-to-run command for the user (to run with the `!` prefix), in this shape:
