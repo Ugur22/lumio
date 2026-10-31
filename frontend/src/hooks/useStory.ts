@@ -25,18 +25,23 @@ export function useSaveBehavior(chatId: string) {
 
 // The behavior route resets any omitted field, so the chat's current values travel with the new provider.
 export function useSwitchChatProfile(chat: Chat | undefined) {
+  const qc = useQueryClient();
   const save = useSaveBehavior(chat?.id ?? "");
   return {
     switchTo: (profileId: string) => {
       if (!chat) return;
-      save.mutate({
-        system_prompt: chat.system_prompt,
-        temperature: chat.temperature,
-        top_p: chat.top_p,
-        frequency_penalty: chat.frequency_penalty,
-        max_tokens: chat.max_tokens,
-        profile_id: profileId,
-      });
+      save.mutate(
+        {
+          system_prompt: chat.system_prompt,
+          temperature: chat.temperature,
+          top_p: chat.top_p,
+          frequency_penalty: chat.frequency_penalty,
+          max_tokens: chat.max_tokens,
+          profile_id: profileId,
+        },
+        // The server drops the model override with the old provider; re-read so the header shows the new profile's model.
+        { onSuccess: () => qc.invalidateQueries({ queryKey: chatKey(chat.id) }) },
+      );
     },
     isPending: save.isPending,
     error: save.error,

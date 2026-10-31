@@ -29,6 +29,7 @@ from models import (
     BehaviorUpdate,
     LOCAL_HOSTS,
     Chat,
+    ChatModelUpdate,
     ChatSummary,
     ContentPart,
     ContextInfo,
@@ -154,6 +155,11 @@ def active_profile() -> Profile:
     return profile
 
 
+def override_applies(chat: Chat, profile: Profile) -> bool:
+    # A model ID belongs to the provider it was picked on; after a fallback to another provider it is stale.
+    return bool(chat.model) and chat.profile_id == profile.id
+
+
 def profile_for(chat: Chat) -> Profile:
     """The chat's own provider, falling back to the default when it has none or it was deleted."""
     store = profile_store.load_store(settings)
@@ -161,7 +167,8 @@ def profile_for(chat: Chat) -> Profile:
     profile = next((p for p in store.profiles if p.id == wanted), None)
     if profile is None:
         raise HTTPException(409, "No provider configured. Add one in Providers.")
-    return profile
+    # A copy, so the stored profile is never changed by a per-chat override.
+    return profile.model_copy(update={"model": chat.model}) if override_applies(chat, profile) else profile
 
 
 def profile_key(profile: Profile) -> str | None:
@@ -580,9 +587,14 @@ def context_info(chat: Chat, window: int | None) -> ContextInfo:
     return ContextInfo(used=used, window=window, source=source, parts=ContextParts(**sizes))
 
 
+def window_for(chat: Chat, profile: Profile) -> int | None:
+    # An overridden model has its own window; the profile's belongs to a different model.
+    return chat.context_window if override_applies(chat, profile) else profile.context_window
+
+
 def profile_window(chat: Chat) -> int | None:
     try:
-        return profile_for(chat).context_window
+        return window_for(chat, profile_for(chat))
     except HTTPException:
         return None
 
@@ -711,10 +723,26 @@ def update_behavior(chat_id: ChatId, body: BehaviorUpdate):
     chat = load_chat(chat_id)
     if body.profile_id is not None:
         find(profile_store.load_store(settings), body.profile_id)
+    if "profile_id" in body.model_fields_set and body.profile_id != chat.profile_id:
+        # A model ID only makes sense on its own provider.
+        chat.model = chat.context_window = None
     for field, value in body:
         if field != "profile_id" or "profile_id" in body.model_fields_set:
             setattr(chat, field, value)
     chat.last_usage = None  # measured against the old prompt
+    save_chat(chat)
+    return chat
+
+
+@app.put("/api/chats/{chat_id}/model", response_model=Chat)
+def update_chat_model(chat_id: ChatId, body: ChatModelUpdate):
+    chat = load_chat(chat_id)
+    if body.model and chat.profile_id is None:
+        # Pin the provider the model was picked on, so a later change of default can't send it elsewhere.
+        chat.profile_id = profile_for(chat).id
+    chat.model = body.model
+    chat.context_window = body.context_window if body.model else None
+    chat.last_usage = None  # measured against the old model
     save_chat(chat)
     return chat
 
@@ -807,7 +835,7 @@ def send_message(chat_id: ChatId, body: NewMessage):
             notes,
             body.images,
             query,
-            profile.context_window,
+            window_for(chat, profile),
             (client, profile.image_model, profile_key(profile)) if body.illustrate else None,
         ),
         media_type="text/event-stream",

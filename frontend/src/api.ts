@@ -2,6 +2,7 @@ import { createSseParser } from "./lib/sse";
 import type {
   Chat,
   ChatSummary,
+  ChatModelBody,
   ContextInfo,
   DoneChat,
   EditProfileBody,
@@ -130,6 +131,8 @@ export const api = {
     request<Chat>(`/chats/${id}/story`, { method: "PUT", body: JSON.stringify(body) }),
   saveBehavior: (id: string, body: BehaviorBody) =>
     request<Chat>(`/chats/${id}/behavior`, { method: "PUT", body: JSON.stringify(body) }),
+  setChatModel: (id: string, body: ChatModelBody) =>
+    request<Chat>(`/chats/${id}/model`, { method: "PUT", body: JSON.stringify(body) }),
   // Proposes a summary; nothing is saved until saveSummary.
   summarize: (id: string) => request<SummaryBody>(`/chats/${id}/summarize`, { method: "POST" }),
   saveSummary: (id: string, body: SummaryBody) =>

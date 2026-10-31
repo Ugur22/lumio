@@ -10,7 +10,7 @@ import { ProviderSwitcher } from "./components/ProviderSwitcher";
 import { ProvidersDialog } from "./components/ProvidersDialog";
 import { Sidebar } from "./components/Sidebar";
 import { StoryDialog, type StoryTab } from "./components/StoryDialog";
-import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, useRenameChat } from "./hooks/useChats";
+import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, useRenameChat, useSetChatModel } from "./hooks/useChats";
 import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTheme } from "./hooks/useTheme";
@@ -18,7 +18,7 @@ import type { Attachment } from "./lib/images";
 import { effectiveProfile } from "./lib/providers";
 import { isRestoring } from "./lib/restoring";
 import { useStream } from "./store/stream";
-import type { ChatSummary } from "./types";
+import type { ChatModelBody, ChatSummary } from "./types";
 
 export function App() {
   const { theme, toggle } = useTheme();
@@ -37,6 +37,8 @@ export function App() {
   const [renaming, setRenaming] = useState<ChatSummary | null>(null);
   const [deleting, setDeleting] = useState<ChatSummary | null>(null);
   const composer = useRef<ComposerHandle>(null);
+  // A blank chat's model pick; not persisted, it only lives until the chat exists.
+  const [pendingModel, setPendingModel] = useState<ChatModelBody | null>(null);
 
   const context = useChatContext(currentId);
   const pendingHere = useStream((s) => s.pending?.chatId === currentId);
@@ -84,8 +86,11 @@ export function App() {
   const profiles = useProfiles().data;
   const activeProfile = effectiveProfile(profiles, chat.data?.profile_id).profile;
 
+  const setChatModel = useSetChatModel();
+
   const select = (id: string | null) => {
     useStream.getState().clearFailures();
+    if (id !== currentId) setPendingModel(null);
     setChosen(id);
     setMenuOpen(false);
     if (id === null) composer.current?.focus();
@@ -93,10 +98,21 @@ export function App() {
 
   function onSend(content: string, attachments: Attachment[], web: boolean, illustrate: boolean) {
     const chatId = currentId;
-    send(chatId, content, attachments, web, illustrate, (saved) => {
-      // Only jump to the new chat if the user is still on the blank one.
-      setChosen((cur) => (chatId === null && (cur === null || cur === undefined) ? saved.id : cur));
-    });
+    const model = chatId === null ? (pendingModel ?? undefined) : undefined;
+    send(
+      chatId,
+      content,
+      attachments,
+      web,
+      illustrate,
+      (saved) => {
+        // Only jump to the new chat if the user is still on the blank one.
+        setChosen((cur) => (chatId === null && (cur === null || cur === undefined) ? saved.id : cur));
+        // Not if a newer pick was made while this send was in flight.
+        if (chatId === null) setPendingModel((cur) => (cur === model ? null : cur));
+      },
+      model,
+    );
   }
 
   // The story lives in the chat file, so a blank chat has to be created before the dialog can save to it.
@@ -105,6 +121,8 @@ export function App() {
     if (create.isPending) return;
     create.mutate(undefined, {
       onSuccess: (created) => {
+        // The story dialog creates the chat early, so the pick is stored on it here instead of at the first send.
+        if (pendingModel) setChatModel.mutate({ id: created.id, body: pendingModel });
         select(created.id);
         setStory({ open: true, tab: "bible" });
       },
@@ -188,7 +206,8 @@ export function App() {
           ),
       )}
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-2 border-b border-border/70 px-5 py-3 backdrop-blur">
+        {/* backdrop-blur makes the header its own stacking context; without a z-index the model popover paints under the composer and tiles. Stays below the drawer overlay (z-10). */}
+        <header className="relative z-[5] flex items-center gap-2 border-b border-border/70 px-5 py-3 backdrop-blur">
           <PressButton
             type="button"
             aria-label="Open chats"
@@ -209,7 +228,12 @@ export function App() {
             <BookIcon width={16} height={16} />
             <span className="max-[480px]:hidden">Story</span>
           </Button>
-          <ProviderSwitcher chatId={currentId} onManage={() => setSettingsOpen(true)} />
+          <ProviderSwitcher
+            chatId={currentId}
+            pendingModel={pendingModel}
+            onPendingModel={setPendingModel}
+            onManage={() => setSettingsOpen(true)}
+          />
         </header>
         {loadError && (
           <div role="alert" className="px-5 py-2 text-warn-bar">
