@@ -6,7 +6,7 @@ import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
 import { formatTokens } from "../lib/context";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
 import type { KeyStore, Profile } from "../types";
-import { CheckIcon, PlusIcon, TrashIcon } from "./icons";
+import { CheckIcon, PlugIcon, PlusIcon, TrashIcon } from "./icons";
 import { ModelCombobox } from "./ModelCombobox";
 import { Button, CheckboxField, ConfirmDialog, Modal, PressButton, Select, TextField, TextInput, fieldClass, focusRing } from "./ui";
 
@@ -438,6 +438,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
             press={0.97}
             variant="secondary"
           >
+            {pending !== "fetch" && <PlugIcon width={16} height={16} />}
             Test &amp; fetch models
           </PressButton>
           {editing && (
