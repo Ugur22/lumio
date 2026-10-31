@@ -1,10 +1,10 @@
-import { animated, useTransition } from "@react-spring/web";
-import { useRef, useState } from "react";
+import { animated, useSpring, useTransition } from "@react-spring/web";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CodeActionsContext } from "./components/CodeActionsContext";
 import { ContextMeter } from "./components/ContextMeter";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { BookIcon, MenuIcon } from "./components/icons";
-import { MessageList } from "./components/MessageList";
+import { MessageList, Starters } from "./components/MessageList";
 import { Button, ConfirmDialog, PressButton, PromptDialog } from "./components/ui";
 import { ProviderSwitcher } from "./components/ProviderSwitcher";
 import { ProvidersDialog } from "./components/ProvidersDialog";
@@ -39,6 +39,43 @@ export function App() {
   const composer = useRef<ComposerHandle>(null);
 
   const context = useChatContext(currentId);
+  const pendingHere = useStream((s) => s.pending?.chatId === currentId);
+  // One Composer instance serves both layouts, so a draft survives the move to the bottom.
+  const blank = !restoring && !pendingHere && (currentId === null || (chat.isSuccess && chat.data.messages.length === 0));
+
+  // On a phone the keyboard would cover a centred input, so focusing it docks the layout early.
+  const [focused, setFocused] = useState(false);
+  const centered = blank && !(focused && window.matchMedia("(pointer: coarse)").matches);
+
+  // FLIP: when the layout docks it snaps, so play the composer from where it was.
+  const dock = useRef<HTMLDivElement>(null);
+  const tiles = useRef<HTMLDivElement>(null);
+  const tilesTop = useRef(0);
+  const last = useRef<{ top: number; centered: boolean } | null>(null);
+  const [fading, setFading] = useState(false);
+  const [dockStyle, dockApi] = useSpring(() => ({ y: 0 }));
+  useLayoutEffect(() => {
+    const top = dock.current?.getBoundingClientRect().top;
+    if (top === undefined) return;
+    if (centered && tiles.current) tilesTop.current = tiles.current.offsetTop;
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (last.current?.centered && !centered && !calm) {
+      dockApi.set({ y: last.current.top - top });
+      dockApi.start({ y: 0, config: { tension: 170, friction: 22 } });
+    }
+    last.current = { top, centered };
+  });
+  const wasCentered = useRef(centered);
+  useLayoutEffect(() => {
+    if (wasCentered.current && !centered && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) setFading(true);
+    wasCentered.current = centered;
+  }, [centered]);
+  // The tiles linger, out of flow, just long enough to fade.
+  useEffect(() => {
+    if (!fading) return;
+    const t = setTimeout(() => setFading(false), 220);
+    return () => clearTimeout(t);
+  }, [fading]);
 
   const create = useCreateChat();
   const rename = useRenameChat();
@@ -150,7 +187,7 @@ export function App() {
             />
           ),
       )}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="relative flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-2 border-b border-border/70 px-5 py-3 backdrop-blur">
           <PressButton
             type="button"
@@ -184,8 +221,6 @@ export function App() {
             messages={currentId ? (chat.data?.messages ?? []) : []}
             chatId={currentId}
             loading={restoring}
-            onPick={(text) => composer.current?.setText(text)}
-            onStory={openStory}
           />
         </CodeActionsContext.Provider>
         <ContextMeter
@@ -193,15 +228,27 @@ export function App() {
           onSetWindow={() => setSettingsOpen(true)}
           onSummarize={() => setStory({ open: true, tab: "summary" })}
         />
-        <Composer
-          ref={composer}
-          disabled={sending}
-          vision={activeProfile?.vision ?? false}
-          canIllustrate={Boolean(activeProfile?.image_model)}
-          providerName={activeProfile?.name ?? null}
-          onStop={stop}
-          onSend={onSend}
-        />
+        <animated.div ref={dock} style={dockStyle} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
+          <Composer
+            ref={composer}
+            disabled={sending}
+            vision={activeProfile?.vision ?? false}
+            canIllustrate={Boolean(activeProfile?.image_model)}
+            providerName={activeProfile?.name ?? null}
+            onStop={stop}
+            onSend={onSend}
+          />
+        </animated.div>
+        {(centered || fading) && (
+          <Starters
+            ref={tiles}
+            leavingAt={centered ? undefined : tilesTop.current}
+            disabled={sending}
+            onStory={openStory}
+            onPick={(text, now) => (now ? onSend(text, [], false, false) : composer.current?.setText(text))}
+          />
+        )}
+        {centered && <div className="flex-[1.2]" />}
       </main>
     </div>
   );
