@@ -18,6 +18,27 @@ Local chat UI for any OpenAI-compatible API. Providers are profiles (name, base 
 ## Verify
 Run `make check` (about 15 seconds, offline: syntax lint, ESLint, pytest, generated-types freshness, tsc) before reporting a task done; a Stop hook enforces it. The real API is only ever called by hand.
 
+## Pull requests
+`main` only takes changes through a PR, and `gh` fails inside Claude's sandbox, so Claude never opens one. After every push of a branch, end the reply with a ready-to-run command for the user (to run with the `!` prefix), in this shape:
+
+```
+! gh pr create --base main --head <branch> --title "<imperative, under 70 characters>" --body "$(cat <<'EOF'
+## What
+- <the change, one bullet per point>
+
+## Why
+<the problem it solves, one or two sentences; omit for trivial changes>
+
+## Check
+<what was run and what it showed, plus anything not verified, such as the UI in a browser>
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+The title matches the commit's first line. Mention API or behaviour changes under What, and anything the user has to do by hand (an install, a deploy) under Check.
+
 ## Agents
 `.claude/agents/frontend-developer.md` (anything under `frontend/`) and `backend-developer.md` (`server.py`, `models.py`, `tests/`). Use them for scoped changes; use `bug-fixer`-style work (reproduce, root cause, smallest fix, regression test) for bugs.
 
