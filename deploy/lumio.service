@@ -11,10 +11,14 @@ Restart=on-failure
 
 # Same hostname as in the Caddyfile. It unlocks the Providers dialog on that host and stops a saved key being sent to another URL.
 Environment=DOLPHINLLM_PUBLIC_HOST=16-192-71-141.sslip.io
+# Owner of the chats, profiles and keys that existed before accounts. Must be an account created with `python -m accounts create-user --admin`; the app refuses to start otherwise while such data exists.
+Environment=DOLPHINLLM_ADMIN_USER=CHANGE_ME
 Environment=DOLPHINLLM_DATA_DIR=/var/lib/lumio/chats
 Environment=DOLPHINLLM_DB_FILE=/var/lib/lumio/lumio.db
 Environment=DOLPHINLLM_PROFILES_FILE=/var/lib/lumio/profiles.json
 Environment=DOLPHINLLM_SECRETS_FILE=/var/lib/lumio/secrets.json
+# Encrypts secrets.json. Create it once with `python -m secret_store new-key`, keep it outside /var/lib/lumio (and its backups), mode 0400 for the lumio user.
+Environment=DOLPHINLLM_SECRET_KEY_FILE=/etc/lumio/secret.key
 Environment=DOLPHINLLM_LOG_FILE=/var/lib/lumio/logs/app.jsonl
 
 NoNewPrivileges=yes
@@ -22,6 +26,7 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/var/lib/lumio
+ReadOnlyPaths=/etc/lumio
 UMask=0077
 
 [Install]

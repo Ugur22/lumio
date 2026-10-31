@@ -54,10 +54,10 @@ def test_import_keeps_every_field_and_the_original_files(src, tmp_path):
     before = digest(src)
     db = tmp_path / "lumio.db"
 
-    report = chat_migration.import_chats(src, db, apply=True)
+    report = chat_migration.import_chats(src, db, apply=True, owner="local")
 
     assert (report.imported, report.ok) == ([chat.id], True)
-    assert storage.Store(db).get_chat(chat.id).model_dump(mode="json") == chat.model_dump(mode="json")
+    assert storage.Store(db).get_chat(chat.id, owner="local").model_dump(mode="json") == chat.model_dump(mode="json")
     assert digest(src) == before
 
 
@@ -74,13 +74,13 @@ def test_dry_run_reports_but_writes_nothing(src, tmp_path):
 def test_import_can_be_repeated(src, tmp_path):
     write(src, rich_chat())
     db = tmp_path / "lumio.db"
-    chat_migration.import_chats(src, db, apply=True)
-    storage.Store(db).append_messages("a" * 32, [Message(role="user", content="new"), Message(role="assistant", content="new")])
+    chat_migration.import_chats(src, db, apply=True, owner="local")
+    storage.Store(db).append_messages("a" * 32, [Message(role="user", content="new"), Message(role="assistant", content="new")], owner="local")
 
-    report = chat_migration.import_chats(src, db, apply=True)
+    report = chat_migration.import_chats(src, db, apply=True, owner="local")
 
     assert (report.imported, report.already_present) == ([], ["a" * 32])
-    assert len(storage.Store(db).get_chat("a" * 32).messages) == 4  # a re-run never reverts newer chats
+    assert len(storage.Store(db).get_chat("a" * 32, owner="local").messages) == 4  # a re-run never reverts newer chats
 
 
 def test_unreadable_and_misnamed_files_are_skipped_and_reported_without_blocking_the_rest(src, tmp_path):
@@ -89,7 +89,7 @@ def test_unreadable_and_misnamed_files_are_skipped_and_reported_without_blocking
     (src / ("f" * 32 + ".json")).write_text(rich_chat("d" * 32).model_dump_json())
     (src / "images").mkdir()
 
-    report = chat_migration.import_chats(src, tmp_path / "lumio.db", apply=True)
+    report = chat_migration.import_chats(src, tmp_path / "lumio.db", apply=True, owner="local")
 
     assert report.imported == ["a" * 32]
     assert sorted(report.skipped) == ["e" * 32 + ".json", "f" * 32 + ".json"]
@@ -101,19 +101,19 @@ def test_chats_saved_before_newer_fields_existed_import(src, tmp_path):
            "messages": [{"role": "user", "content": "hi", "created": "2025-01-01T00:00:00Z"}]}
     (src / f"{'a' * 32}.json").write_text(json.dumps(old))
 
-    report = chat_migration.import_chats(src, tmp_path / "lumio.db", apply=True)
+    report = chat_migration.import_chats(src, tmp_path / "lumio.db", apply=True, owner="local")
 
     assert report.ok
-    loaded = storage.Store(tmp_path / "lumio.db").get_chat("a" * 32)
+    loaded = storage.Store(tmp_path / "lumio.db").get_chat("a" * 32, owner="local")
     assert (loaded.profile_id, loaded.bible, loaded.updated.isoformat()) == (None, "", "2025-01-02T00:00:00+00:00")
 
 
 def test_listing_order_follows_the_original_updated_times(src, tmp_path):
     for cid, updated in (("1" * 32, "2025-01-01T00:00:00Z"), ("2" * 32, "2025-03-01T00:00:00Z"), ("3" * 32, "2025-02-01T00:00:00Z")):
         write(src, Chat(id=cid, updated=updated))
-    chat_migration.import_chats(src, tmp_path / "lumio.db", apply=True)
+    chat_migration.import_chats(src, tmp_path / "lumio.db", apply=True, owner="local")
 
-    assert [c.id[0] for c in storage.Store(tmp_path / "lumio.db").list_chats()] == ["2", "3", "1"]
+    assert [c.id[0] for c in storage.Store(tmp_path / "lumio.db").list_chats(owner="local")] == ["2", "3", "1"]
 
 
 def test_cli_exit_code_reflects_skipped_files(src, tmp_path, capsys):
@@ -132,23 +132,23 @@ def test_cli_exit_code_reflects_skipped_files(src, tmp_path, capsys):
 def test_export_round_trips_chats_including_ones_changed_after_the_cutover(src, tmp_path):
     write(src, rich_chat())
     db = tmp_path / "lumio.db"
-    chat_migration.import_chats(src, db, apply=True)
+    chat_migration.import_chats(src, db, apply=True, owner="local")
     store = storage.Store(db)
-    store.append_messages("a" * 32, [Message(role="user", content="after"), Message(role="assistant", content="cutover")])
-    fresh = store.create_chat("p1")
+    store.append_messages("a" * 32, [Message(role="user", content="after"), Message(role="assistant", content="cutover")], owner="local")
+    fresh = store.create_chat("p1", owner="local")
     out = tmp_path / "export"
 
     assert chat_migration.export_chats(db, out) == 2
 
     for cid in ("a" * 32, fresh.id):
-        assert Chat.model_validate_json((out / f"{cid}.json").read_text()).model_dump(mode="json") == store.get_chat(cid).model_dump(mode="json")
+        assert Chat.model_validate_json((out / f"{cid}.json").read_text()).model_dump(mode="json") == store.get_chat(cid, owner="local").model_dump(mode="json")
     assert not list(out.glob("*.tmp"))
 
 
 def test_export_does_not_overwrite_existing_files_unless_forced(src, tmp_path):
     write(src, rich_chat())
     db = tmp_path / "lumio.db"
-    chat_migration.import_chats(src, db, apply=True)
+    chat_migration.import_chats(src, db, apply=True, owner="local")
     before = digest(src)
 
     with pytest.raises(SystemExit):
@@ -190,7 +190,7 @@ def test_a_chat_deleted_later_is_not_restored_from_its_leftover_file(app_with):
     data, store = app_with
     write(data, rich_chat())
     runtime.import_legacy_chats(store, runtime.settings)
-    store.delete_chat("a" * 32)
+    store.delete_chat("a" * 32, owner="local")
 
     runtime.import_legacy_chats(store, runtime.settings)
 
@@ -200,8 +200,8 @@ def test_a_chat_deleted_later_is_not_restored_from_its_leftover_file(app_with):
 def test_a_manual_import_counts_as_done(app_with):
     data, store = app_with
     write(data, rich_chat())
-    chat_migration.import_chats(data, store.path, apply=True)
-    store.delete_chat("a" * 32)
+    chat_migration.import_chats(data, store.path, apply=True, owner="local")
+    store.delete_chat("a" * 32, owner="local")
 
     runtime.import_legacy_chats(store, runtime.settings)
 

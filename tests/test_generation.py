@@ -13,7 +13,7 @@ from openai import OpenAIError
 import server
 import images
 import storage
-from app import runtime, streaming, routes_chats
+from app import auth, runtime, streaming, routes_chats
 from models import ImageData, NewMessage
 
 WAIT = 10
@@ -161,8 +161,8 @@ def test_lease_is_released_after_a_mid_stream_error(api, fake_client):
 
 def test_stopping_keeps_the_partial_reply_and_releases_the_lease(api):
     cid = new_chat(api)
-    lease = runtime.db.acquire(cid)
-    chat = routes_chats.load_chat(cid)
+    lease = runtime.db.acquire(cid, owner="local")
+    chat = routes_chats.load_chat(cid, auth.LOCAL_USER)
 
     async def run():
         gen = streaming.stream_reply(chat, "Hello there", FakeStream(REPLY_PIECES), [], [], lease=lease)
@@ -171,14 +171,14 @@ def test_stopping_keeps_the_partial_reply_and_releases_the_lease(api):
 
     asyncio.run(run())
 
-    assert [m.content for m in routes_chats.load_chat(cid).messages] == ["Hello there", REPLY_PIECES[0]]
+    assert [m.content for m in routes_chats.load_chat(cid, auth.LOCAL_USER).messages] == ["Hello there", REPLY_PIECES[0]]
     assert leases() == 0
 
 
 def test_cancelling_the_task_keeps_the_partial_reply_and_releases_the_lease(api):
     cid = new_chat(api)
-    lease = runtime.db.acquire(cid)
-    chat = routes_chats.load_chat(cid)
+    lease = runtime.db.acquire(cid, owner="local")
+    chat = routes_chats.load_chat(cid, auth.LOCAL_USER)
 
     async def run():
         seen = asyncio.Event()
@@ -196,14 +196,14 @@ def test_cancelling_the_task_keeps_the_partial_reply_and_releases_the_lease(api)
 
     asyncio.run(run())
 
-    assert [m.content for m in routes_chats.load_chat(cid).messages] == ["Hello there", REPLY_PIECES[0]]
+    assert [m.content for m in routes_chats.load_chat(cid, auth.LOCAL_USER).messages] == ["Hello there", REPLY_PIECES[0]]
     assert leases() == 0
 
 
 def test_a_response_that_never_starts_does_not_keep_the_chat_locked(api, calls):
     cid = new_chat(api)
 
-    response = routes_chats.send_message(cid, NewMessage(content="hi"))
+    response = routes_chats.send_message(cid, NewMessage(content="hi"), auth.LOCAL_USER)
     assert leases() == 1
 
     del response  # the client left before the first byte: the generator's own finally never runs
@@ -232,13 +232,13 @@ def test_deleting_the_chat_mid_reply_does_not_bring_it_back(api, held):
 
 def test_stopping_after_the_chat_was_deleted_does_not_bring_it_back(api):
     cid = new_chat(api)
-    lease = runtime.db.acquire(cid)
-    chat = routes_chats.load_chat(cid)
+    lease = runtime.db.acquire(cid, owner="local")
+    chat = routes_chats.load_chat(cid, auth.LOCAL_USER)
 
     async def run():
         gen = streaming.stream_reply(chat, "Hello", FakeStream(REPLY_PIECES), [], [], lease=lease)
         await anext(gen)
-        runtime.db.delete_chat(cid)
+        runtime.db.delete_chat(cid, owner="local")
         await gen.aclose()
 
     asyncio.run(run())
@@ -249,9 +249,9 @@ def test_stopping_after_the_chat_was_deleted_does_not_bring_it_back(api):
 
 def test_files_saved_for_a_reply_to_a_deleted_chat_are_removed(api):
     cid = new_chat(api)
-    chat = routes_chats.load_chat(cid)
-    lease = runtime.db.acquire(cid)
-    runtime.db.delete_chat(cid)
+    chat = routes_chats.load_chat(cid, auth.LOCAL_USER)
+    lease = runtime.db.acquire(cid, owner="local")
+    runtime.db.delete_chat(cid, owner="local")
     upload = ImageData(media_type="image/png", data=base64.b64encode(b"png-bytes").decode())
 
     with pytest.raises(storage.ChatNotFound):
@@ -322,7 +322,7 @@ def image_files(cid):
 
 
 def stored(cid):
-    return [m.content for m in routes_chats.load_chat(cid).messages]
+    return [m.content for m in routes_chats.load_chat(cid, auth.LOCAL_USER).messages]
 
 
 async def drain(gen):
@@ -331,8 +331,8 @@ async def drain(gen):
 
 def test_a_stale_completed_reply_is_rejected_and_the_replacement_saves(api, monkeypatch):
     cid = new_chat(api)
-    stale = runtime.db.acquire(cid)
-    chat = routes_chats.load_chat(cid)
+    stale = runtime.db.acquire(cid, owner="local")
+    chat = routes_chats.load_chat(cid, auth.LOCAL_USER)
     made = []
 
     async def illustrated(chat_id, text, *_):
@@ -345,7 +345,7 @@ def test_a_stale_completed_reply_is_rejected_and_the_replacement_saves(api, monk
         gen = streaming.stream_reply(chat, "stale", FakeStream(REPLY_PIECES), [], [], [PNG], illustrate=(None, "m", None), lease=stale)
         await anext(gen)
         expire(cid)
-        fresh = runtime.db.acquire(cid)
+        fresh = runtime.db.acquire(cid, owner="local")
         return fresh, [block async for block in gen]
 
     fresh, rest = asyncio.run(run())
@@ -356,15 +356,15 @@ def test_a_stale_completed_reply_is_rejected_and_the_replacement_saves(api, monk
     assert image_files(cid) == []
     assert leases() == 1  # the replacement's lease survived the stale generation's cleanup
 
-    asyncio.run(drain(streaming.stream_reply(routes_chats.load_chat(cid), "fresh", FakeStream(REPLY_PIECES), [], [], lease=fresh)))
+    asyncio.run(drain(streaming.stream_reply(routes_chats.load_chat(cid, auth.LOCAL_USER), "fresh", FakeStream(REPLY_PIECES), [], [], lease=fresh)))
     assert stored(cid) == ["fresh", "".join(REPLY_PIECES)]
     assert leases() == 0
 
 
 def test_a_stale_partial_reply_is_dropped_without_a_retry(api, monkeypatch):
     cid = new_chat(api)
-    stale = runtime.db.acquire(cid)
-    chat = routes_chats.load_chat(cid)
+    stale = runtime.db.acquire(cid, owner="local")
+    chat = routes_chats.load_chat(cid, auth.LOCAL_USER)
     attempts = []
     real = storage.Store.append_generated
     monkeypatch.setattr(storage.Store, "append_generated", lambda self, *a, **k: attempts.append(1) or real(self, *a, **k))
@@ -373,7 +373,7 @@ def test_a_stale_partial_reply_is_dropped_without_a_retry(api, monkeypatch):
         gen = streaming.stream_reply(chat, "stale", FakeStream(REPLY_PIECES), [], [], [PNG], lease=stale)
         await anext(gen)
         expire(cid)
-        fresh = runtime.db.acquire(cid)
+        fresh = runtime.db.acquire(cid, owner="local")
         await gen.aclose()
         return fresh
 
@@ -383,7 +383,7 @@ def test_a_stale_partial_reply_is_dropped_without_a_retry(api, monkeypatch):
     assert stored(cid) == []
     assert image_files(cid) == []
     assert leases() == 1
-    streaming.append_turn(routes_chats.load_chat(cid), fresh, "fresh", "ok", [])
+    streaming.append_turn(routes_chats.load_chat(cid, auth.LOCAL_USER), fresh, "fresh", "ok", [])
     assert stored(cid) == ["fresh", "ok"]
     fresh.release()
     assert leases() == 0
@@ -391,8 +391,8 @@ def test_a_stale_partial_reply_is_dropped_without_a_retry(api, monkeypatch):
 
 def test_a_reply_whose_lease_expired_with_no_replacement_is_not_saved(api):
     cid = new_chat(api)
-    stale = runtime.db.acquire(cid)
-    chat = routes_chats.load_chat(cid)
+    stale = runtime.db.acquire(cid, owner="local")
+    chat = routes_chats.load_chat(cid, auth.LOCAL_USER)
 
     async def run():
         gen = streaming.stream_reply(chat, "late", FakeStream(REPLY_PIECES), [], [], [PNG], lease=stale)
@@ -404,7 +404,7 @@ def test_a_reply_whose_lease_expired_with_no_replacement_is_not_saved(api):
 
     assert rest[-1].startswith("event: error")
     assert stored(cid) == [] and image_files(cid) == []
-    assert routes_chats.load_chat(cid).title == "New chat"
+    assert routes_chats.load_chat(cid, auth.LOCAL_USER).title == "New chat"
 
 
 def test_the_app_saves_replies_only_through_the_lease_checked_append():

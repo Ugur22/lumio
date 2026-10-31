@@ -14,6 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # A developer's e2e or log-file settings must not change what gets generated.
 for var in ("LUMIO_E2E_UPSTREAM", "LUMIO_E2E_DATA_DIR", "DOLPHINLLM_LOG_FILE"):
     os.environ.pop(var, None)
+# Server-only settings from a developer's shell or dotfile would make importing `server` refuse to start (no public host).
+for var in ("DOLPHINLLM_SECRETS_FILE", "DOLPHINLLM_SECRET_KEY", "DOLPHINLLM_SECRET_KEY_FILE"):
+    os.environ.pop(var, None)
+os.environ["DOLPHINLLM_ADMIN_USER"] = ""
 scratch = tempfile.mkdtemp(prefix="lumio-openapi-")
 os.environ["DOLPHINLLM_API_KEY"] = "schema-only"
 os.environ["DOLPHINLLM_DATA_DIR"] = os.path.join(scratch, "chats")

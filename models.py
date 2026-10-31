@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, SecretStr, StringConstraints, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).parent
@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # Set on a server: the hostname browsers use. It is also accepted by require_local_origin and
     # switches on the checks that stop a stored key being sent to a different base URL.
     public_host: str | None = None
+    # Env DOLPHINLLM_ADMIN_USER. On a server (public_host set): the username that takes over chats saved before
+    # accounts existed. It must already exist (python -m accounts create-user NAME --admin); needed only while
+    # such chats exist, and the app refuses to start without it rather than leave them readable by anyone.
+    admin_user: str | None = None
     # Images are only kept so follow-up questions keep working; they are pruned after this.
     image_retention_days: int = Field(default=30, ge=1)
 
@@ -308,6 +312,42 @@ class NewMessage(ApiModel):
         if not self.content.strip() and not self.images:
             raise ValueError("Write a message or attach an image")
         return self
+
+
+def _lower(value):
+    return value.lower() if isinstance(value, str) else value
+
+
+# Stored lowercased; uniqueness is case-insensitive.
+Username = Annotated[str, BeforeValidator(_lower), StringConstraints(pattern=r"^[a-z0-9_-]{3,32}$")]
+Password = Annotated[SecretStr, Field(min_length=10, max_length=128)]
+
+
+class UserView(ApiModel):
+    id: str
+    username: str
+    is_admin: bool
+
+
+# Without a deployment (local dev, main.py, tests) there is one fixed user and no login.
+LOCAL_USER = UserView(id="local", username="local", is_admin=True)
+
+
+class RegisterBody(ApiModel):
+    username: Username
+    password: Password
+    invite: SecretStr = Field(min_length=1, max_length=256)
+
+
+class LoginBody(ApiModel):
+    # No format rules here: a malformed name must fail like a wrong one, not with a different status.
+    username: Annotated[str, BeforeValidator(_lower), Field(min_length=1, max_length=128)]
+    password: SecretStr = Field(min_length=1, max_length=1024)
+
+
+class PasswordChange(ApiModel):
+    current_password: SecretStr = Field(min_length=1, max_length=1024)
+    new_password: Password
 
 
 class WebKey(ApiModel):

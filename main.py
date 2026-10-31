@@ -6,15 +6,15 @@ from pathlib import Path
 from openai import OpenAI
 
 import profile_store
-from models import Settings
+from models import LOCAL_USER, Settings
 
 # Same provider and key as the web app: its active profile, keychain key first.
 settings = Settings()
-store = profile_store.load_store(settings)
+store = profile_store.load_store(settings, LOCAL_USER)
 profile = next((p for p in store.profiles if p.id == store.active), None)
 if profile is None:
     sys.exit("No provider configured: add one in the web app's Providers dialog (or set DOLPHINLLM_API_KEY, see .env.example)")
-api_key = profile_store.resolve_key(settings, profile)[0] or (None if profile.needs_key else "not-needed")
+api_key = profile_store.resolve_key(settings, LOCAL_USER, profile)[0] or (None if profile.needs_key else "not-needed")
 if not api_key:
     sys.exit(f"No API key for {profile.name}: add one in the web app's Providers dialog")
 
