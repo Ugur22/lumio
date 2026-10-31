@@ -6,6 +6,7 @@ from conftest import REPLY_PIECES, FakeStream
 from openai import OpenAIError
 
 import server
+from app import runtime, story, streaming, routes_chats
 
 
 def new_chat(api):
@@ -43,7 +44,7 @@ def test_history_and_system_prompt_are_resent_each_turn(api, calls):
     send(api, cid, "two")
 
     assert [m["role"] for m in calls[1]] == ["system", "user", "assistant", "user"]
-    assert calls[1][0]["content"] == server.SYSTEM_PROMPT
+    assert calls[1][0]["content"] == story.SYSTEM_PROMPT
 
 
 def test_system_prompt_is_never_stored(api, calls):
@@ -80,7 +81,7 @@ def test_error_mid_stream_is_reported_and_saves_nothing(api, fake_client):
 
 def stop_after_first_delta(chat, content, stream):
     async def run():
-        gen = server.stream_reply(chat, content, stream, [], [])
+        gen = streaming.stream_reply(chat, content, stream, [], [])
         await anext(gen)
         await gen.aclose()
 
@@ -88,12 +89,12 @@ def stop_after_first_delta(chat, content, stream):
 
 
 def test_stopped_stream_saves_the_partial_reply(api):
-    chat = server.load_chat(new_chat(api))
+    chat = routes_chats.load_chat(new_chat(api))
     stream = FakeStream(REPLY_PIECES)
 
     stop_after_first_delta(chat, "Hello there", stream)
 
-    saved = server.load_chat(chat.id)
+    saved = routes_chats.load_chat(chat.id)
     assert [m.content for m in saved.messages] == ["Hello there", REPLY_PIECES[0]]
     assert saved.title == "Hello there"
     assert stream.closed
@@ -123,12 +124,12 @@ def test_empty_message_and_blank_title_are_rejected(api):
 
 def test_stray_files_in_the_data_dir_do_not_show_up_in_the_list(api, calls):
     new_chat(api)
-    (server.settings.data_dir / ("f" * 32 + ".json")).write_text("{not json")
+    (runtime.settings.data_dir / ("f" * 32 + ".json")).write_text("{not json")
 
     try:
         assert len(api.get("/api/chats").json()) == 1
     finally:
-        (server.settings.data_dir / ("f" * 32 + ".json")).unlink()
+        (runtime.settings.data_dir / ("f" * 32 + ".json")).unlink()
 
 
 def test_api_key_is_not_in_built_frontend():

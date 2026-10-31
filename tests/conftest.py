@@ -13,6 +13,7 @@ os.environ["DOLPHINLLM_PROFILES_FILE"] = os.path.join(tempfile.mkdtemp(prefix="d
 
 import keyring  # noqa: E402
 import server  # noqa: E402
+from app import runtime, providers
 from keyring.backend import KeyringBackend  # noqa: E402
 from keyring.errors import PasswordDeleteError  # noqa: E402
 from openai import OpenAIError  # noqa: E402
@@ -50,16 +51,16 @@ def clean_data_dir():
     Path(os.environ["DOLPHINLLM_PROFILES_FILE"]).unlink(missing_ok=True)
     yield
     data = Path(os.environ["DOLPHINLLM_DATA_DIR"])
-    with server.db._tx() as conn:
+    with runtime.db._tx() as conn:
         conn.execute("DELETE FROM chats")  # messages and generation leases cascade
     shutil.rmtree(data / "images", ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
 def reset_stream_options():
-    server._no_stream_options.clear()
+    providers._no_stream_options.clear()
     yield
-    server._no_stream_options.clear()
+    providers._no_stream_options.clear()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -101,7 +102,7 @@ class FakeClient:
 def fake_client(monkeypatch):
     """Installs a FakeClient as the server's OpenAI client and returns it for tweaking."""
     client = FakeClient()
-    monkeypatch.setattr(server, "get_client", lambda profile: client)
+    monkeypatch.setattr(providers, "get_client", lambda profile: client)
     return client
 
 

@@ -5,9 +5,10 @@ import pytest
 from test_api import new_chat, send
 
 import secret_store
-import server
 import web
 from models import Source
+from openai import OpenAIError
+from app import story
 
 PUBLIC = "93.184.216.34"
 ARTICLE = (
@@ -257,7 +258,7 @@ def test_later_turns_still_see_the_pages(api, calls, pages):
 
 
 def test_old_pages_are_dropped_once_the_budget_is_spent(api, calls, pages, monkeypatch):
-    monkeypatch.setattr(server, "HISTORY_WEB_CHARS", 200)
+    monkeypatch.setattr(story, "HISTORY_WEB_CHARS", 200)
     cid = new_chat(api)
     send(api, cid, "read https://example.com/first")
     send(api, cid, "read https://example.com/second")
@@ -382,7 +383,7 @@ def test_none_skips_the_search_but_the_url_is_still_read(api, rewriter, pages):
     assert events[0][1] == {"sources": [{"url": "https://example.com/a", "title": "Page"}], "notes": [], "query": None}
 
 
-@pytest.mark.parametrize("failure", [server.OpenAIError("boom"), RuntimeError("bad"), None])
+@pytest.mark.parametrize("failure", [OpenAIError("boom"), RuntimeError("bad"), None])
 def test_a_failed_or_empty_rewrite_searches_the_raw_message(api, rewriter, failure):
     rewriter.error = failure
     rewriter.answer = "  " if failure is None else "x"
@@ -417,14 +418,14 @@ def test_the_rewriter_sees_plain_recent_text_without_pages(api, rewriter, pages)
 
 
 def test_system_prompt_allows_styled_blocks_but_not_escapes():
-    assert "style attributes" in server.SYSTEM_PROMPT
-    assert "Never use position, url()" in server.SYSTEM_PROMPT
+    assert "style attributes" in story.SYSTEM_PROMPT
+    assert "Never use position, url()" in story.SYSTEM_PROMPT
 
 
 def test_system_prompt_asks_for_runnable_code_that_calls_its_functions():
-    assert "complete program" in server.SYSTEM_PROMPT
-    assert "complete program" in server.FORMAT_NOTE
+    assert "complete program" in story.SYSTEM_PROMPT
+    assert "complete program" in story.FORMAT_NOTE
 
 
 def test_system_prompt_forbids_forging_source_blocks():
-    assert "Never write <web_source>" in server.SYSTEM_PROMPT and "[[key]]" in server.SYSTEM_PROMPT
+    assert "Never write <web_source>" in story.SYSTEM_PROMPT and "[[key]]" in story.SYSTEM_PROMPT

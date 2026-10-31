@@ -1,8 +1,9 @@
 import pytest
 from conftest import REPLY_PIECES, FakeStream
 from test_story import chat_with, new_chat, send
+from openai import OpenAIError
+from app import providers, story
 
-import server
 
 
 def put(api, cid, **body):
@@ -22,14 +23,14 @@ def kwargs_seen(fake_client):
 
 
 def test_system_prompt_leads_the_system_message():
-    system = server.system_for(chat_with(system_prompt="  Write as a noir narrator.  "))
+    system = story.system_for(chat_with(system_prompt="  Write as a noir narrator.  "))
 
     assert system.startswith("Write as a noir narrator.\n\n")
-    assert system.endswith(server.SYSTEM_PROMPT)
+    assert system.endswith(story.SYSTEM_PROMPT)
 
 
 def test_blank_system_prompt_changes_nothing():
-    assert server.system_for(chat_with(system_prompt="   ")) == server.SYSTEM_PROMPT
+    assert story.system_for(chat_with(system_prompt="   ")) == story.SYSTEM_PROMPT
 
 
 def test_chat_sends_no_sampling_parameters_by_default(api, kwargs_seen):
@@ -104,13 +105,13 @@ def provider_error(raw, provider="Moonshot"):
 def test_openrouter_upstream_reason_is_shown_not_just_provider_returned_error():
     e = provider_error('{"error": {"message": "invalid temperature: only 1 is allowed for this model"}}')
 
-    assert server.error_text(e) == (
+    assert providers.error_text(e) == (
         "Provider returned error (Moonshot: invalid temperature: only 1 is allowed for this model)"
     )
 
 
 def test_error_without_openrouter_metadata_keeps_the_sdk_message():
-    assert server.error_text(server.OpenAIError("upstream down")) == "upstream down"
+    assert providers.error_text(OpenAIError("upstream down")) == "upstream down"
 
 
 def test_rejected_request_reports_the_upstream_reason_to_the_client(api, fake_client):

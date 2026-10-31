@@ -5,6 +5,7 @@ import e2e
 import profile_store
 import secret_store
 import server
+from app import runtime, providers
 
 
 @pytest.fixture
@@ -21,24 +22,24 @@ def e2e_env(monkeypatch, tmp_path):
 
 
 def test_uses_stub_profile_with_dummy_key(e2e_env):
-    profile = server.active_profile()
+    profile = providers.active_profile()
     assert profile.base_url == "http://127.0.0.1:8765/v1"
-    assert server.profile_key(profile) == e2e.DUMMY_KEY
-    assert server.get_client(profile).base_url.host == "127.0.0.1"
+    assert providers.profile_key(profile) == e2e.DUMMY_KEY
+    assert providers.get_client(profile).base_url.host == "127.0.0.1"
 
 
 def test_profiles_api_never_touches_keychain_or_profiles_file(e2e_env, monkeypatch):
     def boom(*a, **k):
         raise AssertionError("profiles.json accessed in e2e mode")
 
-    monkeypatch.setattr(server.settings, "profiles_file", e2e_env / "profiles.json")
+    monkeypatch.setattr(runtime.settings, "profiles_file", e2e_env / "profiles.json")
     for name in ("read_text", "write_text", "replace"):
         monkeypatch.setattr(type(e2e_env), name, boom)
     client = TestClient(server.app, base_url="http://localhost:8000", headers={"Origin": "http://localhost:8000"})
     listed = client.get("/api/profiles")
     assert listed.status_code == 200 and listed.json()["active"] == e2e.PROFILE_ID
     assert client.post("/api/profiles", json={"name": "x", "base_url": "https://a.example/v1", "model": "m", "key": "sk-secret"}).status_code == 201
-    profile_store.save_store(server.settings, profile_store.load_store(server.settings))
+    profile_store.save_store(runtime.settings, profile_store.load_store(runtime.settings))
     assert secret_store.get_key() is None
     assert not (e2e_env / "profiles.json").exists()
 

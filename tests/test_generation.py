@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from openai import OpenAIError
 
 import server
+from app import runtime, streaming, routes_chats
 import storage
 from models import ImageData, NewMessage
 
@@ -75,7 +76,7 @@ def finish(held, thread):
 
 
 def leases():
-    with server.db._read() as conn:
+    with runtime.db._read() as conn:
         return conn.execute("SELECT COUNT(*) FROM generations").fetchone()[0]
 
 
@@ -159,30 +160,30 @@ def test_lease_is_released_after_a_mid_stream_error(api, fake_client):
 
 def test_stopping_keeps_the_partial_reply_and_releases_the_lease(api):
     cid = new_chat(api)
-    lease = server.db.acquire(cid)
-    chat = server.load_chat(cid)
+    lease = runtime.db.acquire(cid)
+    chat = routes_chats.load_chat(cid)
 
     async def run():
-        gen = server.stream_reply(chat, "Hello there", FakeStream(REPLY_PIECES), [], [], lease=lease)
+        gen = streaming.stream_reply(chat, "Hello there", FakeStream(REPLY_PIECES), [], [], lease=lease)
         await anext(gen)
         await gen.aclose()
 
     asyncio.run(run())
 
-    assert [m.content for m in server.load_chat(cid).messages] == ["Hello there", REPLY_PIECES[0]]
+    assert [m.content for m in routes_chats.load_chat(cid).messages] == ["Hello there", REPLY_PIECES[0]]
     assert leases() == 0
 
 
 def test_cancelling_the_task_keeps_the_partial_reply_and_releases_the_lease(api):
     cid = new_chat(api)
-    lease = server.db.acquire(cid)
-    chat = server.load_chat(cid)
+    lease = runtime.db.acquire(cid)
+    chat = routes_chats.load_chat(cid)
 
     async def run():
         seen = asyncio.Event()
 
         async def consume():
-            async for _ in server.stream_reply(chat, "Hello there", FakeStream(REPLY_PIECES), [], [], lease=lease):
+            async for _ in streaming.stream_reply(chat, "Hello there", FakeStream(REPLY_PIECES), [], [], lease=lease):
                 seen.set()
                 await asyncio.sleep(60)
 
@@ -194,14 +195,14 @@ def test_cancelling_the_task_keeps_the_partial_reply_and_releases_the_lease(api)
 
     asyncio.run(run())
 
-    assert [m.content for m in server.load_chat(cid).messages] == ["Hello there", REPLY_PIECES[0]]
+    assert [m.content for m in routes_chats.load_chat(cid).messages] == ["Hello there", REPLY_PIECES[0]]
     assert leases() == 0
 
 
 def test_a_response_that_never_starts_does_not_keep_the_chat_locked(api, calls):
     cid = new_chat(api)
 
-    response = server.send_message(cid, NewMessage(content="hi"))
+    response = routes_chats.send_message(cid, NewMessage(content="hi"))
     assert leases() == 1
 
     del response  # the client left before the first byte: the generator's own finally never runs
@@ -230,31 +231,31 @@ def test_deleting_the_chat_mid_reply_does_not_bring_it_back(api, held):
 
 def test_stopping_after_the_chat_was_deleted_does_not_bring_it_back(api):
     cid = new_chat(api)
-    lease = server.db.acquire(cid)
-    chat = server.load_chat(cid)
+    lease = runtime.db.acquire(cid)
+    chat = routes_chats.load_chat(cid)
 
     async def run():
-        gen = server.stream_reply(chat, "Hello", FakeStream(REPLY_PIECES), [], [], lease=lease)
+        gen = streaming.stream_reply(chat, "Hello", FakeStream(REPLY_PIECES), [], [], lease=lease)
         await anext(gen)
-        server.db.delete_chat(cid)
+        runtime.db.delete_chat(cid)
         await gen.aclose()
 
     asyncio.run(run())
 
-    assert server.db.chat_ids() == set()
+    assert runtime.db.chat_ids() == set()
     assert leases() == 0
 
 
 def test_files_saved_for_a_reply_to_a_deleted_chat_are_removed(api):
     cid = new_chat(api)
-    chat = server.load_chat(cid)
-    server.db.delete_chat(cid)
+    chat = routes_chats.load_chat(cid)
+    runtime.db.delete_chat(cid)
     upload = ImageData(media_type="image/png", data=base64.b64encode(b"png-bytes").decode())
 
     with pytest.raises(storage.ChatNotFound):
-        server.append_turn(chat, "q", "a", [], [upload])
+        streaming.append_turn(chat, "q", "a", [], [upload])
 
-    assert not (server.settings.images_dir / cid).exists()
+    assert not (runtime.settings.images_dir / cid).exists()
 
 
 def test_settings_changed_mid_reply_survive_and_the_stale_usage_is_dropped(api, held):
@@ -292,7 +293,7 @@ def test_a_failed_save_is_reported_and_releases_the_lease(api, calls, monkeypatc
     def locked(*_a, **_k):
         raise sqlite3.OperationalError("database is locked")
 
-    monkeypatch.setattr(server, "append_turn", locked)
+    monkeypatch.setattr(streaming, "append_turn", locked)
     cid = new_chat(api)
 
     res = api.post(f"/api/chats/{cid}/messages", json={"content": "hi"})
@@ -306,11 +307,11 @@ def test_a_failed_save_is_reported_and_releases_the_lease(api, calls, monkeypatc
 
 @pytest.fixture(autouse=True)
 def no_acquire_wait(monkeypatch):
-    monkeypatch.setattr(server.db, "acquire_wait", 0)
+    monkeypatch.setattr(runtime.db, "acquire_wait", 0)
 
 
 def test_a_send_that_arrives_just_before_the_previous_reply_is_saved_waits_for_it(api, held, monkeypatch):
-    monkeypatch.setattr(server.db, "acquire_wait", 5)
+    monkeypatch.setattr(runtime.db, "acquire_wait", 5)
     cid = new_chat(api)
     first, _ = send_in_background(cid, "first")
     assert held.started.wait(WAIT)
@@ -325,7 +326,7 @@ def test_a_send_that_arrives_just_before_the_previous_reply_is_saved_waits_for_i
 
 
 def test_a_send_still_gets_409_when_the_lease_outlasts_the_wait(api, held, monkeypatch):
-    monkeypatch.setattr(server.db, "acquire_wait", 0.3)
+    monkeypatch.setattr(runtime.db, "acquire_wait", 0.3)
     cid = new_chat(api)
     thread, _ = send_in_background(cid)
     assert held.started.wait(WAIT)

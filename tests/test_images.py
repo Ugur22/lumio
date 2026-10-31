@@ -7,8 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 import images
-import server
 from models import MAX_IMAGES, ImageData, NewMessage, Profile
+from app import runtime, story
 
 PNG = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
 IMG = {"media_type": "image/png", "data": PNG}
@@ -104,7 +104,7 @@ def test_failed_call_stores_no_image_files(api, fake_client):
     use_profile(api, vision=True)
     post(api, new_chat(api), content="x", images=[IMG])
 
-    assert not server.settings.images_dir.exists() or not any(server.settings.images_dir.rglob("*.png"))
+    assert not runtime.settings.images_dir.exists() or not any(runtime.settings.images_dir.rglob("*.png"))
 
 
 def test_history_resends_earlier_images_on_vision_profiles(api, calls):
@@ -124,7 +124,7 @@ def test_history_downgrades_images_on_text_only_profiles(api, calls):
     api.put(f"/api/chats/{cid}/behavior", json={"profile_id": "default"})
     post(api, cid, content="two")
 
-    assert calls[1][1]["content"] == f"one\n\n{server.IMAGE_UNSUPPORTED}"
+    assert calls[1][1]["content"] == f"one\n\n{story.IMAGE_UNSUPPORTED}"
 
 
 # --- lifecycle ---
@@ -135,21 +135,21 @@ def test_pruned_image_becomes_a_placeholder_and_410(api, calls):
     chat = done(post(api, cid, content="one", images=[IMG]))
     ref = chat["messages"][0]["images"][0]
     old = time.time() - 40 * images.DAY
-    for f in server.settings.images_dir.rglob("*.png"):
+    for f in runtime.settings.images_dir.rglob("*.png"):
         os.utime(f, (old, old))
 
-    assert images.prune(server.settings) == 1
+    assert images.prune(runtime.settings) == 1
     assert api.get(f"/api/chats/{cid}/images/{ref['id']}").status_code == 410
     post(api, cid, content="two")
-    assert calls[1][1]["content"][-1] == {"type": "text", "text": server.IMAGE_GONE}
+    assert calls[1][1]["content"][-1] == {"type": "text", "text": story.IMAGE_GONE}
 
 
 def test_prune_keeps_recent_images(api, calls):
     use_profile(api, vision=True)
     post(api, new_chat(api), content="x", images=[IMG])
 
-    assert images.prune(server.settings) == 0
-    assert any(server.settings.images_dir.rglob("*.png"))
+    assert images.prune(runtime.settings) == 0
+    assert any(runtime.settings.images_dir.rglob("*.png"))
 
 
 def test_deleting_a_chat_deletes_its_images(api, calls):
@@ -158,7 +158,7 @@ def test_deleting_a_chat_deletes_its_images(api, calls):
     post(api, cid, content="x", images=[IMG])
     api.delete(f"/api/chats/{cid}")
 
-    assert not (server.settings.images_dir / cid).exists()
+    assert not (runtime.settings.images_dir / cid).exists()
 
 
 def test_image_route_rejects_traversal_and_unknown_ids(api):
@@ -169,7 +169,7 @@ def test_image_route_rejects_traversal_and_unknown_ids(api):
 
 
 def test_long_first_message_title_is_cut_at_a_word():
-    from server import make_title
+    from app.streaming import make_title
 
     assert make_title("Write the opening scene of a noir story set in a rain-soaked city") == "Write the opening scene of a noir story set in a…"
     assert make_title("short\n\nthing") == "short thing"
