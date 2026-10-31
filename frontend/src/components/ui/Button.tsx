@@ -12,8 +12,8 @@ export type ButtonProps = Omit<ComponentPropsWithRef<"button">, "style"> & {
 export function ButtonContent({ loading, children }: { loading: boolean; children: ReactNode }) {
   if (!loading) return children;
   return (
-    <span className="inline-flex items-center justify-center gap-2">
-      <SpinnerIcon width={14} height={14} aria-hidden="true" className="shrink-0 motion-safe:animate-spin" />
+    <span className="inline-flex items-center justify-center gap-1.5">
+      <SpinnerIcon width={16} height={16} aria-hidden="true" className="shrink-0 motion-safe:animate-spin" />
       {children}
     </span>
   );
