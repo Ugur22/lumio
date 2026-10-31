@@ -1,6 +1,6 @@
 # Lumio
 
-Local chat UI for any OpenAI-compatible API. Providers are profiles (name, base URL, model) in git-ignored `profiles.json`; each profile's API key lives in the OS keychain (`secret_store.py`), never in that file. FastAPI backend (`server.py`, `models.py`) serves a React + Tailwind frontend (`frontend/`). `main.py` is the older terminal chat and must keep working.
+Local chat UI for any OpenAI-compatible API. Providers are profiles (name, base URL, model) in git-ignored `profiles.json`; each profile's API key lives in the OS keychain (`secret_store.py`), never in that file. FastAPI backend (`server.py` builds the app from `app/`; `models.py`) serves a React + Tailwind frontend (`frontend/`). `main.py` is the older terminal chat and must keep working.
 
 ## Run
 - Setup: `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`, then `cd frontend && npm install`. Add a provider and key in the app's Providers dialog. `DOLPHINLLM_API_KEY` in `.env` still works as a fallback for a pre-profiles setup (it becomes the "Dolphin" profile).
@@ -40,6 +40,6 @@ EOF
 The title matches the commit's first line. Mention API or behaviour changes under What, and anything the user has to do by hand (an install, a deploy) under Check.
 
 ## Agents
-`.claude/agents/frontend-developer.md` (anything under `frontend/`) and `backend-developer.md` (`server.py`, `models.py`, `tests/`). Use them for scoped changes; use `bug-fixer`-style work (reproduce, root cause, smallest fix, regression test) for bugs.
+`.claude/agents/frontend-developer.md` (anything under `frontend/`) and `backend-developer.md` (`server.py`, `app/`, `models.py`, `tests/`). Use them for scoped changes; use `bug-fixer`-style work (reproduce, root cause, smallest fix, regression test) for bugs.
 
 Changes that span both stacks start with a written contract (route, request/response shape, the `models.py` and `types.ts` fields) agreed in the plan before delegating; `frontend/src/api.gen.ts` is generated from `models.py` and `server.py` (`make types`, and `make check` fails when it is stale), so the contract cannot drift. Only the SSE event payloads in `types.ts` are still written by hand. Run parallel agents with `isolation: "worktree"`, and finish with `.claude/agents/reviewer.md` (read-only) on the diff.

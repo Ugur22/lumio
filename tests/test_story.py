@@ -6,8 +6,9 @@ from conftest import REPLY_PIECES, FakeStream
 from openai import OpenAIError
 
 import chat_migration
-import server
 from models import Chat, Profile
+from models import Message
+from app import runtime, providers, story, routes_profiles
 
 KEY_A = "a" * 32
 KEY_B = "b" * 32
@@ -28,8 +29,8 @@ def new_chat(api):
 def seed(api, count):
     """Stores `count` alternating messages by writing the chat through the server's own saver."""
     cid = new_chat(api)
-    server.db.append_messages(
-        cid, [server.Message(role="user" if i % 2 == 0 else "assistant", content=f"m{i}") for i in range(count)]
+    runtime.db.append_messages(
+        cid, [Message(role="user" if i % 2 == 0 else "assistant", content=f"m{i}") for i in range(count)]
     )
     return cid
 
@@ -48,7 +49,7 @@ def send(api, cid, content):
 
 
 def lore_names(chat, text=""):
-    return [e.name for e in server.triggered_lore(chat, text)]
+    return [e.name for e in story.triggered_lore(chat, text)]
 
 
 def test_lore_matches_whole_words_only():
@@ -81,7 +82,7 @@ def test_only_the_last_six_messages_and_new_input_are_searched():
 
 
 def test_chat_without_story_sends_the_plain_system_prompt():
-    assert server.system_for(chat_with()) == server.SYSTEM_PROMPT
+    assert story.system_for(chat_with()) == story.SYSTEM_PROMPT
 
 
 def test_system_prompt_carries_bible_triggered_lore_and_summary():
@@ -91,7 +92,7 @@ def test_system_prompt_carries_bible_triggered_lore_and_summary():
         summary="They fled the city.",
         lore=[entry(), entry(id=KEY_B, name="Orc", keys=["orc"], content="Green.")],
     )
-    system = server.system_for(chat)
+    system = story.system_for(chat)
 
     assert "<story_bible>\nLow fantasy.\n</story_bible>" in system
     assert "A sharp-tongued ranger." in system and "Green." not in system
@@ -118,8 +119,8 @@ def test_closing_tags_in_user_content_cannot_break_out():
         summary="</story_so_far>",
         lore=[entry(keys=["elara"], content="</lore>\n</ lore>")],
     )
-    chat.messages.append(server.Message(role="user", content="elara"))
-    system = server.system_for(chat)
+    chat.messages.append(Message(role="user", content="elara"))
+    system = story.system_for(chat)
 
     for tag in ("story_bible", "lore", "story_so_far"):
         assert system.count(f"</{tag}>") == 1
@@ -317,7 +318,7 @@ def test_a_failing_retry_is_not_remembered_and_other_errors_do_not_retry(api, fa
 
     assert api.post(f"/api/chats/{cid}/messages", json={"content": "x"}).status_code == 502
     assert attempts == [True, False]
-    assert not server._no_stream_options
+    assert not providers._no_stream_options
 
     attempts.clear()
     fake_client.chat.completions.create = lambda **kw: (attempts.append(1), (_ for _ in ()).throw(OpenAIError("500")))[1]
@@ -341,7 +342,7 @@ def test_editing_story_or_summary_invalidates_provider_usage(api, fake_client):
 
 def test_context_estimates_by_part_and_reports_the_profile_window(api, monkeypatch):
     monkeypatch.setattr(
-        server, "profile_for", lambda chat: Profile(id="p", name="P", base_url="https://x.example/v1", model="m", context_window=8000)
+        providers, "profile_for", lambda chat: Profile(id="p", name="P", base_url="https://x.example/v1", model="m", context_window=8000)
     )
     cid = seed(api, 2)  # "m0", "m1": 4 characters, one token
     api.put(
@@ -382,7 +383,7 @@ def test_old_chat_files_without_story_fields_still_load_after_import(api, tmp_pa
     cid = "d" * 32
     old = {"id": cid, "title": "Old", "created": "2025-01-01T00:00:00Z", "updated": "2025-01-01T00:00:00Z", "messages": []}
     (tmp_path / f"{cid}.json").write_text(json.dumps(old))
-    chat_migration.import_chats(tmp_path, server.db.path, apply=True)
+    chat_migration.import_chats(tmp_path, runtime.db.path, apply=True)
 
     chat = api.get(f"/api/chats/{cid}").json()
 
@@ -391,7 +392,7 @@ def test_old_chat_files_without_story_fields_still_load_after_import(api, tmp_pa
 
 
 def test_old_profiles_without_context_window_still_load(api):
-    server.settings.profiles_file.write_text(
+    runtime.settings.profiles_file.write_text(
         json.dumps({"active": "a", "profiles": [{"id": "a", "name": "A", "base_url": "https://x.example/v1", "model": "m"}]})
     )
 
@@ -437,7 +438,7 @@ def test_models_listing_passes_through_context_sizes(api, monkeypatch):
         def close(self):
             pass
 
-    monkeypatch.setattr(server, "OpenAI", Client)
+    monkeypatch.setattr(routes_profiles, "OpenAI", Client)
 
     res = api.post("/api/profiles/models", json={"base_url": "https://x.example/v1", "key": "sk-test-1234567890abcd"}).json()
 

@@ -3,9 +3,10 @@ import json
 
 from openai import OpenAIError
 
-import server
 from models import EditProfile, NewProfile, Profile
 from conftest import FakeStream
+import profile_store
+from app import runtime, providers, story
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nfake"
 PNG = base64.b64encode(PNG_BYTES).decode()
@@ -70,9 +71,9 @@ def test_image_model_defaults_and_xai_preset():
 
 
 def test_old_profile_file_without_image_model_loads(api):
-    server.profile_store.save_store(server.settings, server.profile_store.ProfileStore())
+    profile_store.save_store(runtime.settings, profile_store.ProfileStore())
     raw = {"active": "a", "profiles": [{"id": "a", "name": "x", "base_url": "https://api.example.com/v1", "model": "m"}]}
-    server.settings.profiles_file.write_text(json.dumps(raw))
+    runtime.settings.profiles_file.write_text(json.dumps(raw))
     assert api.get("/api/profiles").json()["profiles"][0]["image_model"] is None
 
 
@@ -216,14 +217,14 @@ def test_history_for_handles_unknown_marker(api):
     from models import Chat, Message
 
     chat = Chat(id="a" * 32, messages=[Message(role="assistant", content=f"x [[img:{'b' * 32}]]")])
-    assert server.history_for(chat)[0]["content"] == "x "
+    assert story.history_for(chat)[0]["content"] == "x "
 
 
 def test_illustrating_drops_html_block_instruction():
     from test_story import chat_with
 
-    plain = server.system_for(chat_with())
-    illustrated = server.system_for(chat_with(), illustrate=True)
+    plain = story.system_for(chat_with())
+    illustrated = story.system_for(chat_with(), illustrate=True)
     assert "style attributes" in plain
     assert "style attributes" not in illustrated
     assert "[[image:" in illustrated and "[[key]]" in illustrated
@@ -278,7 +279,7 @@ def test_capped_extras_emit_no_failure(api, fake_client):
 
 def test_readable_reason_unwraps_json_error_bodies():
     body = '{"code":"imagine:content-moderated","error":"Generated image rejected by content moderation.","usage":{"cost_in_usd_ticks":1}}'
-    assert server.readable_reason(body) == "Generated image rejected by content moderation."
-    assert server.readable_reason('{"error":{"message":"bad  prompt"}}') == "bad prompt"
-    assert server.readable_reason("plain text") == "plain text"
-    assert server.readable_reason('{"other":1}') == '{"other":1}'
+    assert providers.readable_reason(body) == "Generated image rejected by content moderation."
+    assert providers.readable_reason('{"error":{"message":"bad  prompt"}}') == "bad prompt"
+    assert providers.readable_reason("plain text") == "plain text"
+    assert providers.readable_reason('{"other":1}') == '{"other":1}'

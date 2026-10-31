@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 
 import secret_store
 import server
+import profile_store
+from app import runtime, routes_profiles
 
 SECRET = "sk-test-1234567890abcd"
 HOST = "lumio.example.com"
@@ -25,7 +27,7 @@ def secrets_file(tmp_path, monkeypatch):
 
 @pytest.fixture
 def remote(monkeypatch):
-    monkeypatch.setattr(server.settings, "public_host", HOST)
+    monkeypatch.setattr(runtime.settings, "public_host", HOST)
     origin = f"https://{HOST}"
     return TestClient(server.app, base_url=origin, headers={"Origin": origin})
 
@@ -66,7 +68,7 @@ def test_profile_keys_land_in_the_file_and_never_in_profiles_json(api, secrets_f
     pid = res.json()["profiles"][-1]["id"]
 
     assert json.loads(secrets_file.read_text())[f"profile:{pid}"] == SECRET
-    assert SECRET not in server.settings.profiles_file.read_text() and SECRET not in res.text
+    assert SECRET not in runtime.settings.profiles_file.read_text() and SECRET not in res.text
 
 
 def test_key_store_reports_file_on_a_server_and_keychain_locally(api, memory_keyring, monkeypatch):
@@ -92,7 +94,7 @@ def test_public_host_rejects_a_foreign_origin(remote):
 
 
 def test_localhost_is_unaffected_when_deployed(api, monkeypatch):
-    monkeypatch.setattr(server.settings, "public_host", HOST)
+    monkeypatch.setattr(runtime.settings, "public_host", HOST)
 
     assert make(api).status_code == 201
 
@@ -103,7 +105,7 @@ def test_deployed_edit_cannot_move_a_saved_key_to_another_url(remote):
     res = remote.patch(f"/api/profiles/{pid}", json={"base_url": "https://attacker.example/v1"})
 
     assert res.status_code == 403
-    profile = server.profile_store.load_store(server.settings).profiles[-1]
+    profile = profile_store.load_store(runtime.settings).profiles[-1]
     assert profile.base_url == "https://openrouter.ai/api/v1"
 
 
@@ -125,7 +127,7 @@ def test_deployed_edit_of_other_fields_or_the_same_url_still_works(remote):
 
 def test_deployed_model_listing_will_not_send_a_saved_key_to_another_url(remote, monkeypatch):
     pid = make(remote).json()["profiles"][-1]["id"]
-    monkeypatch.setattr(server, "OpenAI", lambda **kw: pytest.fail("a client was built for the foreign URL"))
+    monkeypatch.setattr(routes_profiles, "OpenAI", lambda **kw: pytest.fail("a client was built for the foreign URL"))
 
     res = remote.post("/api/profiles/models", json={"profile_id": pid, "base_url": "https://attacker.example/v1"})
 

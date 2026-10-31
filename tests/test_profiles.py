@@ -3,7 +3,8 @@ from conftest import FakeStream
 from openai import OpenAIError
 
 import secret_store
-import server
+import profile_store
+from app import runtime, providers, routes_profiles
 
 SECRET = "sk-test-1234567890abcd"
 
@@ -27,7 +28,7 @@ def test_legacy_env_key_migrates_to_a_default_dolphin_profile(api):
 
 
 def test_fresh_install_starts_empty(api, monkeypatch):
-    monkeypatch.setattr(server.settings, "api_key", None)
+    monkeypatch.setattr(runtime.settings, "api_key", None)
 
     assert api.get("/api/profiles").json() == {"active": None, "profiles": []}
 
@@ -40,12 +41,12 @@ def test_created_profile_stores_key_in_keychain_and_never_returns_it(api, memory
     assert (p["configured"], p["last4"], p["source"]) == (True, "abcd", "keychain")
     assert SECRET not in res.text and SECRET not in api.get("/api/profiles").text
     assert memory_keyring.store[(secret_store.SERVICE, f"profile:{p['id']}")] == SECRET
-    assert server.settings.profiles_file.exists()
-    assert SECRET not in server.settings.profiles_file.read_text()
+    assert runtime.settings.profiles_file.exists()
+    assert SECRET not in runtime.settings.profiles_file.read_text()
 
 
 def test_first_profile_becomes_active_and_is_used_for_chat(api, monkeypatch, fake_client):
-    monkeypatch.setattr(server.settings, "api_key", None)
+    monkeypatch.setattr(runtime.settings, "api_key", None)
     seen = {}
 
     def create(model, messages, stream, **kw):
@@ -66,7 +67,7 @@ def test_activate_switches_the_provider_used(api):
     res = api.post(f"/api/profiles/{other}/activate")
 
     assert res.json()["active"] == other
-    assert server.active_profile().model == "m2"
+    assert providers.active_profile().model == "m2"
 
 
 def test_edit_updates_fields_and_replaces_key(api, memory_keyring):
@@ -106,7 +107,7 @@ def test_deleting_default_also_clears_the_legacy_keychain_key(api, memory_keyrin
 
 
 def test_legacy_keychain_key_still_works_for_default(api, monkeypatch):
-    monkeypatch.setattr(server.settings, "api_key", None)
+    monkeypatch.setattr(runtime.settings, "api_key", None)
     secret_store.set_key("legacy-key-123456")
 
     p = api.get("/api/profiles").json()["profiles"][0]
@@ -142,7 +143,7 @@ def test_validation_errors_do_not_echo_the_key(api):
 
 
 def test_no_provider_gives_a_clear_conflict_on_send(api, monkeypatch):
-    monkeypatch.setattr(server.settings, "api_key", None)
+    monkeypatch.setattr(runtime.settings, "api_key", None)
     cid = api.post("/api/chats").json()["id"]
 
     res = api.post(f"/api/chats/{cid}/messages", json={"content": "hi"})
@@ -223,7 +224,7 @@ class FakeOpenAI:
 @pytest.fixture
 def fake_openai(monkeypatch):
     FakeOpenAI.seen, FakeOpenAI.fail = [], None
-    monkeypatch.setattr(server, "OpenAI", FakeOpenAI)
+    monkeypatch.setattr(routes_profiles, "OpenAI", FakeOpenAI)
     return FakeOpenAI
 
 
@@ -260,12 +261,12 @@ def test_models_errors_redact_the_key(api, fake_openai):
 
 def test_client_is_rebuilt_when_the_key_changes(api):
     pid = by_name(make(api), "OpenRouter")["id"]
-    profile = server.find(server.profile_store.load_store(server.settings), pid)
-    first = server.get_client(profile)
+    profile = providers.find_profile(profile_store.load_store(runtime.settings), pid)
+    first = providers.get_client(profile)
 
     api.patch(f"/api/profiles/{pid}", json={"key": "sk-other-0000000000zzzz"})
 
-    assert server.get_client(profile) is not first
+    assert providers.get_client(profile) is not first
 
 
 def test_keychain_failure_on_save_is_a_503(api, monkeypatch):
@@ -278,8 +279,8 @@ def test_keychain_failure_on_save_is_a_503(api, monkeypatch):
 
 
 def test_corrupt_profiles_file_is_set_aside_not_overwritten(api):
-    server.settings.profiles_file.write_text("{not json")
+    runtime.settings.profiles_file.write_text("{not json")
 
     assert api.get("/api/profiles").status_code == 200
-    assert server.settings.profiles_file.with_suffix(".corrupt").exists()
-    server.settings.profiles_file.with_suffix(".corrupt").unlink()
+    assert runtime.settings.profiles_file.with_suffix(".corrupt").exists()
+    runtime.settings.profiles_file.with_suffix(".corrupt").unlink()

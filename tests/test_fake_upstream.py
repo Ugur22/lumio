@@ -6,8 +6,8 @@ import pytest
 from fake_upstream import CODE_OUTPUT, FAILING_PROMPT, PLAIN_PIECES, app as upstream
 from fastapi.testclient import TestClient
 from openai import OpenAI
+from app import providers
 
-import server
 
 BASE = "https://fake-upstream.test/v1"
 
@@ -16,7 +16,7 @@ BASE = "https://fake-upstream.test/v1"
 def stub(monkeypatch):
     # TestClient is an httpx.Client, so the SDK talks to the stub in-process; no retries keeps 500s fast.
     sdk = OpenAI(base_url=BASE, api_key="k" * 20, http_client=TestClient(upstream), max_retries=0)
-    monkeypatch.setattr(server, "get_client", lambda profile: sdk)
+    monkeypatch.setattr(providers, "get_client", lambda profile: sdk)
     return sdk
 
 

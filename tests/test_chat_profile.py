@@ -1,10 +1,10 @@
 import pytest
 from conftest import REPLY_PIECES, FakeStream
+from app import runtime
 
-import server
 
 
-DEFAULT_MODEL = server.settings.model
+DEFAULT_MODEL = runtime.settings.model
 
 
 def make(api, name, **over):
@@ -97,7 +97,7 @@ def test_unknown_or_malformed_profile_is_rejected(api):
 
 def test_chat_file_without_profile_id_loads_and_follows_the_default(api, models_used):
     cid = new_chat(api)
-    with server.db._tx() as conn:
+    with runtime.db._tx() as conn:
         conn.execute("UPDATE chats SET profile_id = NULL WHERE id = ?", (cid,))
 
     assert api.get(f"/api/chats/{cid}").json()["profile_id"] is None
@@ -256,7 +256,7 @@ def test_a_message_cannot_set_the_chat_model(api, models_used):
 
 def test_chat_file_without_override_fields_loads(api, models_used):
     cid = new_chat(api)
-    with server.db._tx() as conn:
+    with runtime.db._tx() as conn:
         conn.execute("UPDATE chats SET model = NULL, context_window = NULL WHERE id = ?", (cid,))
 
     chat = api.get(f"/api/chats/{cid}").json()

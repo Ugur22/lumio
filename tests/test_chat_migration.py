@@ -6,6 +6,7 @@ import pytest
 import chat_migration
 import storage
 from models import Chat, ImageRef, LoreEntry, Message, Source, Usage
+from app import runtime
 
 
 def digest(folder):
@@ -167,64 +168,61 @@ def test_export_without_a_database_fails_cleanly(tmp_path):
 
 @pytest.fixture
 def app_with(tmp_path, monkeypatch):
-    import server
-
     data = tmp_path / "data"
     data.mkdir()
     store = storage.Store(tmp_path / "app.db")
-    monkeypatch.setattr(server.settings, "data_dir", data)
-    monkeypatch.setattr(server, "db", store)
-    return server, data, store
+    monkeypatch.setattr(runtime.settings, "data_dir", data)
+    return data, store
 
 
 def test_first_start_imports_json_chats_and_leaves_the_files(app_with):
-    server, data, store = app_with
+    data, store = app_with
     write(data, rich_chat())
     before = digest(data)
 
-    server.import_legacy_chats()
+    runtime.import_legacy_chats(store, runtime.settings)
 
     assert store.chat_ids() == {"a" * 32}
     assert digest(data) == before
 
 
 def test_a_chat_deleted_later_is_not_restored_from_its_leftover_file(app_with):
-    server, data, store = app_with
+    data, store = app_with
     write(data, rich_chat())
-    server.import_legacy_chats()
+    runtime.import_legacy_chats(store, runtime.settings)
     store.delete_chat("a" * 32)
 
-    server.import_legacy_chats()
+    runtime.import_legacy_chats(store, runtime.settings)
 
     assert store.chat_ids() == set()
 
 
 def test_a_manual_import_counts_as_done(app_with):
-    server, data, store = app_with
+    data, store = app_with
     write(data, rich_chat())
     chat_migration.import_chats(data, store.path, apply=True)
     store.delete_chat("a" * 32)
 
-    server.import_legacy_chats()
+    runtime.import_legacy_chats(store, runtime.settings)
 
     assert store.chat_ids() == set()
 
 
 def test_a_fresh_install_records_that_there_was_nothing_to_import(app_with):
-    server, data, store = app_with
-    server.import_legacy_chats()
+    data, store = app_with
+    runtime.import_legacy_chats(store, runtime.settings)
     write(data, rich_chat())  # e.g. files exported for a rollback
 
-    server.import_legacy_chats()
+    runtime.import_legacy_chats(store, runtime.settings)
 
     assert store.chat_ids() == set()
 
 
 def test_a_dry_run_does_not_count_as_done(app_with):
-    server, data, store = app_with
+    data, store = app_with
     write(data, rich_chat())
 
     chat_migration.import_chats(data, store.path)
-    server.import_legacy_chats()
+    runtime.import_legacy_chats(store, runtime.settings)
 
     assert store.chat_ids() == {"a" * 32}

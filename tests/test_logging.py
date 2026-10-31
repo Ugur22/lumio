@@ -1,13 +1,13 @@
 import io
 import json
 import logging
+from app import logs
 
-import server
 
 
 def _emit(tmp_path, **extra):
     path = tmp_path / "nested" / "app.jsonl"
-    handler = server.make_file_handler(path)
+    handler = logs.make_file_handler(path)
     logger = logging.getLogger("dolphinllm.test")
     logger.addHandler(handler)
     try:
@@ -43,22 +43,22 @@ def test_chat_bodies_are_not_written(tmp_path):
 
 def test_file_handler_is_off_under_pytest(monkeypatch):
     monkeypatch.delenv("DOLPHINLLM_LOG_FILE", raising=False)
-    assert server._log_path() is None
+    assert logs._log_path() is None
     monkeypatch.setenv("DOLPHINLLM_LOG_FILE", "/x/y.jsonl")
-    assert str(server._log_path()) == "/x/y.jsonl"
+    assert str(logs._log_path()) == "/x/y.jsonl"
 
 
 def test_info_reaches_file_but_not_console(tmp_path, monkeypatch):
     console = io.StringIO()
-    monkeypatch.setattr(server._console, "stream", console)
-    assert server.log.level == logging.INFO
-    handler = server.make_file_handler(tmp_path / "app.jsonl")
-    server.log.addHandler(handler)
+    monkeypatch.setattr(logs._console, "stream", console)
+    assert logs.log.level == logging.INFO
+    handler = logs.make_file_handler(tmp_path / "app.jsonl")
+    logs.log.addHandler(handler)
     try:
-        server.log.info("just info")
-        server.log.warning("a warning")
+        logs.log.info("just info")
+        logs.log.warning("a warning")
     finally:
-        server.log.removeHandler(handler)
+        logs.log.removeHandler(handler)
         handler.close()
     levels = [json.loads(line)["level"] for line in (tmp_path / "app.jsonl").read_text().splitlines()]
     assert levels == ["INFO", "WARNING"]
