@@ -275,6 +275,14 @@ ChatId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$")]
 app = FastAPI()
 
 
+def make_title(content: str, limit: int = 50) -> str:
+    text = " ".join(content.split())
+    if len(text) <= limit:
+        return text or "Image"
+    cut = text[:limit].rsplit(" ", 1)[0] if " " in text[:limit] else text[:limit]
+    return cut.rstrip(" ,;:-") + "…"
+
+
 def chat_path(chat_id: str) -> Path:
     return settings.data_dir / f"{chat_id}.json"
 
@@ -612,7 +620,7 @@ def append_turn(
     reply_images: list[ImageRef] = (),
 ) -> None:
     if not chat.messages:
-        chat.title = content.strip()[:50] or "Image"
+        chat.title = make_title(content)
     refs = images.save_images(settings, chat.id, list(uploads))
     chat.messages.append(Message(role="user", content=content, sources=sources, images=refs, query=query))
     chat.messages.append(Message(role="assistant", content=reply, images=list(reply_images)))
