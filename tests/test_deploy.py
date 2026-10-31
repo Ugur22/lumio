@@ -2,12 +2,13 @@ import json
 import stat
 
 import pytest
+from models import LOCAL_USER, UserView
 from fastapi.testclient import TestClient
 
 import secret_store
 import server
 import profile_store
-from app import runtime, routes_profiles
+from app import auth, runtime, routes_profiles
 
 SECRET = "sk-test-1234567890abcd"
 HOST = "lumio.example.com"
@@ -19,10 +20,21 @@ def make(api, **over):
 
 
 @pytest.fixture
-def secrets_file(tmp_path, monkeypatch):
+def secrets_file(tmp_path, monkeypatch, master_key):
     path = tmp_path / "secrets.json"
     monkeypatch.setenv(secret_store.SECRETS_FILE_ENV, str(path))
     return path
+
+
+USER = UserView(id="c" * 32, username="writer", is_admin=False)
+
+
+@pytest.fixture(autouse=True)
+def signed_in_when_deployed():
+    # Login itself is covered in test_accounts.py; here the caller is fixed so the host and origin checks stand alone.
+    server.app.dependency_overrides[auth.current_user] = lambda: USER if runtime.settings.deployed else LOCAL_USER
+    yield
+    server.app.dependency_overrides.pop(auth.current_user, None)
 
 
 @pytest.fixture
@@ -37,7 +49,8 @@ def test_file_store_round_trips_keys_and_bypasses_the_keychain(secrets_file, mem
     secret_store.set_key("other-key-123456", "profile:b")
 
     assert secret_store.get_key("profile:a") == SECRET
-    assert json.loads(secrets_file.read_text()) == {"profile:a": SECRET, "profile:b": "other-key-123456"}
+    stored = json.loads(secrets_file.read_text())["secrets"]
+    assert set(stored) == {"profile:a", "profile:b"} and SECRET not in secrets_file.read_text()
     assert memory_keyring.store == {}
 
     secret_store.delete_key("profile:a")
@@ -52,26 +65,27 @@ def test_file_store_is_owner_only_and_leaves_no_temp_file(secrets_file):
     secret_store.set_key(SECRET, "profile:a")
 
     assert stat.S_IMODE(secrets_file.stat().st_mode) == 0o600
-    assert list(secrets_file.parent.iterdir()) == [secrets_file]
+    assert {p.name for p in secrets_file.parent.iterdir()} == {secrets_file.name, secrets_file.name + ".lock"}
 
 
-def test_file_store_ignores_a_corrupt_file(secrets_file):
+def test_file_store_reads_a_corrupt_file_as_empty_but_refuses_to_overwrite_it(secrets_file):
     secrets_file.write_text("not json")
 
     assert secret_store.get_key("profile:a") is None
-    secret_store.set_key(SECRET, "profile:a")
-    assert secret_store.get_key("profile:a") == SECRET
+    with pytest.raises(secret_store.SecretStoreError):
+        secret_store.set_key(SECRET, "profile:a")
+    assert secrets_file.read_text() == "not json"
 
 
 def test_profile_keys_land_in_the_file_and_never_in_profiles_json(api, secrets_file):
     res = make(api)
     pid = res.json()["profiles"][-1]["id"]
 
-    assert json.loads(secrets_file.read_text())[f"profile:{pid}"] == SECRET
+    assert secret_store.get_key(f"profile:{pid}") == SECRET and SECRET not in secrets_file.read_text()
     assert SECRET not in runtime.settings.profiles_file.read_text() and SECRET not in res.text
 
 
-def test_key_store_reports_file_on_a_server_and_keychain_locally(api, memory_keyring, monkeypatch):
+def test_key_store_reports_file_on_a_server_and_keychain_locally(api, memory_keyring, monkeypatch, master_key):
     local = make(api).json()["profiles"][-1]
     assert (local["key_store"], api.get("/api/web").json()["key_store"]) == ("keychain", "keychain")
 
@@ -105,7 +119,7 @@ def test_deployed_edit_cannot_move_a_saved_key_to_another_url(remote):
     res = remote.patch(f"/api/profiles/{pid}", json={"base_url": "https://attacker.example/v1"})
 
     assert res.status_code == 403
-    profile = profile_store.load_store(runtime.settings).profiles[-1]
+    profile = profile_store.load_store(runtime.settings, USER).profiles[-1]
     assert profile.base_url == "https://openrouter.ai/api/v1"
 
 

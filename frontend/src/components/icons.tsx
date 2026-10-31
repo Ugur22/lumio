@@ -3,9 +3,12 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  ChevronUp,
   Copy,
   Globe,
   Image as ImageGlyph,
+  KeyRound,
+  LogOut,
   Menu,
   Moon,
   Paperclip,
@@ -16,6 +19,7 @@ import {
   Sparkles,
   Sun,
   Trash2,
+  User,
   X,
   type LucideIcon,
   type LucideProps,
@@ -67,6 +71,10 @@ export const CopyIcon = lucide(Copy);
 export const CheckIcon = lucide(Check);
 export const MoonIcon = lucide(Moon);
 export const SunIcon = lucide(Sun);
+export const UserIcon = lucide(User);
+export const KeyIcon = lucide(KeyRound);
+export const LogOutIcon = lucide(LogOut);
+export const ChevronUpIcon = lucide(ChevronUp);
 
 // Filled square and a spinner arc: Lucide has no equivalents that read as well at 11px.
 export const StopIcon = icon(<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />);

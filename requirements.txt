@@ -6,3 +6,5 @@ pydantic-settings>=2.4
 keyring>=25.0
 httpx2>=2.0
 trafilatura>=2.0
+argon2-cffi>=23.1
+cryptography>=43

@@ -2,21 +2,25 @@
 
 import base64
 import json
+import threading
 
+import web
 from fastapi import HTTPException
-from openai import OpenAI, OpenAIError
+from openai import DefaultHttpxClient, OpenAI, OpenAIError
 from pydantic import ValidationError
 
 import profile_store
 from app import runtime
-from models import Chat, ImageData, Profile
+from models import Chat, ImageData, Profile, UserView
 
 _clients: dict[tuple[str, str], OpenAI] = {}
+_clients_lock = threading.Lock()
+PRIVATE_URL = "That address is not allowed: this server only connects to public hosts."
 NO_KEY = "not-needed"  # the OpenAI SDK insists on a non-empty key even for local servers
 
 
-def active_profile() -> Profile:
-    store = profile_store.load_store(runtime.settings)
+def active_profile(user: UserView) -> Profile:
+    store = profile_store.load_store(runtime.settings, user)
     profile = next((p for p in store.profiles if p.id == store.active), None)
     if profile is None:
         raise HTTPException(409, "No provider configured. Add one in Providers.")
@@ -28,9 +32,10 @@ def override_applies(chat: Chat, profile: Profile) -> bool:
     return bool(chat.model) and chat.profile_id == profile.id
 
 
-def profile_for(chat: Chat) -> Profile:
-    """The chat's own provider, falling back to the default when it has none or it was deleted."""
-    store = profile_store.load_store(runtime.settings)
+def profile_for(chat: Chat, user: UserView) -> Profile:
+    """The chat's own provider, falling back to the caller's default when it has none, it was deleted, or it is not in
+    the caller's store (indistinguishable from deleted, so another user's profile id is never confirmed)."""
+    store = profile_store.load_store(runtime.settings, user)
     wanted = chat.profile_id if chat.profile_id in {p.id for p in store.profiles} else store.active
     profile = next((p for p in store.profiles if p.id == wanted), None)
     if profile is None:
@@ -39,21 +44,49 @@ def profile_for(chat: Chat) -> Profile:
     return profile.model_copy(update={"model": chat.model}) if override_applies(chat, profile) else profile
 
 
-def profile_key(profile: Profile) -> str | None:
+def profile_key(profile: Profile, user: UserView) -> str | None:
     if not profile.needs_key:
         return NO_KEY
-    return profile_store.resolve_key(runtime.settings, profile)[0]
+    return profile_store.resolve_key(runtime.settings, user, profile)[0]
 
 
-def get_client(profile: Profile) -> OpenAI:
-    key = profile_key(profile)
+def is_public_url(url: str) -> bool:
+    try:
+        web.check_public(url)
+    except (web.WebError, ValueError):  # ValueError: a port outside 0-65535 reaches check_public unvalidated
+        return False
+    return True
+
+
+def ensure_public_url(url: str) -> None:
+    """On a server, a provider URL may not point at loopback, link-local, private or unspecified addresses (resolving
+    names like web.check_public does): the server would otherwise fetch internal services, such as the cloud metadata
+    endpoint, for any signed-in user. Locally the URL is the user's own business (Ollama on 127.0.0.1)."""
+    if runtime.settings.deployed and not is_public_url(url):
+        raise HTTPException(422, PRIVATE_URL)
+
+
+def client_options() -> dict:
+    if runtime.settings.deployed:
+        # The SDK follows redirects by default; a public URL could otherwise bounce the request to an internal one.
+        return {"http_client": DefaultHttpxClient(follow_redirects=False)}
+    return {}
+
+
+def get_client(profile: Profile, user: UserView) -> OpenAI:
+    key = profile_key(profile, user)
     if key is None:
         raise HTTPException(409, f"No API key for {profile.name}. Add one in Providers.")
+    # On every call, not only when a client is built: a name can start resolving to an internal address later (DNS rebinding).
+    ensure_public_url(profile.base_url)
     cache_key = (profile.base_url, key)
-    if cache_key not in _clients:
-        _clients.clear()
-        _clients[cache_key] = OpenAI(base_url=profile.base_url, api_key=key)
-    return _clients[cache_key]
+    with _clients_lock:
+        # Returned from the local: another thread's clear() can run right after this block.
+        client = _clients.get(cache_key)
+        if client is None:
+            _clients.clear()
+            client = _clients[cache_key] = OpenAI(base_url=profile.base_url, api_key=key, **client_options())
+        return client
 
 
 def redact(message: str, key: str | None) -> str:
@@ -138,9 +171,9 @@ def window_for(chat: Chat, profile: Profile) -> int | None:
     return chat.context_window if override_applies(chat, profile) else profile.context_window
 
 
-def profile_window(chat: Chat) -> int | None:
+def profile_window(chat: Chat, user: UserView) -> int | None:
     try:
-        return window_for(chat, profile_for(chat))
+        return window_for(chat, profile_for(chat, user))
     except HTTPException:
         return None
 

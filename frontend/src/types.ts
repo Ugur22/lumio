@@ -47,3 +47,8 @@ export type EditProfileBody = Schema<"EditProfile">;
 export type WebStatus = Schema<"WebStatus">;
 export type ModelsQuery = Schema<"ModelsQuery">;
 export type ModelsResult = Schema<"ModelsResult">;
+
+export type UserView = Schema<"UserView">;
+export type LoginBody = Schema<"LoginBody">;
+export type RegisterBody = Schema<"RegisterBody">;
+export type PasswordChange = Schema<"PasswordChange">;

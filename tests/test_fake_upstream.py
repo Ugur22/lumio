@@ -16,7 +16,7 @@ BASE = "https://fake-upstream.test/v1"
 def stub(monkeypatch):
     # TestClient is an httpx.Client, so the SDK talks to the stub in-process; no retries keeps 500s fast.
     sdk = OpenAI(base_url=BASE, api_key="k" * 20, http_client=TestClient(upstream), max_retries=0)
-    monkeypatch.setattr(providers, "get_client", lambda profile: sdk)
+    monkeypatch.setattr(providers, "get_client", lambda profile, user: sdk)
     return sdk
 
 
