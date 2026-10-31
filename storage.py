@@ -84,6 +84,10 @@ class ChatBusy(Exception):
     """A reply is already being generated in this chat."""
 
 
+class LeaseLost(Exception):
+    """The generation no longer holds its chat's lease (it expired or another request took over), so its reply is not saved."""
+
+
 class InvalidUpdate(Exception):
     """The update is not valid for the chat as it is now; the message is shown to the user."""
 
@@ -113,6 +117,11 @@ class Lease:
                     return
             except sqlite3.Error:
                 log.warning("Could not renew the generation lease for chat %s", self.chat_id)
+
+    def holds(self, conn: sqlite3.Connection) -> bool:
+        """Whether this lease is still the chat's live one. Only meaningful inside the transaction that acts on it."""
+        row = conn.execute("SELECT token, expires FROM generations WHERE chat_id=?", (self.chat_id,)).fetchone()
+        return row is not None and row["token"] == self._token and row["expires"] > time.time()
 
     def release(self) -> None:
         """Idempotent and safe after the lease expired or was taken over: only deletes its own row."""
@@ -341,29 +350,60 @@ class Store:
         usage: Usage | None = None,
         rev: int | None = None,
     ) -> Chat:
-        """Adds messages at the end and touches nothing else about the chat except what is named here.
+        """Adds messages at the end for callers that are not generating a reply (imports, seeding); a reply is saved with append_generated.
 
         `title` only applies to a still-empty chat that has its default title, so it never replaces a rename.
         `usage` is recorded only if no settings changed since `rev`: it was measured against an older prompt otherwise.
         Raises ChatNotFound when the chat was deleted meanwhile, so a finished reply cannot bring it back.
         """
         with self._tx() as conn:
-            row = conn.execute(
-                "SELECT title, settings_rev, (SELECT COALESCE(MAX(seq), -1) + 1 FROM messages WHERE chat_id = ?) AS next_seq "
-                "FROM chats WHERE id = ?",
-                (chat_id, chat_id),
-            ).fetchone()
-            if row is None:
-                raise ChatNotFound(chat_id)
-            for offset, message in enumerate(messages):
-                self._insert_message(conn, chat_id, row["next_seq"] + offset, message)
-            values: dict = {}
-            if title and row["next_seq"] == 0 and row["title"] == DEFAULT_TITLE:
-                values["title"] = title
-            if usage is not None and (rev is None or rev == row["settings_rev"]):
-                values["last_usage"] = usage.prompt_tokens
-            self._update(conn, chat_id, values)
-            return self._load(conn, chat_id)[0]
+            return self._append(conn, chat_id, messages, title, usage, rev)
+
+    def append_generated(
+        self,
+        lease: Lease,
+        messages: list[Message],
+        *,
+        title: str | None = None,
+        usage: Usage | None = None,
+        rev: int | None = None,
+    ) -> Chat:
+        """append_messages for a generation: the same transaction checks that `lease` is still the chat's live lease.
+
+        Raises LeaseLost before writing anything when it expired or another request took over, and ChatNotFound
+        when the chat is gone (a deleted chat takes its lease row with it, so that is checked first).
+        """
+        with self._tx() as conn:
+            return self._append(conn, lease.chat_id, messages, title, usage, rev, lease)
+
+    def _append(
+        self,
+        conn: sqlite3.Connection,
+        chat_id: str,
+        messages: list[Message],
+        title: str | None,
+        usage: Usage | None,
+        rev: int | None,
+        lease: Lease | None = None,
+    ) -> Chat:
+        row = conn.execute(
+            "SELECT title, settings_rev, (SELECT COALESCE(MAX(seq), -1) + 1 FROM messages WHERE chat_id = ?) AS next_seq "
+            "FROM chats WHERE id = ?",
+            (chat_id, chat_id),
+        ).fetchone()
+        if row is None:
+            raise ChatNotFound(chat_id)
+        if lease is not None and not lease.holds(conn):
+            raise LeaseLost(chat_id)
+        for offset, message in enumerate(messages):
+            self._insert_message(conn, chat_id, row["next_seq"] + offset, message)
+        values: dict = {}
+        if title and row["next_seq"] == 0 and row["title"] == DEFAULT_TITLE:
+            values["title"] = title
+        if usage is not None and (rev is None or rev == row["settings_rev"]):
+            values["last_usage"] = usage.prompt_tokens
+        self._update(conn, chat_id, values)
+        return self._load(conn, chat_id)[0]
 
     def update_story(self, chat_id: str, bible: str, lore: list[LoreEntry]) -> Chat:
         values = {
@@ -454,9 +494,12 @@ class Store:
         return lease
 
     def _renew(self, chat_id: str, token: str) -> bool:
+        # An expired lease stays expired: another request may already be deciding to take it over.
         with self._tx() as conn:
+            now = time.time()
             cursor = conn.execute(
-                "UPDATE generations SET expires=? WHERE chat_id=? AND token=?", (time.time() + self.lease_ttl, chat_id, token)
+                "UPDATE generations SET expires=? WHERE chat_id=? AND token=? AND expires>?",
+                (now + self.lease_ttl, chat_id, token, now),
             )
             return cursor.rowcount > 0
 
