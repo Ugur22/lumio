@@ -230,10 +230,12 @@ def test_release_is_idempotent(store):
 
 
 def test_an_expired_lease_is_taken_over_and_the_old_owner_cannot_release_the_new_one(tmp_path):
-    store = storage.Store(tmp_path / "t.db", lease_ttl=0.2, lease_beat=60)
+    store = storage.Store(tmp_path / "t.db", lease_ttl=60, lease_beat=60)
     chat = store.create_chat(None, owner=OWNER)
     old = store.acquire(chat.id, owner=OWNER)
-    time.sleep(0.3)
+    # Expired by hand rather than by sleeping past a short TTL: on a slow runner a short TTL also expires `new`.
+    with store._tx() as conn:
+        conn.execute("UPDATE generations SET expires=? WHERE chat_id=?", (time.time() - 1, chat.id))
 
     new = store.acquire(chat.id, owner=OWNER)
     old.release()  # fenced by its token: the row now belongs to `new`

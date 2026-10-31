@@ -262,13 +262,16 @@ def test_a_chat_cannot_be_created_without_an_owner(tmp_path):
 
 def test_stale_reply_across_two_stores_on_one_database(tmp_path):
     db = tmp_path / "shared.db"
-    first = storage.Store(db, lease_ttl=0.2, lease_beat=60)
-    second = storage.Store(db, lease_ttl=0.2, lease_beat=60)
+    first = storage.Store(db, lease_ttl=60, lease_beat=60)
+    second = storage.Store(db, lease_ttl=60, lease_beat=60)
     chat = first.create_chat(None, owner=A)
     two = lambda tag: [Message(role="user", content=f"q-{tag}"), Message(role="assistant", content=f"a-{tag}")]  # noqa: E731
 
     token_a = first.acquire(chat.id, owner=A)
-    time.sleep(0.3)  # A's lease expires without a renewal (beat is 60s): its process stalled or died
+    # A's lease expires without a renewal (its process stalled or died). Expired by hand: with a short TTL on a slow
+    # runner B's lease would expire too before it saves.
+    with first._tx() as conn:
+        conn.execute("UPDATE generations SET expires=? WHERE chat_id=?", (time.time() - 1, chat.id))
 
     token_b = second.acquire(chat.id, owner=A)
     second.append_generated(token_b, two("b"))
