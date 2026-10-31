@@ -413,11 +413,13 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
           onChange={setVision}
         />
 
-        {notice && (
-          <p role={notice.kind === "error" ? "alert" : "status"} className={notice.kind === "error" ? "text-warn-bar" : "text-note-bar"}>
-            {notice.text}
-          </p>
-        )}
+        {/* Always rendered, one line tall, so the result of Test & fetch models doesn't push the buttons down. */}
+        <p
+          role={notice?.kind === "error" ? "alert" : "status"}
+          className={`min-h-[1.5em] ${notice?.kind === "error" ? "text-warn-bar" : "text-note-bar"}`}
+        >
+          {notice?.text}
+        </p>
 
         <div className="flex flex-wrap items-center gap-2">
           <PressButton type="submit" disabled={!canSave && pending !== "save"} loading={pending === "save"} hover={1.02} press={0.97} variant="primary">
