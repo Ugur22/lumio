@@ -46,7 +46,7 @@ export const toDraft = (e: LoreEntry): LoreDraft => ({
 
 export const blankDraft = (): LoreDraft => ({ id: newLoreId(), name: "", keysText: "", content: "", enabled: true });
 
-export function toBody(bible: string, drafts: LoreDraft[]): StoryBody {
+export function toBody(bible: string, drafts: LoreDraft[]): Required<StoryBody> {
   return {
     bible,
     lore: drafts.map((d) => ({
