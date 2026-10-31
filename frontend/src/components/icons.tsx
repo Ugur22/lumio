@@ -16,6 +16,7 @@ import {
   Play,
   Plug,
   Plus,
+  RefreshCw,
   Sparkles,
   Sun,
   Trash2,
@@ -66,6 +67,7 @@ export const MenuIcon = lucide(Menu);
 export const PencilIcon = lucide(Pencil);
 export const TrashIcon = lucide(Trash2);
 export const PlugIcon = lucide(Plug);
+export const RefreshIcon = lucide(RefreshCw);
 export const BookIcon = lucide(BookOpen);
 export const CopyIcon = lucide(Copy);
 export const CheckIcon = lucide(Check);

@@ -6,7 +6,7 @@ import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
 import { formatTokens } from "../lib/context";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
 import type { KeyStore, Profile } from "../types";
-import { CheckIcon, PlugIcon, PlusIcon, TrashIcon } from "./icons";
+import { CheckIcon, PlusIcon, RefreshIcon, TrashIcon } from "./icons";
 import { ModelCombobox } from "./ModelCombobox";
 import { Button, CheckboxField, ConfirmDialog, Modal, PressButton, Select, TextField, TextInput, fieldClass, focusRing } from "./ui";
 
@@ -208,6 +208,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
   const [vision, setVision] = useState(profile?.vision ?? false);
   const [imageModel, setImageModel] = useState(profile?.image_model ?? "");
   const [key, setKey] = useState("");
+  const [replacingKey, setReplacingKey] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [contextWindow, setContextWindow] = useState(profile?.context_window?.toString() ?? "");
   // Sizes the provider reported per model; they only prefill, the typed value always wins.
@@ -324,7 +325,18 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
   const windowValue = windowText === "" ? null : Number(windowText);
   const windowValid = windowValue === null || (Number.isInteger(windowValue) && windowValue >= MIN_WINDOW);
 
-  const canSave = !busy && windowValid && name.trim() && baseUrl.trim() && model.trim() && (editing || !needsKey || key.trim());
+  // Like the story bible: an unchanged provider has nothing to save.
+  const changed =
+    !profile ||
+    key.trim() !== "" ||
+    name.trim() !== profile.name ||
+    baseUrl.trim() !== profile.base_url ||
+    model.trim() !== profile.model ||
+    vision !== profile.vision ||
+    (imageModel.trim() || null) !== (profile.image_model ?? null) ||
+    windowValue !== (profile.context_window ?? null);
+
+  const canSave = !busy && changed && windowValid && name.trim() && baseUrl.trim() && model.trim() && (editing || !needsKey || key.trim());
 
   return (
     <>
@@ -356,7 +368,18 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
           description={baseUrl.trim() && `Your key is sent to ${hostOf(baseUrl.trim())}.`}
         />
 
-        {needsKey && (
+        {needsKey && profile?.configured && !replacingKey && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium">API key</span>
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-bg px-3 py-2.5">
+              <span aria-hidden="true" className="size-2.5 flex-none rounded-full bg-note-bar" />
+              <span className="min-w-0 flex-1 truncate">{keyLabel(profile)}</span>
+              <Button onClick={() => setReplacingKey(true)}>Replace</Button>
+            </div>
+          </div>
+        )}
+
+        {needsKey && !(profile?.configured && !replacingKey) && (
           <TextField
             label="API key"
             type="password"
@@ -368,9 +391,22 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
             onBlur={() => setKeyCommitted(key.trim() !== "")}
             autoComplete="off"
             spellCheck={false}
-            placeholder={editing ? "Leave blank to keep the saved key" : "Paste your API key"}
+            placeholder="Paste your API key"
             description="Stored by the server. It is never sent back to the browser."
           >
+            {replacingKey && (
+              <Button
+                variant="link"
+                onClick={() => {
+                  setKey("");
+                  setKeyCommitted(false);
+                  setReplacingKey(false);
+                }}
+                className="self-start"
+              >
+                Keep the saved key
+              </Button>
+            )}
             {hint && (
               <Button variant="link" onClick={() => applyPreset(hint.id)} className="self-start">
                 Looks like a {hint.label} key — use that preset
@@ -380,8 +416,27 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
         )}
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium">Model</span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[13px] font-medium">Model</span>
+            <Button
+              variant="secondary"
+              disabled={busy || !baseUrl.trim()}
+              onClick={fetchModels}
+              aria-busy={pending === "fetch" || undefined}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] leading-none"
+            >
+              <RefreshIcon width={14} height={14} aria-hidden="true" className={pending === "fetch" ? "motion-safe:animate-spin" : undefined} />
+              {pending === "fetch" ? "Refreshing…" : "Refresh"}
+            </Button>
+          </div>
           <ModelCombobox value={model} models={models} onChange={chooseModel} className={fieldClass} />
+          {/* Always rendered, one line tall, so the result of a fetch doesn't resize the dialog. */}
+          <p
+            role={notice?.kind === "error" ? "alert" : "status"}
+            className={`min-h-6 leading-6 ${notice?.kind === "error" ? "text-warn-bar" : "text-note-bar"}`}
+          >
+            {notice?.text}
+          </p>
         </div>
 
         <TextField
@@ -416,40 +471,22 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
           onChange={setVision}
         />
 
-        {/* Always rendered, one line tall, so the result of Test & fetch models doesn't push the buttons down. */}
-        <p
-          role={notice?.kind === "error" ? "alert" : "status"}
-          className={`min-h-[1.5em] ${notice?.kind === "error" ? "text-warn-bar" : "text-note-bar"}`}
-        >
-          {notice?.text}
-        </p>
-
         <div className="flex flex-wrap items-center gap-2">
-          <PressButton type="submit" disabled={!canSave && pending !== "save"} loading={pending === "save"} hover={1.02} press={0.97} variant="primary">
-            {pending !== "save" && <CheckIcon width={16} height={16} />}
-            Save
-          </PressButton>
-          <PressButton
-            type="button"
-            disabled={(busy && pending !== "fetch") || !baseUrl.trim()}
-            loading={pending === "fetch"}
-            onClick={fetchModels}
-            hover={1.02}
-            press={0.97}
-            variant="secondary"
-          >
-            {pending !== "fetch" && <PlugIcon width={16} height={16} />}
-            Test &amp; fetch models
-          </PressButton>
           {editing && (
             <Button variant="danger" disabled={busy} onClick={() => setConfirmRemove(true)}>
               <TrashIcon width={16} height={16} />
               Remove
             </Button>
           )}
-          <Button onClick={onDone} className="ml-auto">
-            Back
-          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="secondary" onClick={onDone}>
+              Cancel
+            </Button>
+            <PressButton type="submit" disabled={!canSave && pending !== "save"} loading={pending === "save"} hover={1.02} press={0.97} variant="primary">
+              {pending !== "save" && <CheckIcon width={16} height={16} />}
+              {editing ? "Save changes" : "Save"}
+            </PressButton>
+          </div>
         </div>
       </form>
       <ConfirmDialog

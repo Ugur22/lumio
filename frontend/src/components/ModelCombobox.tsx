@@ -64,7 +64,7 @@ export function ModelCombobox({ value, models, onChange, className }: Props) {
             </ComboboxOption>
           )}
           {groups.length === 0 && !custom && (
-            <div className="px-3 py-1.5 text-[12px] text-muted">No model list yet. Type a model ID, or use Test & fetch models.</div>
+            <div className="px-3 py-1.5 text-[12px] text-muted">No model list yet. Type a model ID, or use Fetch models.</div>
           )}
         </ComboboxOptions>
       </div>
