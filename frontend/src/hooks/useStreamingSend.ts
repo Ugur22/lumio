@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import { useStream } from "../store/stream";
 import type { Attachment } from "../lib/images";
-import type { Chat } from "../types";
+import type { Chat, ChatModelBody } from "../types";
 import { useSendMessage } from "./useChats";
 
 export function useStreamingSend() {
@@ -27,7 +27,7 @@ export function useStreamingSend() {
   }, []);
 
   const send = useCallback(
-    (chatId: string | null, content: string, attachments: Attachment[], web: boolean, illustrate: boolean, onSaved: (chat: Chat) => void) => {
+    (chatId: string | null, content: string, attachments: Attachment[], web: boolean, illustrate: boolean, onSaved: (chat: Chat) => void, model?: ChatModelBody) => {
       const controller = new AbortController();
       abort.current = controller;
       streamed.current = "";
@@ -43,6 +43,7 @@ export function useStreamingSend() {
           images: attachments.map((a) => a.upload),
           web,
           illustrate,
+          model,
           signal: controller.signal,
           onDelta,
           onSources: useStream.getState().setSources,

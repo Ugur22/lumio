@@ -157,6 +157,10 @@ class Chat(BaseModel):
     max_tokens: int | None = None
     # None follows the global default provider, so chats saved before this existed keep working.
     profile_id: str | None = None
+    # Why: the pair overrides the profile's model and window for this chat only, so editing the
+    # profile never moves it. Both default to None so chat files saved before this still load.
+    model: str | None = Field(default=None, min_length=1, max_length=120)
+    context_window: int | None = Field(default=None, ge=1000)
 
 
 class ChatSummary(BaseModel):
@@ -315,6 +319,12 @@ class BehaviorUpdate(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1, le=1_000_000)
     # Only applied when sent (see update_behavior), so a client that predates it can't clear the chat's provider.
     profile_id: str | None = Field(default=None, pattern=r"^[0-9a-z]{1,32}$")
+
+
+class ChatModelUpdate(BaseModel):
+    # null model clears the override (and the window with it).
+    model: str | None = Field(default=None, min_length=1, max_length=120)
+    context_window: int | None = Field(default=None, ge=1000)
 
 
 class SummaryUpdate(BaseModel):

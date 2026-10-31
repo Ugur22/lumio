@@ -69,6 +69,15 @@ export interface Chat {
   max_tokens: number | null;
   // The provider this chat talks to; null follows the global default.
   profile_id: string | null;
+  // Per-chat model override, set together with its context window; null model follows the profile.
+  model: string | null;
+  context_window: number | null;
+}
+
+// null model clears the override (and the window); a null window means the model's size is unknown.
+export interface ChatModelBody {
+  model: string | null;
+  context_window: number | null;
 }
 
 export interface BehaviorBody {

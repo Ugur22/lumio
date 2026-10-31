@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Chat, ContextInfo, IllustrationFailure, ImageUpload, SourceRef } from "../types";
+import type { Chat, ChatModelBody, ContextInfo, IllustrationFailure, ImageUpload, SourceRef } from "../types";
 
 export const chatsKey = ["chats"] as const;
 export const chatKey = (id: string) => ["chat", id] as const;
@@ -39,6 +39,19 @@ export function useCreateChat() {
   });
 }
 
+// A model change moves the context window with it, so the meter is re-measured as well.
+export function useSetChatModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ChatModelBody }) => api.setChatModel(id, body),
+    onSuccess: (chat) => {
+      qc.setQueryData(chatKey(chat.id), chat);
+      void qc.invalidateQueries({ queryKey: chatKey(chat.id) });
+      void qc.invalidateQueries({ queryKey: contextKey(chat.id) });
+    },
+  });
+}
+
 export function useRenameChat() {
   const qc = useQueryClient();
   return useMutation({
@@ -70,6 +83,7 @@ interface SendVars {
   images: ImageUpload[];
   web: boolean;
   illustrate: boolean;
+  model?: ChatModelBody;
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
@@ -90,8 +104,17 @@ async function savedAfterStop(id: string, knownCount: number): Promise<Chat> {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation<SentChat, Error, SendVars>({
-    mutationFn: async ({ chatId, content, images, web, illustrate, signal, onDelta, onSources, onIllustrationFailed }) => {
+    mutationFn: async ({ chatId, content, images, web, illustrate, model, signal, onDelta, onSources, onIllustrationFailed }) => {
       const id = chatId ?? (await api.createChat()).id;
+      // Chats are created before the first message, so the pick is stored with its own call.
+      if (chatId === null && model) {
+        try {
+          await api.setChatModel(id, model);
+        } catch (err) {
+          await api.deleteChat(id).catch(() => undefined);
+          throw err;
+        }
+      }
       const knownCount = chatId === null ? 0 : (qc.getQueryData<Chat>(chatKey(id))?.messages.length ?? 0);
       let received = false;
       try {

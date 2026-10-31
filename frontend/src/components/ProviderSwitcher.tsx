@@ -1,20 +1,31 @@
-import { useChat } from "../hooks/useChats";
+import { useEffect } from "react";
+import { useChat, useSetChatModel } from "../hooks/useChats";
 import { useProfileActions, useProfiles } from "../hooks/useProfiles";
 import { useSwitchChatProfile } from "../hooks/useStory";
+import { modelBody, overrideModel, shownModel, showDefaultItem } from "../lib/chatModel";
 import { effectiveProfile } from "../lib/providers";
+import type { ChatModelBody } from "../types";
+import { ModelPicker } from "./ModelPicker";
 import { Button, Select } from "./ui";
 
 interface Props {
   // The open chat; null means a blank chat, where the picker sets the default for new chats.
   chatId: string | null;
+  // A blank chat's unsent model pick, held by the parent and sent with the first message.
+  pendingModel: ChatModelBody | null;
+  onPendingModel: (pick: ChatModelBody | null) => void;
   onManage: () => void;
 }
 
-export function ProviderSwitcher({ chatId, onManage }: Props) {
+export function ProviderSwitcher({ chatId, pendingModel, onPendingModel, onManage }: Props) {
   const { data } = useProfiles();
   const chat = useChat(chatId).data;
   const actions = useProfileActions();
   const chatSwitch = useSwitchChatProfile(chat);
+  const setModel = useSetChatModel();
+  // One mutation serves every chat, so a failed pick must not follow you to the next one.
+  const resetModelError = setModel.reset;
+  useEffect(() => resetModelError(), [chatId, resetModelError]);
   if (!data) return null;
 
   const { profile: active, fellBack } = effectiveProfile(data, chatId ? chat?.profile_id : null);
@@ -29,7 +40,19 @@ export function ProviderSwitcher({ chatId, onManage }: Props) {
 
   const change = (id: string) => {
     if (chatId) chatSwitch.switchTo(id);
-    else void actions.activate(id);
+    else {
+      // The pick was made against the old provider's model list.
+      onPendingModel(null);
+      void actions.activate(id);
+    }
+  };
+
+  const blank = chatId === null;
+  const override = overrideModel(chat?.model, pendingModel, blank);
+  const pick = (model: string | null, windows: Readonly<Record<string, number>>) => {
+    const body = modelBody(model, windows);
+    if (chatId === null) return onPendingModel(model === null ? null : body);
+    return setModel.mutateAsync({ id: chatId, body });
   };
 
   return (
@@ -52,14 +75,17 @@ export function ProviderSwitcher({ chatId, onManage }: Props) {
         options={data.profiles.map((p) => ({ value: p.id, label: p.name }))}
         className="max-w-[10rem]"
       />
-      <Button
-        variant="bare"
-        onClick={onManage}
-        title="Change model or provider settings"
-        className="min-w-0 max-w-[11rem] truncate rounded-lg px-2 py-1 hover:bg-bubble hover:text-text max-[520px]:hidden"
-      >
-        {active.model}
-      </Button>
+      <ModelPicker
+        disabled={chatId !== null && !chat}
+        heading={blank ? "Model for the next chat" : "Model for this chat"}
+        current={shownModel({ chatModel: chat?.model, pending: pendingModel, profileModel: active.model, blank })}
+        defaultModel={active.model}
+        showDefault={showDefaultItem(override)}
+        profileId={active.id}
+        saveError={setModel.error?.message ?? null}
+        onPickWithWindows={pick}
+        onManage={onManage}
+      />
     </div>
   );
 }
