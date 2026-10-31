@@ -50,8 +50,8 @@ def clean_data_dir():
     Path(os.environ["DOLPHINLLM_PROFILES_FILE"]).unlink(missing_ok=True)
     yield
     data = Path(os.environ["DOLPHINLLM_DATA_DIR"])
-    for f in data.glob("*.json"):
-        f.unlink()
+    with server.db._tx() as conn:
+        conn.execute("DELETE FROM chats")  # messages and generation leases cascade
     shutil.rmtree(data / "images", ignore_errors=True)
 
 

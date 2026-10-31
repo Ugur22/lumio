@@ -41,6 +41,16 @@ def data_url(settings: Settings, chat_id: str, ref: ImageRef) -> str | None:
     return f"data:{ref.media_type};base64,{base64.b64encode(raw).decode()}"
 
 
+def delete_images(settings: Settings, chat_id: str, refs: list[ImageRef]) -> None:
+    """Removes files saved for a reply that never reached the chat."""
+    for ref in refs:
+        image_path(settings, chat_id, ref).unlink(missing_ok=True)
+    try:
+        chat_dir(settings, chat_id).rmdir()  # only succeeds when empty
+    except OSError:
+        pass
+
+
 def delete_chat_images(settings: Settings, chat_id: str) -> None:
     shutil.rmtree(chat_dir(settings, chat_id), ignore_errors=True)
 

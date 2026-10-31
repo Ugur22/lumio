@@ -121,11 +121,14 @@ def test_empty_message_and_blank_title_are_rejected(api):
     assert api.patch(f"/api/chats/{cid}", json={"title": ""}).status_code == 422
 
 
-def test_corrupt_chat_file_is_skipped_in_list(api, calls):
+def test_stray_files_in_the_data_dir_do_not_show_up_in_the_list(api, calls):
     new_chat(api)
     (server.settings.data_dir / ("f" * 32 + ".json")).write_text("{not json")
 
-    assert len(api.get("/api/chats").json()) == 1
+    try:
+        assert len(api.get("/api/chats").json()) == 1
+    finally:
+        (server.settings.data_dir / ("f" * 32 + ".json")).unlink()
 
 
 def test_api_key_is_not_in_built_frontend():

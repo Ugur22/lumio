@@ -5,6 +5,7 @@ import pytest
 from conftest import REPLY_PIECES, FakeStream
 from openai import OpenAIError
 
+import chat_migration
 import server
 from models import Chat, Profile
 
@@ -27,11 +28,9 @@ def new_chat(api):
 def seed(api, count):
     """Stores `count` alternating messages by writing the chat through the server's own saver."""
     cid = new_chat(api)
-    chat = server.load_chat(cid)
-    chat.messages = [
-        server.Message(role="user" if i % 2 == 0 else "assistant", content=f"m{i}") for i in range(count)
-    ]
-    server.save_chat(chat)
+    server.db.append_messages(
+        cid, [server.Message(role="user" if i % 2 == 0 else "assistant", content=f"m{i}") for i in range(count)]
+    )
     return cid
 
 
@@ -379,10 +378,11 @@ def test_context_window_is_null_without_a_window_or_profile(api):
 # --- old files and profiles ----------------------------------------------------------------
 
 
-def test_old_chat_files_without_story_fields_still_load(api):
+def test_old_chat_files_without_story_fields_still_load_after_import(api, tmp_path):
     cid = "d" * 32
     old = {"id": cid, "title": "Old", "created": "2025-01-01T00:00:00Z", "updated": "2025-01-01T00:00:00Z", "messages": []}
-    (server.settings.data_dir / f"{cid}.json").write_text(json.dumps(old))
+    (tmp_path / f"{cid}.json").write_text(json.dumps(old))
+    chat_migration.import_chats(tmp_path, server.db.path, apply=True)
 
     chat = api.get(f"/api/chats/{cid}").json()
 

@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     base_url: str = "https://api.dolphinllm.com/v1"
     model: str = "uncensored"
     data_dir: Path = BASE_DIR / "data" / "chats"
+    # Where chats live. Unset, it sits next to the chat images; on a server point it at persistent storage
+    # that a release (rsync into /opt/lumio) never replaces.
+    db_file: Path | None = None
     profiles_file: Path = BASE_DIR / "profiles.json"
     # Set on a server: the hostname browsers use. It is also accepted by require_local_origin and
     # switches on the checks that stop a stored key being sent to a different base URL.
@@ -51,6 +54,10 @@ class Settings(BaseSettings):
     @property
     def deployed(self) -> bool:
         return self.public_host is not None
+
+    @property
+    def database(self) -> Path:
+        return self.db_file or self.data_dir / "lumio.db"
 
     @property
     def images_dir(self) -> Path:
