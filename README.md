@@ -120,7 +120,7 @@ Your API key is sent to the profile's base URL and nowhere else. Anything you pu
 - Web pages that need JavaScript to render are not readable. Fetch limits: 1 MB per page, 10 s timeout, 6,000 characters kept per page.
 - The code runner supports Python and JavaScript only, and has no network access.
 - Chats are plain text in a local database and are not encrypted by Lumio.
-- There is no login. Locally, state-changing key and profile routes only accept requests from the local origin. A deployed instance relies on the reverse proxy's password, and everyone who has it sees all chats and providers.
+- Locally there is no login, and state-changing key and profile routes only accept requests from the local origin. A deployed instance has invite-only accounts: each account has its own chats, providers and keys.
 - Only one reply per chat can be generated at a time.
 - Not verified for this README: the UI in a browser (I did not run `make dev` interactively), `make e2e` (needs the Cypress binary and free ports), `make deploy`, and any live provider.
 
@@ -136,4 +136,4 @@ make types      # regenerate frontend/src/api.gen.ts after changing a route or a
 
 ## Deployment
 
-A single-instance setup (Caddy with HTTPS and basic auth in front of uvicorn on an EC2 box, SQLite and keys outside the release directory) is described in [deploy/README.md](deploy/README.md), including backups, migrating old JSON chats and rollback.
+A single-instance setup (Caddy with HTTPS in front of uvicorn on an EC2 box, SQLite and keys outside the release directory) is described in [deploy/README.md](deploy/README.md), including accounts and invites, backups and rollback. Releases go out with `make deploy`.
