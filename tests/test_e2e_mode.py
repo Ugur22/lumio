@@ -1,4 +1,5 @@
 import pytest
+from models import LOCAL_USER
 from fastapi.testclient import TestClient
 
 import e2e
@@ -22,10 +23,10 @@ def e2e_env(monkeypatch, tmp_path):
 
 
 def test_uses_stub_profile_with_dummy_key(e2e_env):
-    profile = providers.active_profile()
+    profile = providers.active_profile(LOCAL_USER)
     assert profile.base_url == "http://127.0.0.1:8765/v1"
-    assert providers.profile_key(profile) == e2e.DUMMY_KEY
-    assert providers.get_client(profile).base_url.host == "127.0.0.1"
+    assert providers.profile_key(profile, LOCAL_USER) == e2e.DUMMY_KEY
+    assert providers.get_client(profile, LOCAL_USER).base_url.host == "127.0.0.1"
 
 
 def test_profiles_api_never_touches_keychain_or_profiles_file(e2e_env, monkeypatch):
@@ -39,7 +40,7 @@ def test_profiles_api_never_touches_keychain_or_profiles_file(e2e_env, monkeypat
     listed = client.get("/api/profiles")
     assert listed.status_code == 200 and listed.json()["active"] == e2e.PROFILE_ID
     assert client.post("/api/profiles", json={"name": "x", "base_url": "https://a.example/v1", "model": "m", "key": "sk-secret"}).status_code == 201
-    profile_store.save_store(runtime.settings, profile_store.load_store(runtime.settings))
+    profile_store.save_store(runtime.settings, LOCAL_USER, profile_store.load_store(runtime.settings, LOCAL_USER))
     assert secret_store.get_key() is None
     assert not (e2e_env / "profiles.json").exists()
 

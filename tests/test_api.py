@@ -6,7 +6,7 @@ from conftest import REPLY_PIECES, FakeStream
 from openai import OpenAIError
 
 import server
-from app import runtime, story, streaming, routes_chats
+from app import auth, runtime, story, streaming, routes_chats
 
 
 def new_chat(api):
@@ -80,7 +80,7 @@ def test_error_mid_stream_is_reported_and_saves_nothing(api, fake_client):
 
 
 def stop_after_first_delta(chat, content, stream):
-    lease = runtime.db.acquire(chat.id)
+    lease = runtime.db.acquire(chat.id, owner="local")
 
     async def run():
         gen = streaming.stream_reply(chat, content, stream, [], [], lease=lease)
@@ -91,12 +91,12 @@ def stop_after_first_delta(chat, content, stream):
 
 
 def test_stopped_stream_saves_the_partial_reply(api):
-    chat = routes_chats.load_chat(new_chat(api))
+    chat = routes_chats.load_chat(new_chat(api), auth.LOCAL_USER)
     stream = FakeStream(REPLY_PIECES)
 
     stop_after_first_delta(chat, "Hello there", stream)
 
-    saved = routes_chats.load_chat(chat.id)
+    saved = routes_chats.load_chat(chat.id, auth.LOCAL_USER)
     assert [m.content for m in saved.messages] == ["Hello there", REPLY_PIECES[0]]
     assert saved.title == "Hello there"
     assert stream.closed

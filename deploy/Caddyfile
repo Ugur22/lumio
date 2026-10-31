@@ -1,10 +1,7 @@
 # <Elastic IP with dashes>.sslip.io resolves to that IP. Let's Encrypt refuses the ec2-*.amazonaws.com names, so don't use those. Caddy gets the HTTPS certificate itself.
 16-192-71-141.sslip.io {
-	# Paste the output of `caddy hash-password`; the plain password never goes in this file.
-	basic_auth {
-		lumio REPLACE_WITH_BCRYPT_HASH
-	}
-
+	# Sign-in is handled by the app (accounts, invite-only), so there is no basic_auth here. The app trusts the
+	# client address Caddy forwards, which is only safe while uvicorn listens on 127.0.0.1 and nothing else reaches it.
 	reverse_proxy 127.0.0.1:8000 {
 		# Replies stream; without this the proxy would hold them back until they finish.
 		flush_interval -1

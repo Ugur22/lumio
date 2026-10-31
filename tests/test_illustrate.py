@@ -3,7 +3,7 @@ import json
 
 from openai import OpenAIError
 
-from models import EditProfile, NewProfile, Profile
+from models import LOCAL_USER, EditProfile, NewProfile, Profile
 from conftest import FakeStream
 import profile_store
 from app import runtime, providers, story
@@ -71,7 +71,7 @@ def test_image_model_defaults_and_xai_preset():
 
 
 def test_old_profile_file_without_image_model_loads(api):
-    profile_store.save_store(runtime.settings, profile_store.ProfileStore())
+    profile_store.save_store(runtime.settings, LOCAL_USER, profile_store.ProfileStore())
     raw = {"active": "a", "profiles": [{"id": "a", "name": "x", "base_url": "https://api.example.com/v1", "model": "m"}]}
     runtime.settings.profiles_file.write_text(json.dumps(raw))
     assert api.get("/api/profiles").json()["profiles"][0]["image_model"] is None

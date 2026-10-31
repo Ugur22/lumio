@@ -1,5 +1,5 @@
 import { Description, Field, Input, Label, Textarea } from "@headlessui/react";
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import type { ComponentPropsWithRef, ComponentPropsWithoutRef, ReactNode } from "react";
 import { cx, fieldBase } from "./styles";
 
 type Own = {
@@ -9,7 +9,8 @@ type Own = {
   className?: string;
 };
 
-export type TextInputProps = Omit<ComponentPropsWithoutRef<"input">, "className"> & Own;
+// `ref` is accepted so a form can move focus to the field that needs fixing.
+export type TextInputProps = Omit<ComponentPropsWithRef<"input">, "className"> & Own;
 export type TextAreaProps = Omit<ComponentPropsWithoutRef<"textarea">, "className"> & Own;
 
 // The bare control, for inputs that carry an aria-label instead of a visible label.

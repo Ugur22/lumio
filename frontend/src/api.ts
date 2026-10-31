@@ -10,8 +10,12 @@ import type {
   ImageUpload,
   ModelsQuery,
   ModelsResult,
+  LoginBody,
   NewProfileBody,
+  PasswordChange,
   ProfileList,
+  RegisterBody,
+  UserView,
   SourceRef,
   BehaviorBody,
   StoryBody,
@@ -35,22 +39,41 @@ function errorMessage(detail: unknown, fallback: string): string {
 // `status` lets callers word 409/422/502 for the action that failed.
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  // Seconds from a 429's Retry-After header, when it sent a usable one.
+  retryAfter?: number;
+  constructor(message: string, status: number, retryAfter?: number) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.retryAfter = retryAfter;
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+// A 401 on any request after sign-in means the session is gone. api.ts stays free of app state, so the
+// session store registers what to do about it.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+}
+
+function retryAfterSeconds(res: Response): number | undefined {
+  const n = Number(res.headers.get("Retry-After"));
+  return Number.isFinite(n) && n > 0 ? Math.ceil(n) : undefined;
+}
+
+async function apiFailure(res: Response, announce: boolean): Promise<ApiError> {
+  const body = (await res.json().catch(() => ({}))) as { detail?: unknown };
+  // The login and register forms show their own 401, so those requests do not end the session.
+  if (res.status === 401 && announce) onUnauthorized?.();
+  return new ApiError(errorMessage(body.detail, res.statusText || `HTTP ${res.status}`), res.status, retryAfterSeconds(res));
+}
+
+async function request<T>(path: string, init: RequestInit = {}, announce = true): Promise<T> {
   const res = await fetch("/api" + path, {
     ...init,
     headers: { "Content-Type": "application/json", ...init.headers },
   });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { detail?: unknown };
-    throw new ApiError(errorMessage(body.detail, res.statusText || `HTTP ${res.status}`), res.status);
-  }
+  if (!res.ok) throw await apiFailure(res, announce);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
@@ -83,10 +106,8 @@ async function streamMessage(id: string, content: string, opts: StreamOptions): 
     body: JSON.stringify({ content, images, web, illustrate }),
     signal,
   });
-  if (!res.ok || !res.body) {
-    const body = (await res.json().catch(() => ({}))) as { detail?: unknown };
-    throw new Error(errorMessage(body.detail, res.statusText || `HTTP ${res.status}`));
-  }
+  if (!res.ok) throw await apiFailure(res, true);
+  if (!res.body) throw new Error(res.statusText || `HTTP ${res.status}`);
 
   let chat: DoneChat | null = null;
   let failure: string | null = null;
@@ -120,6 +141,13 @@ async function streamMessage(id: string, content: string, opts: StreamOptions): 
 export const imageUrl = (chatId: string, imageId: string) => `/api/chats/${chatId}/images/${imageId}`;
 
 export const api = {
+  me: () => request<UserView>("/auth/me", {}, false),
+  login: (body: LoginBody) => request<UserView>("/auth/login", { method: "POST", body: JSON.stringify(body) }, false),
+  register: (body: RegisterBody) =>
+    request<UserView>("/auth/register", { method: "POST", body: JSON.stringify(body) }, false),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  changePassword: (body: PasswordChange) =>
+    request<void>("/auth/password", { method: "POST", body: JSON.stringify(body) }),
   listChats: () => request<ChatSummary[]>("/chats"),
   createChat: () => request<Chat>("/chats", { method: "POST" }),
   getChat: (id: string) => request<Chat>(`/chats/${id}`),

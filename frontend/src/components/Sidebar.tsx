@@ -6,6 +6,7 @@ import type { ChatSummary } from "../types";
 import { PlugIcon, LumioMark, MoonIcon, PencilIcon, PlusIcon, SunIcon, TrashIcon } from "./icons";
 import { APP_NAME } from "../lib/brand";
 import { Button, PressButton, focusRing } from "./ui";
+import { UserMenu } from "./UserMenu";
 
 interface Props {
   chats: ChatSummary[];
@@ -154,6 +155,8 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         <ThemeIcon theme={theme} />
         {theme === "dark" ? "Light mode" : "Dark mode"}
       </PressButton>
+
+      <UserMenu />
     </animated.aside>
   );
 }

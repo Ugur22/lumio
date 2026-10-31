@@ -31,7 +31,7 @@ def seed(api, count):
     cid = new_chat(api)
     runtime.db.append_messages(
         cid, [Message(role="user" if i % 2 == 0 else "assistant", content=f"m{i}") for i in range(count)]
-    )
+    , owner="local")
     return cid
 
 
@@ -342,7 +342,7 @@ def test_editing_story_or_summary_invalidates_provider_usage(api, fake_client):
 
 def test_context_estimates_by_part_and_reports_the_profile_window(api, monkeypatch):
     monkeypatch.setattr(
-        providers, "profile_for", lambda chat: Profile(id="p", name="P", base_url="https://x.example/v1", model="m", context_window=8000)
+        providers, "profile_for", lambda chat, user: Profile(id="p", name="P", base_url="https://x.example/v1", model="m", context_window=8000)
     )
     cid = seed(api, 2)  # "m0", "m1": 4 characters, one token
     api.put(
@@ -383,7 +383,7 @@ def test_old_chat_files_without_story_fields_still_load_after_import(api, tmp_pa
     cid = "d" * 32
     old = {"id": cid, "title": "Old", "created": "2025-01-01T00:00:00Z", "updated": "2025-01-01T00:00:00Z", "messages": []}
     (tmp_path / f"{cid}.json").write_text(json.dumps(old))
-    chat_migration.import_chats(tmp_path, runtime.db.path, apply=True)
+    chat_migration.import_chats(tmp_path, runtime.db.path, apply=True, owner="local")
 
     chat = api.get(f"/api/chats/{cid}").json()
 

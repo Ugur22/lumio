@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import "highlight.js/styles/github-dark.css";
 import "./index.css";
 import { App } from "./App";
+import { AuthGate } from "./components/AuthGate";
 
 const queryClient = new QueryClient({
   // No polling or focus refetch: requests happen only on user actions.
@@ -22,7 +23,9 @@ if (!root) throw new Error("#root missing");
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <AuthGate>
+        <App />
+      </AuthGate>
     </QueryClientProvider>
   </StrictMode>,
 );

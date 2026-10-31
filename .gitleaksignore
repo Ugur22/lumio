@@ -1,2 +1,8 @@
 # Fake key used by the offline tests; it is not a credential.
 00d6e6ded23a9da55e502a1e247249e60ac37445:tests/test_deploy.py:generic-api-key:10
+
+# Fake keys and a throwaway Fernet key used by the offline accounts tests; none is a credential.
+e0a19452e9663d0e8724413359b5ef0a6da03bc9:tests/test_ssrf.py:generic-api-key:16
+e0a19452e9663d0e8724413359b5ef0a6da03bc9:tests/test_profile_isolation.py:generic-api-key:508
+e0a19452e9663d0e8724413359b5ef0a6da03bc9:tests/test_ownership.py:generic-api-key:63
+e0a19452e9663d0e8724413359b5ef0a6da03bc9:tests/conftest.py:generic-api-key:18

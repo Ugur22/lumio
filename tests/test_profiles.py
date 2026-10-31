@@ -1,4 +1,5 @@
 import pytest
+from models import LOCAL_USER
 from conftest import FakeStream
 from openai import OpenAIError
 
@@ -67,7 +68,7 @@ def test_activate_switches_the_provider_used(api):
     res = api.post(f"/api/profiles/{other}/activate")
 
     assert res.json()["active"] == other
-    assert providers.active_profile().model == "m2"
+    assert providers.active_profile(LOCAL_USER).model == "m2"
 
 
 def test_edit_updates_fields_and_replaces_key(api, memory_keyring):
@@ -261,12 +262,12 @@ def test_models_errors_redact_the_key(api, fake_openai):
 
 def test_client_is_rebuilt_when_the_key_changes(api):
     pid = by_name(make(api), "OpenRouter")["id"]
-    profile = providers.find_profile(profile_store.load_store(runtime.settings), pid)
-    first = providers.get_client(profile)
+    profile = providers.find_profile(profile_store.load_store(runtime.settings, LOCAL_USER), pid)
+    first = providers.get_client(profile, LOCAL_USER)
 
     api.patch(f"/api/profiles/{pid}", json={"key": "sk-other-0000000000zzzz"})
 
-    assert providers.get_client(profile) is not first
+    assert providers.get_client(profile, LOCAL_USER) is not first
 
 
 def test_keychain_failure_on_save_is_a_503(api, monkeypatch):

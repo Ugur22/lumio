@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useStream } from "../store/stream";
 import type { Attachment } from "../lib/images";
 import type { Chat, ChatModelBody } from "../types";
@@ -67,6 +67,16 @@ export function useStreamingSend() {
   );
 
   const stop = useCallback(() => abort.current?.abort(), []);
+
+  // Leaving the app (sign-out, a lost session) ends a stream in flight instead of letting it write into a store
+  // that now belongs to the next screen.
+  useEffect(
+    () => () => {
+      abort.current?.abort();
+      cancelAnimationFrame(frame.current);
+    },
+    [],
+  );
 
   return { send, stop, isPending };
 }

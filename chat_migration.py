@@ -51,7 +51,8 @@ def read_chats(src: Path) -> tuple[list[Chat], dict[str, str]]:
     return chats, skipped
 
 
-def import_chats(src: Path, db_path: Path, apply: bool = False) -> Report:
+def import_chats(src: Path, db_path: Path, apply: bool = False, owner: str | None = None) -> Report:
+    """`owner` None leaves the chats unowned (invisible) until the app's startup claims them; the app itself passes the claimant."""
     chats, skipped = read_chats(src)
     report = Report(skipped=skipped)
     # A dry run must not create the database, so it only looks at one that already exists.
@@ -62,9 +63,9 @@ def import_chats(src: Path, db_path: Path, apply: bool = False) -> Report:
             report.already_present.append(chat.id)
         elif not apply:
             report.imported.append(chat.id)
-        elif store.insert_chat(chat):
+        elif store.insert_chat(chat, owner=owner):
             report.imported.append(chat.id)
-            if store.get_chat(chat.id).model_dump(mode="json") != chat.model_dump(mode="json"):
+            if store.get_chat_unscoped(chat.id).model_dump(mode="json") != chat.model_dump(mode="json"):
                 report.mismatched.append(chat.id)
         else:
             report.already_present.append(chat.id)  # created by a running app between the check and the insert
@@ -79,18 +80,19 @@ def export_chats(db_path: Path, dest: Path, force: bool = False) -> int:
         raise SystemExit(f"No database at {db_path}")
     store = storage.Store(db_path)
     dest.mkdir(parents=True, exist_ok=True)
-    summaries = store.list_chats()
-    clashes = [s.id for s in summaries if (dest / f"{s.id}.json").exists()]
+    # Every chat, whoever owns it: the JSON format has no owner, so this is a full backup, not a per-user export.
+    ids = sorted(store.chat_ids())
+    clashes = [i for i in ids if (dest / f"{i}.json").exists()]
     if clashes and not force:
         raise SystemExit(f"{len(clashes)} files already exist in {dest}; export to an empty directory, or pass --force")
-    for summary in summaries:
-        chat = store.get_chat(summary.id)
+    for chat_id in ids:
+        chat = store.get_chat_unscoped(chat_id)
         # Written beside the target and renamed, so a crash never leaves a half-written chat file.
         fd, tmp = tempfile.mkstemp(dir=dest, suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(chat.model_dump_json(indent=2))
         os.replace(tmp, dest / f"{chat.id}.json")
-    return len(summaries)
+    return len(ids)
 
 
 def main(argv: list[str] | None = None) -> int:
