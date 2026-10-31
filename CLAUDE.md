@@ -5,6 +5,7 @@ Local chat UI for any OpenAI-compatible API. Providers are profiles (name, base 
 ## Run
 - Setup: `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`, then `cd frontend && npm install`. Add a provider and key in the app's Providers dialog. `DOLPHINLLM_API_KEY` in `.env` still works as a fallback for a pre-profiles setup (it becomes the "Dolphin" profile).
 - Production-like: `make build` then `make dev`, open http://localhost:8000.
+- After changing a route or a model in `models.py`: `make types` regenerates `frontend/src/api.gen.ts`; commit it with the change.
 - Hot reload: `make dev` plus `npm run dev` in `frontend/` (Vite on :5173 proxies `/api` to :8000).
 
 ## Rules
@@ -15,9 +16,9 @@ Local chat UI for any OpenAI-compatible API. Providers are profiles (name, base 
 - Do not edit `.claude/settings.json` or `scripts/hooks/` to loosen the checks.
 
 ## Verify
-Run `make check` (about 15 seconds, offline: syntax lint, ESLint, pytest, tsc) before reporting a task done; a Stop hook enforces it. The real API is only ever called by hand.
+Run `make check` (about 15 seconds, offline: syntax lint, ESLint, pytest, generated-types freshness, tsc) before reporting a task done; a Stop hook enforces it. The real API is only ever called by hand.
 
 ## Agents
 `.claude/agents/frontend-developer.md` (anything under `frontend/`) and `backend-developer.md` (`server.py`, `models.py`, `tests/`). Use them for scoped changes; use `bug-fixer`-style work (reproduce, root cause, smallest fix, regression test) for bugs.
 
-Changes that span both stacks start with a written contract (route, request/response shape, the `models.py` and `types.ts` fields) agreed in the plan before delegating; `types.ts` mirrors `models.py` by hand, so that is where parallel agents drift. Run parallel agents with `isolation: "worktree"`, and finish with `.claude/agents/reviewer.md` (read-only) on the diff.
+Changes that span both stacks start with a written contract (route, request/response shape, the `models.py` and `types.ts` fields) agreed in the plan before delegating; `frontend/src/api.gen.ts` is generated from `models.py` and `server.py` (`make types`, and `make check` fails when it is stale), so the contract cannot drift. Only the SSE event payloads in `types.ts` are still written by hand. Run parallel agents with `isolation: "worktree"`, and finish with `.claude/agents/reviewer.md` (read-only) on the diff.

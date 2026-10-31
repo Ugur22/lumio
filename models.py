@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).parent
@@ -25,6 +25,11 @@ IMAGE_EXTENSIONS: dict[str, str] = {
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class ApiModel(BaseModel):
+    # Responses always carry every field, so the generated TypeScript must not mark defaulted ones optional.
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
 
 class Settings(BaseSettings):
@@ -52,13 +57,13 @@ class Settings(BaseSettings):
         return self.data_dir / "images"
 
 
-class Source(BaseModel):
+class Source(ApiModel):
     url: str
     title: str = ""
     text: str
 
 
-class ImageData(BaseModel):
+class ImageData(ApiModel):
     """An image as uploaded by the browser: raw base64 without the `data:` prefix."""
 
     media_type: MediaType
@@ -76,7 +81,7 @@ class ImageData(BaseModel):
         return v
 
 
-class ImageRef(BaseModel):
+class ImageRef(ApiModel):
     """A stored image. The bytes live in `images_dir`, so chat files stay small."""
 
     id: str = Field(pattern=r"^[0-9a-f]{32}$")
@@ -85,16 +90,16 @@ class ImageRef(BaseModel):
     prompt: str | None = None
 
 
-class TextPart(BaseModel):
+class TextPart(ApiModel):
     type: Literal["text"] = "text"
     text: str
 
 
-class ImageUrl(BaseModel):
+class ImageUrl(ApiModel):
     url: str
 
 
-class ImagePart(BaseModel):
+class ImagePart(ApiModel):
     type: Literal["image_url"] = "image_url"
     image_url: ImageUrl
 
@@ -103,7 +108,7 @@ class ImagePart(BaseModel):
 ContentPart = Annotated[TextPart | ImagePart, Field(discriminator="type")]
 
 
-class Message(BaseModel):
+class Message(ApiModel):
     role: Literal["user", "assistant"]
     content: str
     created: datetime = Field(default_factory=utcnow)
@@ -121,7 +126,7 @@ MAX_LORE_ENTRIES = 200
 LORE_ID = r"^[0-9a-f]{32}$"
 
 
-class LoreEntry(BaseModel):
+class LoreEntry(ApiModel):
     id: str = Field(pattern=LORE_ID)
     name: str = Field(min_length=1, max_length=80)
     # Any one of these words appearing in recent messages pulls the entry into the prompt.
@@ -130,11 +135,11 @@ class LoreEntry(BaseModel):
     enabled: bool = True
 
 
-class Usage(BaseModel):
+class Usage(ApiModel):
     prompt_tokens: int = Field(ge=0)
 
 
-class Chat(BaseModel):
+class Chat(ApiModel):
     id: str
     title: str = "New chat"
     created: datetime = Field(default_factory=utcnow)
@@ -163,7 +168,7 @@ class Chat(BaseModel):
     context_window: int | None = Field(default=None, ge=1000)
 
 
-class ChatSummary(BaseModel):
+class ChatSummary(ApiModel):
     id: str
     title: str
     updated: datetime
@@ -188,7 +193,7 @@ def blank_to_none(v):
     return None if isinstance(v, str) and not v.strip() else v.strip() if isinstance(v, str) else v
 
 
-class Profile(BaseModel):
+class Profile(ApiModel):
     id: str
     name: str = Field(min_length=1, max_length=60)
     base_url: str
@@ -217,7 +222,7 @@ class Profile(BaseModel):
         return data
 
 
-class ProfileStore(BaseModel):
+class ProfileStore(ApiModel):
     active: str | None = None
     profiles: list[Profile] = []
 
@@ -230,12 +235,12 @@ class ProfileView(Profile):
     key_store: Literal["keychain", "file"] = "keychain"
 
 
-class ProfileList(BaseModel):
+class ProfileList(ApiModel):
     active: str | None
     profiles: list[ProfileView]
 
 
-class NewProfile(BaseModel):
+class NewProfile(ApiModel):
     name: str = Field(min_length=1, max_length=60)
     base_url: str
     model: str = Field(min_length=1, max_length=120)
@@ -249,7 +254,7 @@ class NewProfile(BaseModel):
     _blank_image_model = field_validator("image_model", mode="before")(lambda cls, v: blank_to_none(v))
 
 
-class EditProfile(BaseModel):
+class EditProfile(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=60)
     base_url: str | None = None
     model: str | None = Field(default=None, min_length=1, max_length=120)
@@ -267,7 +272,7 @@ class EditProfile(BaseModel):
         return None if v is None else clean_base_url(v)
 
 
-class ModelsQuery(BaseModel):
+class ModelsQuery(ApiModel):
     profile_id: str | None = None
     base_url: str | None = None
     key: SecretStr | None = None
@@ -279,7 +284,13 @@ class ModelsQuery(BaseModel):
         return None if v is None else clean_base_url(v)
 
 
-class NewMessage(BaseModel):
+class ModelsResult(ApiModel):
+    models: list[str]
+    # Only present when the provider reports sizes (OpenRouter does); most don't.
+    context_windows: dict[str, int] | None = None
+
+
+class NewMessage(ApiModel):
     content: str = ""
     images: list[ImageData] = Field(default=[], max_length=MAX_IMAGES)
     web: bool = False
@@ -292,26 +303,26 @@ class NewMessage(BaseModel):
         return self
 
 
-class WebKey(BaseModel):
+class WebKey(ApiModel):
     key: SecretStr = Field(min_length=1, max_length=512)
 
 
-class WebStatus(BaseModel):
+class WebStatus(ApiModel):
     configured: bool
     last4: str | None = None
     key_store: Literal["keychain", "file"] = "keychain"
 
 
-class RenameChat(BaseModel):
+class RenameChat(ApiModel):
     title: str = Field(min_length=1, max_length=100)
 
 
-class StoryUpdate(BaseModel):
+class StoryUpdate(ApiModel):
     bible: str = Field(default="", max_length=MAX_BIBLE_CHARS)
     lore: list[LoreEntry] = Field(default=[], max_length=MAX_LORE_ENTRIES)
 
 
-class BehaviorUpdate(BaseModel):
+class BehaviorUpdate(ApiModel):
     system_prompt: str = Field(default="", max_length=MAX_SYSTEM_PROMPT_CHARS)
     temperature: float | None = Field(default=None, ge=0, le=2)
     top_p: float | None = Field(default=None, ge=0, le=1)
@@ -321,23 +332,23 @@ class BehaviorUpdate(BaseModel):
     profile_id: str | None = Field(default=None, pattern=r"^[0-9a-z]{1,32}$")
 
 
-class ChatModelUpdate(BaseModel):
+class ChatModelUpdate(ApiModel):
     # null model clears the override (and the window with it).
     model: str | None = Field(default=None, min_length=1, max_length=120)
     context_window: int | None = Field(default=None, ge=1000)
 
 
-class SummaryUpdate(BaseModel):
+class SummaryUpdate(ApiModel):
     summary: str = Field(max_length=MAX_SUMMARY_CHARS)
     summary_upto: int = Field(ge=0)
 
 
-class SummaryProposal(BaseModel):
+class SummaryProposal(ApiModel):
     summary: str
     summary_upto: int
 
 
-class ContextParts(BaseModel):
+class ContextParts(ApiModel):
     system: int
     bible: int
     lore: int
@@ -345,7 +356,7 @@ class ContextParts(BaseModel):
     history: int
 
 
-class ContextInfo(BaseModel):
+class ContextInfo(ApiModel):
     used: int
     window: int | None
     source: Literal["provider", "estimate"]

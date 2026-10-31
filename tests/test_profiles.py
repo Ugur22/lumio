@@ -230,7 +230,8 @@ def fake_openai(monkeypatch):
 def test_models_for_an_unsaved_provider_uses_the_typed_url_and_key(api, fake_openai):
     res = api.post("/api/profiles/models", json={"base_url": "https://api.x.example/v1", "key": SECRET})
 
-    assert res.json() == {"models": ["a-model", "b-model"]}
+    # The schema promises context_windows on every response, so a provider that reports none sends null.
+    assert res.json() == {"models": ["a-model", "b-model"], "context_windows": None}
     assert fake_openai.seen == [("https://api.x.example/v1", SECRET)]
 
 

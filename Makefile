@@ -2,11 +2,11 @@
 
 PY ?= .venv/bin/python
 
-.PHONY: check check-fast lint-backend lint-frontend test-backend typecheck-frontend test-count build deploy dev e2e-server e2e
+.PHONY: check check-fast lint-backend lint-frontend test-backend typecheck-frontend test-count types check-types build deploy dev e2e-server e2e
 
 check-fast: lint-backend lint-frontend
 
-check: check-fast test-backend typecheck-frontend test-count
+check: check-fast test-backend check-types typecheck-frontend test-count
 
 # Syntax check (ast.parse, writes no .pyc files), then ruff for the bug-finding rules in ruff.toml.
 lint-backend:
@@ -17,6 +17,16 @@ lint-backend:
 # Fails when fewer tests exist than scripts/test-baseline.txt records, so deleting tests cannot go green.
 test-count:
 	@PY=$(PY) scripts/check-test-count.sh
+
+# The frontend's API types are generated from the backend's OpenAPI schema; run this after changing a route or a model in models.py.
+types:
+	@PY=$(PY) scripts/gen-types.sh frontend/src/api.gen.ts
+
+# Fails when the committed types no longer match the backend, so an API change cannot reach the frontend unnoticed.
+check-types:
+	@mkdir -p "$${TMPDIR:-/tmp}" && tmp=$$(mktemp "$${TMPDIR:-/tmp}/api-types.XXXXXX") && trap 'rm -f "$$tmp"' EXIT \
+		&& PY=$(PY) scripts/gen-types.sh "$$tmp" \
+		&& { cmp -s "$$tmp" frontend/src/api.gen.ts || { echo "frontend/src/api.gen.ts is out of date with the API. Run: make types"; exit 1; }; }
 
 lint-frontend:
 	@cd frontend && npx eslint .
@@ -31,11 +41,13 @@ build:
 	@cd frontend && npm run build
 
 # Ships the current tree to the EC2 box (see deploy/README.md). Override with `make deploy DEPLOY_KEY=... DEPLOY_HOST=...`.
-# Refuses to run off main so an unmerged branch cannot reach the live site.
+# Refuses to run off main so an unmerged branch cannot reach the live site, and runs the full check first so an API
+# that has drifted from the frontend types (or any other failure) stops the deploy before anything is copied.
 DEPLOY_HOST ?= ubuntu@16-192-71-141.sslip.io
 DEPLOY_KEY ?= $(HOME)/Downloads/lumio-keypair.pem
-deploy: build
+deploy: check build
 	@test "$$(git branch --show-current)" = main || { echo "deploy only from main"; exit 1; }
+	@test -z "$$(git status --porcelain --untracked-files=no)" || { echo "uncommitted changes: deploy ships the working tree, so commit them through a PR first"; exit 1; }
 	@test -f "$(DEPLOY_KEY)" || { echo "key not found: $(DEPLOY_KEY)"; exit 1; }
 	rsync -a --delete -e "ssh -i $(DEPLOY_KEY)" --exclude .git --exclude .venv --exclude '.env*' --exclude '/data' --exclude logs \
 		--exclude profiles.json --exclude .claude --exclude .agents --exclude __pycache__ \

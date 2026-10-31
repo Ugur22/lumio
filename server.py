@@ -41,6 +41,7 @@ from models import (
     ImageUrl,
     Message,
     ModelsQuery,
+    ModelsResult,
     NewMessage,
     NewProfile,
     Profile,
@@ -270,6 +271,7 @@ _parts = TypeAdapter(list[ContentPart])
 # Hex-only ids keep user input from ever becoming a path outside data_dir.
 ChatId = Annotated[str, PathParam(pattern=r"^[0-9a-f]{32}$")]
 
+# The frontend types are generated from this app's OpenAPI schema (make types, scripts/export_openapi.py).
 app = FastAPI()
 
 
@@ -972,7 +974,7 @@ def context_size(model) -> int | None:
     return None
 
 
-@profiles.post("/models")
+@profiles.post("/models", response_model=ModelsResult)
 async def list_models(body: ModelsQuery):
     """Lists the provider's models; doubles as the key test. Works on unsaved profiles."""
     base_url, key, needs_key = body.base_url, None, body.needs_key
