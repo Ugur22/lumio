@@ -26,7 +26,8 @@ types:
 check-types:
 	@mkdir -p "$${TMPDIR:-/tmp}" && tmp=$$(mktemp "$${TMPDIR:-/tmp}/api-types.XXXXXX") && trap 'rm -f "$$tmp"' EXIT \
 		&& PY=$(PY) scripts/gen-types.sh "$$tmp" \
-		&& { cmp -s "$$tmp" frontend/src/api.gen.ts || { echo "frontend/src/api.gen.ts is out of date with the API. Run: make types"; exit 1; }; }
+		&& { cmp -s "$$tmp" frontend/src/api.gen.ts || { echo "frontend/src/api.gen.ts is out of date with the API. Run: make types"; exit 1; }; } \
+		&& echo "api types match the backend"
 
 lint-frontend:
 	@cd frontend && npx eslint .
