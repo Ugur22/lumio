@@ -216,14 +216,14 @@ export function App() {
           >
             <MenuIcon />
           </PressButton>
-          <h1 className="min-w-0 truncate font-display text-lg font-semibold">{title}</h1>
+          <h1 title={title} className="min-w-0 flex-1 truncate font-display text-lg font-semibold max-[480px]:text-base">{title}</h1>
           <Button variant="bare"
             type="button"
             aria-label="Story"
             title="Story bible, lore and summary"
             disabled={create.isPending}
             onClick={openStory}
-            className="ml-auto flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted hover:bg-bubble hover:text-text disabled:opacity-60"
+            className="flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted hover:bg-bubble hover:text-text disabled:opacity-60"
           >
             <BookIcon width={16} height={16} />
             <span className="max-[480px]:hidden">Story</span>

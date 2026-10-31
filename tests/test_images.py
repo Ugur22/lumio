@@ -166,3 +166,11 @@ def test_image_route_rejects_traversal_and_unknown_ids(api):
 
     assert api.get(f"/api/chats/{cid}/images/..%2F..%2Fsecret").status_code in (404, 422)
     assert api.get(f"/api/chats/{cid}/images/{'0' * 32}").status_code == 404
+
+
+def test_long_first_message_title_is_cut_at_a_word():
+    from server import make_title
+
+    assert make_title("Write the opening scene of a noir story set in a rain-soaked city") == "Write the opening scene of a noir story set in a…"
+    assert make_title("short\n\nthing") == "short thing"
+    assert make_title("x" * 80) == "x" * 50 + "…"
