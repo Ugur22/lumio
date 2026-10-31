@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { Theme } from "../hooks/useTheme";
 import type { ChatSummary } from "../types";
-import { KeyIcon, LumioMark, MoonIcon, PencilIcon, PlusIcon, SunIcon, TrashIcon } from "./icons";
+import { PlugIcon, LumioMark, MoonIcon, PencilIcon, PlusIcon, SunIcon, TrashIcon } from "./icons";
 import { APP_NAME } from "../lib/brand";
 import { Button, PressButton, focusRing } from "./ui";
 
@@ -141,7 +141,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         press={0.97}
         className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text ${focusRing}`}
       >
-        <KeyIcon /> Providers
+        <PlugIcon /> Providers
       </PressButton>
 
       <PressButton

@@ -28,7 +28,7 @@ import {
   type StoryAction,
 } from "../lib/story";
 import type { Chat, StoryBody } from "../types";
-import { CloseIcon, TrashIcon } from "./icons";
+import { CheckIcon, CloseIcon, TrashIcon } from "./icons";
 import { Button, CheckboxField, Modal, PressButton, TextArea, TextAreaField, TextField, TextInput, focusRing } from "./ui";
 
 export type StoryTab = "bible" | "lore" | "summary" | "behavior";
@@ -299,6 +299,7 @@ function StoryActions({
         Revert
       </Button>
       <PressButton type="button" onClick={run} disabled={!dirty || problems} loading={save.isPending} hover={1.02} press={0.97} variant="primary">
+        {!save.isPending && <CheckIcon width={16} height={16} />}
         {save.isPending ? "Saving…" : "Save story"}
       </PressButton>
       {error && <p role="alert" className="basis-full text-warn-bar">{error}</p>}
@@ -580,6 +581,7 @@ function SummaryTab({ chat, draft, onChange }: { chat: Chat; draft: SummaryDraft
           press={0.97}
           variant="primary"
         >
+          {!save.isPending && <CheckIcon width={16} height={16} />}
           {save.isPending ? "Saving…" : "Save"}
         </PressButton>
         {(draft.proposed || edited) && (

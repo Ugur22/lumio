@@ -1,5 +1,6 @@
 import { Description, DialogTitle } from "@headlessui/react";
 import type { ReactNode } from "react";
+import { TrashIcon } from "../icons";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 import { PressButton } from "./PressButton";
@@ -27,6 +28,7 @@ export function ConfirmDialog({ open, title, description, confirmLabel, danger, 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button onClick={onCancel}>Cancel</Button>
           <PressButton onClick={onConfirm} hover={1.02} press={0.97} variant={danger ? "destructive" : "primary"}>
+            {danger && <TrashIcon width={16} height={16} />}
             {confirmLabel}
           </PressButton>
         </div>

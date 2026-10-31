@@ -6,6 +6,7 @@ import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
 import { formatTokens } from "../lib/context";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
 import type { KeyStore, Profile } from "../types";
+import { CheckIcon, PlusIcon, TrashIcon } from "./icons";
 import { ModelCombobox } from "./ModelCombobox";
 import { Button, CheckboxField, ConfirmDialog, Modal, PressButton, Select, TextField, TextInput, fieldClass, focusRing } from "./ui";
 
@@ -106,6 +107,7 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
       <WebSearchSection />
       <div className="flex items-center gap-2">
         <PressButton type="button" onClick={onAdd} hover={1.02} press={0.97} variant="primary">
+          <PlusIcon width={16} height={16} />
           Add provider
         </PressButton>
         <Button onClick={onClose} className="ml-auto">
@@ -164,6 +166,7 @@ function WebSearchSection() {
           </div>
           <Button onClick={() => setReplacing((on) => !on)}>{replacing ? "Cancel" : "Replace"}</Button>
           <Button variant="danger" disabled={busy} onClick={() => run(actions.remove)}>
+            <TrashIcon width={16} height={16} />
             Remove
           </Button>
         </div>
@@ -421,6 +424,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
 
         <div className="flex flex-wrap items-center gap-2">
           <PressButton type="submit" disabled={!canSave && pending !== "save"} loading={pending === "save"} hover={1.02} press={0.97} variant="primary">
+            {pending !== "save" && <CheckIcon width={16} height={16} />}
             Save
           </PressButton>
           <PressButton
@@ -436,6 +440,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
           </PressButton>
           {editing && (
             <Button variant="danger" disabled={busy} onClick={() => setConfirmRemove(true)}>
+              <TrashIcon width={16} height={16} />
               Remove
             </Button>
           )}
