@@ -1,5 +1,6 @@
 import { DialogTitle } from "@headlessui/react";
 import { useState, type FormEvent } from "react";
+import { CheckIcon } from "../icons";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 import { PressButton } from "./PressButton";
@@ -50,6 +51,7 @@ function PromptForm({ title, label, initialValue, submitLabel, maxLength, onSubm
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button onClick={onCancel}>Cancel</Button>
         <PressButton type="submit" disabled={!trimmed} hover={1.02} press={0.97} variant="primary">
+          <CheckIcon width={16} height={16} />
           {submitLabel}
         </PressButton>
       </div>
