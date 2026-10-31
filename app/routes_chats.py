@@ -227,8 +227,8 @@ def send_message(chat_id: ChatId, body: NewMessage):
         query,
         providers.window_for(chat, profile),
         (client, profile.image_model, providers.profile_key(profile)) if body.illustrate else None,
-        lease,
-        rev,
+        lease=lease,
+        rev=rev,
     )
     # A generator that never starts (client gone before the first byte) never reaches its own finally, and the
     # lease thread would keep renewing; release is idempotent, so these are only backstops.

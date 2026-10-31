@@ -80,8 +80,10 @@ def test_error_mid_stream_is_reported_and_saves_nothing(api, fake_client):
 
 
 def stop_after_first_delta(chat, content, stream):
+    lease = runtime.db.acquire(chat.id)
+
     async def run():
-        gen = streaming.stream_reply(chat, content, stream, [], [])
+        gen = streaming.stream_reply(chat, content, stream, [], [], lease=lease)
         await anext(gen)
         await gen.aclose()
 

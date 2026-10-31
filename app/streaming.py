@@ -87,6 +87,7 @@ async def illustrate_reply(
 
 def append_turn(
     chat: Chat,
+    lease: storage.Lease,
     content: str,
     reply: str,
     sources: list[Source],
@@ -96,11 +97,15 @@ def append_turn(
     reply_images: list[ImageRef] = (),
     rev: int | None = None,
 ) -> Chat:
-    """Adds the question and its reply to the stored chat; raises storage.ChatNotFound if it was deleted meanwhile."""
+    """Adds the question and its reply to the stored chat.
+
+    Raises storage.ChatNotFound if it was deleted meanwhile and storage.LeaseLost if `lease` no longer owns the chat;
+    either way nothing is stored and the files saved for the uploads are removed.
+    """
     refs = images.save_images(runtime.settings, chat.id, list(uploads))
     try:
-        return runtime.db.append_messages(
-            chat.id,
+        return runtime.db.append_generated(
+            lease,
             [
                 Message(role="user", content=content, sources=sources, images=refs, query=query),
                 Message(role="assistant", content=reply, images=list(reply_images)),
@@ -124,7 +129,8 @@ async def stream_reply(
     query: str | None = None,
     window: int | None = None,
     illustrate: tuple[OpenAI, str, str | None] | None = None,
-    lease: storage.Lease | None = None,
+    *,
+    lease: storage.Lease,
     rev: int | None = None,
 ) -> AsyncIterator[str]:
     """Streams the reply, then appends it in one short transaction. `lease` is released on every exit path."""
@@ -164,17 +170,21 @@ async def stream_reply(
         def save_and_release() -> Chat:
             # Released only once the commit is visible, so the next send never builds its history from a chat missing this turn.
             try:
-                return append_turn(chat, content, reply, sources, uploads, query, usage, reply_images, rev)
+                return append_turn(chat, lease, content, reply, sources, uploads, query, usage, reply_images, rev)
             finally:
-                if lease:
-                    lease.release()
+                lease.release()
 
-        saving = lease is not None
+        saving = True
         try:
             saved = await run_in_threadpool(save_and_release)
         except storage.ChatNotFound:
             images.delete_images(runtime.settings, chat.id, reply_images)
             yield sse("error", {"detail": "This chat was deleted while the reply was being written"})
+            return
+        except storage.LeaseLost:
+            log.warning("Reply for chat %s not saved: its generation lease expired or was taken over", chat.id)
+            images.delete_images(runtime.settings, chat.id, reply_images)
+            yield sse("error", {"detail": "This reply was not saved because another request took over this chat. Try again."})
             return
         except sqlite3.Error:
             log.exception("Could not save the reply")
@@ -204,9 +214,11 @@ async def stream_reply(
             # Reached unfinished when the client stops or disconnects: keep what it saw.
             if not finished and parts:
                 try:
-                    append_turn(chat, content, strip_directives("".join(parts)), sources, uploads, query, usage, rev=rev)
+                    append_turn(chat, lease, content, strip_directives("".join(parts)), sources, uploads, query, usage, rev=rev)
                 except storage.ChatNotFound:
                     pass  # deleted while generating: the partial reply goes with it
+                except storage.LeaseLost:
+                    log.warning("Partial reply for chat %s not saved: its generation lease expired or was taken over", chat.id)
         finally:
-            if lease and not saving:
+            if not saving:
                 lease.release()

@@ -285,3 +285,102 @@ def test_processes_appending_concurrently_lose_nothing(tmp_path):
 
     assert [p.wait(60) for p in procs] == [0, 0, 0, 0]
     assert len(store.get_chat(chat.id).messages) == 200
+
+
+# --- a generation that lost its lease ------------------------------------------------------------
+
+
+def expire(store, chat_id):
+    """Makes the lease row look abandoned, without waiting for the TTL."""
+    with store._tx() as conn:
+        conn.execute("UPDATE generations SET expires=0 WHERE chat_id=?", (chat_id,))
+
+
+def snapshot(store, chat_id):
+    chat = store.get_chat(chat_id)
+    return chat.model_dump(mode="json")
+
+
+def test_a_live_lease_saves_through_append_generated(store):
+    chat = store.create_chat(None)
+    lease = store.acquire(chat.id)
+
+    saved = store.append_generated(lease, [msg("user", "q"), msg("assistant", "a")], title="q", usage=Usage(prompt_tokens=7))
+
+    assert [m.content for m in saved.messages] == ["q", "a"]
+    assert (saved.title, saved.last_usage) == ("q", Usage(prompt_tokens=7))
+    lease.release()
+
+
+def test_an_expired_lease_without_a_replacement_cannot_save(store):
+    chat = store.create_chat(None)
+    lease = store.acquire(chat.id)
+    expire(store, chat.id)
+    before = snapshot(store, chat.id)
+
+    with pytest.raises(storage.LeaseLost):
+        store.append_generated(lease, [msg("user", "q"), msg("assistant", "a")], title="q", usage=Usage(prompt_tokens=7))
+
+    assert snapshot(store, chat.id) == before  # no messages, title, usage or updated stamp changed
+    lease.release()
+
+
+def test_a_released_lease_cannot_save(store):
+    chat = store.create_chat(None)
+    lease = store.acquire(chat.id)
+    lease.release()
+
+    with pytest.raises(storage.LeaseLost):
+        store.append_generated(lease, [msg("user", "q"), msg("assistant", "a")])
+
+
+def test_a_stale_owner_is_rejected_while_the_replacement_saves_and_keeps_its_lease(store):
+    chat = store.create_chat(None)
+    a = store.acquire(chat.id)
+    expire(store, chat.id)
+    b = store.acquire(chat.id)
+    before = snapshot(store, chat.id)
+
+    with pytest.raises(storage.LeaseLost):
+        store.append_generated(a, [msg("user", "from a"), msg("assistant", "from a")], title="a")
+    a.release()  # A's cleanup runs after the rejection
+    assert store._renew(chat.id, a._token) is False
+
+    assert snapshot(store, chat.id) == before
+    with pytest.raises(storage.ChatBusy):  # B still owns the lease
+        store.acquire(chat.id)
+    saved = store.append_generated(b, [msg("user", "from b"), msg("assistant", "from b")])
+    assert [m.content for m in saved.messages] == ["from b", "from b"]
+    b.release()
+
+
+def test_an_expired_lease_cannot_be_renewed(store):
+    chat = store.create_chat(None)
+    lease = store.acquire(chat.id)
+    expire(store, chat.id)
+
+    assert store._renew(chat.id, lease._token) is False
+
+    store.acquire(chat.id).release()  # it is free to take over, not revived behind the new owner's back
+    lease.release()
+
+
+def test_a_deleted_chat_is_not_found_rather_than_lease_lost(store):
+    chat = store.create_chat(None)
+    lease = store.acquire(chat.id)
+    store.delete_chat(chat.id)
+
+    with pytest.raises(storage.ChatNotFound):
+        store.append_generated(lease, [msg("user", "q"), msg("assistant", "a")])
+
+
+def test_a_stale_save_does_not_block_other_chats(store):
+    a, b = store.create_chat(None), store.create_chat(None)
+    stale, other = store.acquire(a.id), store.acquire(b.id)
+    expire(store, a.id)
+
+    with pytest.raises(storage.LeaseLost):
+        store.append_generated(stale, [msg("user", "q"), msg("assistant", "a")])
+
+    assert len(store.append_generated(other, [msg("user", "q"), msg("assistant", "a")]).messages) == 2
+    other.release()
