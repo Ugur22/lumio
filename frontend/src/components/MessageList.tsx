@@ -85,7 +85,7 @@ export function MessageList({ messages, chatId, loading = false }: Props) {
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
       }}
       // Blank chat: the heading hugs the composer below instead of floating at the top.
-      className={`flex-1 overflow-y-auto px-5 py-6 ${turns.length === 0 ? "flex flex-col justify-end" : ""}`}
+      className={`flex-1 overflow-y-auto overflow-x-hidden px-5 py-6 max-[720px]:px-4 [overflow-wrap:anywhere] ${turns.length === 0 ? "flex flex-col justify-end" : ""}`}
     >
       <div className="mx-auto w-full max-w-[720px]">
         {turns.length === 0 ? (

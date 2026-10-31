@@ -208,7 +208,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
       }}
       onDrop={onDrop}
-      className="mx-auto w-full max-w-[760px] px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-3"
+      className="mx-auto w-full max-w-[760px] px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] pt-2 min-[721px]:px-5 min-[721px]:pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] min-[721px]:pt-3"
     >
       {(notice || blocked) && (
         <p role="status" className="mb-2 rounded-xl bg-warn-bg px-3 py-2 text-[13px] text-warn-bar">
@@ -218,7 +218,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
         </p>
       )}
       <div
-        className={`relative rounded-2xl border bg-surface p-2 shadow-soft transition-[border-color,box-shadow] duration-200 focus-within:border-accent/60 focus-within:shadow-lift ${
+        className={`relative rounded-2xl border bg-surface p-1.5 shadow-soft min-[721px]:p-2 transition-[border-color,box-shadow] duration-200 focus-within:border-accent/60 focus-within:shadow-lift ${
           dragging ? "border-accent ring-2 ring-accent/40" : web ? "border-accent/50" : "border-border"
         }`}
       >
@@ -277,7 +277,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                 ? "Ask anything — Lumio will search the web first…"
                 : "Write a message…"
           }
-          className="block max-h-[min(40vh,12rem)] w-full resize-none bg-transparent px-2.5 py-2 text-text outline-none placeholder:text-muted"
+          className="block max-h-[min(40vh,12rem)] w-full resize-none bg-transparent px-2.5 py-1.5 text-text outline-none min-[721px]:py-2 placeholder:text-muted"
         />
         <div className="mt-1 flex items-center justify-between gap-2">
           <div className="relative flex min-w-0 items-center gap-1">
@@ -379,7 +379,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
           )}
         </div>
       </div>
-      <p className={`mt-2 text-center text-xs ${web ? "text-accent" : "text-muted"}`}>
+      <p className={`mt-2 text-center text-xs [@media(pointer:coarse)]:hidden ${web ? "text-accent" : "text-muted"}`}>
         {web
           ? "Web search on · your message is sent to Tavily"
           : inList

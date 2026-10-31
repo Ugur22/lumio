@@ -1,5 +1,5 @@
 import { animated, useSpring, useTransition } from "@react-spring/web";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type TouchEvent } from "react";
 import { CodeActionsContext } from "./components/CodeActionsContext";
 import { ContextMeter } from "./components/ContextMeter";
 import { Composer, type ComposerHandle } from "./components/Composer";
@@ -148,8 +148,23 @@ export function App() {
     config: { tension: 260, friction: 30 },
   });
 
+  // Touches that start on the composer can't scroll anything themselves, so hand the drag to the message list.
+  const lastY = useRef<number | null>(null);
+  const dragStart = (e: TouchEvent) => {
+    lastY.current = e.touches[0]?.clientY ?? null;
+  };
+  const dragScroll = (e: TouchEvent) => {
+    const t = e.target as HTMLElement;
+    const y = e.touches[0]?.clientY;
+    const prev = lastY.current;
+    lastY.current = y ?? null;
+    if (y === undefined || prev === null) return;
+    if (t instanceof HTMLTextAreaElement && t.scrollHeight > t.clientHeight) return;
+    e.currentTarget.parentElement?.querySelector<HTMLElement>("[data-image-bounds]")?.scrollBy(0, prev - y);
+  };
+
   return (
-    <div className="flex h-dvh font-sans text-[15px] leading-[1.6] text-text">
+    <div className="flex h-dvh w-full max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
       <Sidebar
         chats={chats}
         currentId={currentId}
@@ -207,7 +222,7 @@ export function App() {
       )}
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* backdrop-blur makes the header its own stacking context; without a z-index the model popover paints under the composer and tiles. Stays below the drawer overlay (z-10). */}
-        <header className="relative z-[5] flex items-center gap-2 border-b border-border/70 px-5 py-3 backdrop-blur">
+        <header className="relative z-[5] flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/70 px-5 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur max-[720px]:px-3 max-[720px]:pb-2">
           <PressButton
             type="button"
             aria-label="Open chats"
@@ -228,12 +243,14 @@ export function App() {
             <BookIcon width={16} height={16} />
             <span className="max-[480px]:hidden">Story</span>
           </Button>
-          <ProviderSwitcher
-            chatId={currentId}
-            pendingModel={pendingModel}
-            onPendingModel={setPendingModel}
-            onManage={() => setSettingsOpen(true)}
-          />
+          <div className="min-w-0 max-[720px]:order-last max-[720px]:w-full">
+            <ProviderSwitcher
+              chatId={currentId}
+              pendingModel={pendingModel}
+              onPendingModel={setPendingModel}
+              onManage={() => setSettingsOpen(true)}
+            />
+          </div>
         </header>
         {loadError && (
           <div role="alert" className="px-5 py-2 text-warn-bar">
@@ -252,7 +269,7 @@ export function App() {
           onSetWindow={() => setSettingsOpen(true)}
           onSummarize={() => setStory({ open: true, tab: "summary" })}
         />
-        <animated.div ref={dock} style={dockStyle} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
+        <animated.div ref={dock} style={dockStyle} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onTouchStart={dragStart} onTouchMove={dragScroll}>
           <Composer
             ref={composer}
             disabled={sending}
