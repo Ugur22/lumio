@@ -2,11 +2,11 @@
 
 PY ?= .venv/bin/python
 
-.PHONY: check check-fast lint-backend lint-frontend test-backend typecheck-frontend test-count types check-types build deploy dev e2e-server e2e
+.PHONY: check check-fast lint-backend lint-frontend test-backend test-frontend typecheck-frontend test-count types check-types build deploy dev e2e-server e2e
 
 check-fast: lint-backend lint-frontend
 
-check: check-fast test-backend check-types typecheck-frontend test-count
+check: check-fast test-backend test-frontend check-types typecheck-frontend test-count
 
 # Syntax check (ast.parse, writes no .pyc files), then ruff for the bug-finding rules in ruff.toml.
 lint-backend:
@@ -34,6 +34,10 @@ lint-frontend:
 
 test-backend:
 	@$(PY) -m pytest -q
+
+# Vitest in run mode (npm test is `vitest run`), so it exits non-zero on a failure instead of watching.
+test-frontend:
+	@cd frontend && npm test --silent
 
 typecheck-frontend:
 	@cd frontend && npx tsc -b --noEmit
