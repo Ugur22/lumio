@@ -98,6 +98,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
   useImperativeHandle(ref, () => ({
     focus: () => input.current?.focus(),
     setText: (text) => {
+      caret.current = text.length;
       setValue(text);
       input.current?.focus();
     },

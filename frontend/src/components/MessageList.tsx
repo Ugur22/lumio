@@ -1,5 +1,5 @@
-import { animated, useTrail } from "@react-spring/web";
-import { useEffect, useRef } from "react";
+import { animated, useSpring, useTrail } from "@react-spring/web";
+import { useEffect, useRef, type Ref } from "react";
 import { match } from "ts-pattern";
 import { imageUrl } from "../api";
 import { useStream } from "../store/stream";
@@ -11,18 +11,17 @@ interface Props {
   messages: Message[];
   chatId: string | null;
   loading?: boolean;
-  onPick: (text: string) => void;
-  onStory: () => void;
 }
 
+// `send` tiles are complete requests; the others are templates that need the user's own text first.
 const SUGGESTIONS = [
-  { title: "Open a story", text: "Write the opening scene of a noir story set in a rainy harbour town." },
-  { title: "Continue the scene", text: "Two rivals are stuck in a stalled elevator. Continue the scene, with dialogue." },
-  { title: "Tighten my writing", text: "Review this paragraph and point out what to tighten:\n\n" },
-  { title: "Explain simply", text: "Explain a hard idea to me as if I'm new to it, with one concrete example." },
+  { title: "Open a story", text: "Write the opening scene of a noir story set in a rainy harbour town.", send: true },
+  { title: "Continue the scene", text: "Two rivals are stuck in a stalled elevator. Continue the scene, with dialogue.", send: true },
+  { title: "Tighten my writing", text: "Review this paragraph and point out what to tighten:\n\n", send: false },
+  { title: "Explain simply", text: "Explain a hard idea to me as if I'm new to it, with one concrete example.", send: false },
 ];
 
-export function MessageList({ messages, chatId, loading = false, onPick, onStory }: Props) {
+export function MessageList({ messages, chatId, loading = false }: Props) {
   const ref = useRef<HTMLElement>(null);
   const stored = useStream((s) => s.pending);
   const liveSources = useStream((s) => s.sources);
@@ -84,11 +83,13 @@ export function MessageList({ messages, chatId, loading = false, onPick, onStory
       onScroll={(e) => {
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      }} className="flex-1 overflow-y-auto px-5 py-6"
+      }}
+      // Blank chat: the heading hugs the composer below instead of floating at the top.
+      className={`flex-1 overflow-y-auto px-5 py-6 ${turns.length === 0 ? "flex flex-col justify-end" : ""}`}
     >
-      <div className="mx-auto max-w-[720px]">
+      <div className="mx-auto w-full max-w-[720px]">
         {turns.length === 0 ? (
-          loading ? null : <EmptyState onPick={onPick} onStory={onStory} />
+          loading ? null : <EmptyHeading />
         ) : (
           turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} query={t.query} failures={t.failures} />)
         )}
@@ -97,22 +98,33 @@ export function MessageList({ messages, chatId, loading = false, onPick, onStory
   );
 }
 
-function EmptyState({ onPick, onStory }: { onPick: (text: string) => void; onStory: () => void }) {
-  const trail = useTrail(SUGGESTIONS.length + 1, {
+function EmptyHeading() {
+  const style = useSpring({ from: { opacity: 0, y: 18 }, to: { opacity: 1, y: 0 }, config: { tension: 220, friction: 24 } });
+  return (
+    <animated.div style={style} className="mb-2">
+      <h2 className="font-display text-[2.1rem] font-semibold leading-tight">What shall we write?</h2>
+      <p className="mt-2 text-muted">Pick a starting point, or just start typing.</p>
+    </animated.div>
+  );
+}
+
+// Rendered under the composer on a blank chat, so the input sits where the eye already is.
+export function Starters({ ref, leavingAt, onPick, onStory, disabled }: { ref?: Ref<HTMLDivElement>; leavingAt?: number; onPick: (text: string, send: boolean) => void; onStory: () => void; disabled: boolean }) {
+  const trail = useTrail(SUGGESTIONS.length, {
     from: { opacity: 0, y: 18 },
     to: { opacity: 1, y: 0 },
     config: { tension: 220, friction: 24 },
   });
-  const [hero, ...cards] = trail;
 
   return (
-    <div className="mt-[10vh]">
-      <animated.div style={hero} className="mb-8">
-        <h2 className="font-display text-[2.1rem] font-semibold leading-tight">What shall we write?</h2>
-        <p className="mt-2 text-muted">Pick a starting point, or just start typing.</p>
-      </animated.div>
+    <div
+      ref={ref}
+      // Leaving: fade in place without holding layout space, so the composer can dock underneath.
+      style={leavingAt === undefined ? undefined : { position: "absolute", top: leavingAt, left: 0, right: 0 }}
+      className={`mx-auto w-full max-w-[760px] px-5 pb-6 transition-opacity duration-200 ${leavingAt === undefined ? "" : "pointer-events-none opacity-0"}`}
+    >
       <div className="grid gap-3 sm:grid-cols-2">
-        {cards.map((style, i) => {
+        {trail.map((style, i) => {
           const s = SUGGESTIONS[i];
           if (!s) return null;
           return (
@@ -120,8 +132,9 @@ function EmptyState({ onPick, onStory }: { onPick: (text: string) => void; onSto
               <PressButton
                 type="button"
                 press={0.98}
-                onClick={() => onPick(s.text)}
-                className="h-full w-full rounded-2xl border border-border bg-surface p-4 text-left shadow-soft transition-colors hover:border-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                disabled={disabled && s.send}
+                onClick={() => onPick(s.text, s.send)}
+                className="h-full w-full rounded-2xl border border-border bg-surface p-4 text-left shadow-soft transition-colors hover:border-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
               >
                 <span className="block font-display text-base font-semibold">{s.title}</span>
                 <span className="mt-1 block text-sm text-muted">{s.text.trim()}</span>
