@@ -194,6 +194,12 @@ def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
         if body.illustrate and not profile.image_model:
             raise HTTPException(422, f"{profile.name} has no image model. Set one in Providers.")
         client = providers.get_client(profile, user)
+        saved = None
+        if body.transcript_id:  # checked before any outbound call, so a stale id costs nothing
+            try:
+                saved = runtime.db.get_transcript(chat_id, body.transcript_id, owner=user.id)
+            except storage.TranscriptNotFound:
+                raise HTTPException(404, "Transcript not found")
 
         # Gathered before the model call; the pages are plain prompt text, so any provider works.
         tavily_key = secret_store.get_key(profile_store.tavily_account(user)) if body.web else None
@@ -203,7 +209,10 @@ def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
         sources, notes = web.gather(body.content, body.web, tavily_key, query)
         history = story.history_for(chat, profile.vision)
         uploaded = [f"data:{i.media_type};base64,{i.data}" for i in body.images]
-        message = story.content_for(web.with_context(body.content, sources, notes), uploaded, profile.vision)
+        prompt = web.with_context(body.content, sources, notes)
+        if saved:
+            prompt = story.with_transcript(prompt, saved.title, saved.url, saved.edited_text if saved.edited_text is not None else saved.original_text)
+        message = story.content_for(prompt, uploaded, profile.vision)
         history.append({"role": "user", "content": message})
         try:
             stream = providers.open_stream(

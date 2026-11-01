@@ -9,6 +9,7 @@ import { Button, ConfirmDialog, PressButton, PromptDialog } from "./components/u
 import { ProviderSwitcher } from "./components/ProviderSwitcher";
 import { ProvidersDialog } from "./components/ProvidersDialog";
 import { Sidebar } from "./components/Sidebar";
+import { TranscribeDialog, type AttachedTranscript } from "./components/TranscribeDialog";
 import { StoryDialog, type StoryTab } from "./components/StoryDialog";
 import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, useRenameChat, useSetChatModel } from "./hooks/useChats";
 import { useProfiles } from "./hooks/useProfiles";
@@ -36,6 +37,9 @@ export function App() {
   const [story, setStory] = useState<{ open: boolean; tab: StoryTab }>({ open: false, tab: "bible" });
   const [renaming, setRenaming] = useState<ChatSummary | null>(null);
   const [deleting, setDeleting] = useState<ChatSummary | null>(null);
+  const [transcribeOpen, setTranscribeOpen] = useState(false);
+  // Stays attached until removed, so follow-up questions reuse it; transcripts belong to one chat.
+  const [transcript, setTranscript] = useState<AttachedTranscript | null>(null);
   const composer = useRef<ComposerHandle>(null);
   // A blank chat's model pick; not persisted, it only lives until the chat exists.
   const [pendingModel, setPendingModel] = useState<ChatModelBody | null>(null);
@@ -90,7 +94,10 @@ export function App() {
 
   const select = (id: string | null) => {
     useStream.getState().clearFailures();
-    if (id !== currentId) setPendingModel(null);
+    if (id !== currentId) {
+      setPendingModel(null);
+      setTranscript(null);
+    }
     setChosen(id);
     setMenuOpen(false);
     if (id === null) composer.current?.focus();
@@ -112,6 +119,7 @@ export function App() {
         if (chatId === null) setPendingModel((cur) => (cur === model ? null : cur));
       },
       model,
+      transcript?.id,
     );
   }
 
@@ -125,6 +133,19 @@ export function App() {
         if (pendingModel) setChatModel.mutate({ id: created.id, body: pendingModel });
         select(created.id);
         setStory({ open: true, tab: "bible" });
+      },
+    });
+  }
+
+  // Transcripts are stored on the chat, so a blank chat is created first, like for the story.
+  function openTranscribe() {
+    if (currentId) return setTranscribeOpen(true);
+    if (create.isPending) return;
+    create.mutate(undefined, {
+      onSuccess: (created) => {
+        if (pendingModel) setChatModel.mutate({ id: created.id, body: pendingModel });
+        select(created.id);
+        setTranscribeOpen(true);
       },
     });
   }
@@ -203,6 +224,13 @@ export function App() {
         onConfirm={() => deleting && confirmDelete(deleting)}
         onCancel={() => setDeleting(null)}
       />
+      <TranscribeDialog
+        open={transcribeOpen}
+        chatId={currentId}
+        attached={transcript}
+        onAttach={setTranscript}
+        onClose={() => setTranscribeOpen(false)}
+      />
       <StoryDialog
         open={story.open}
         chatId={currentId}
@@ -277,6 +305,9 @@ export function App() {
             canIllustrate={Boolean(activeProfile?.image_model)}
             providerName={activeProfile?.name ?? null}
             onStop={stop}
+            transcript={transcript}
+            onTranscribe={openTranscribe}
+            onDetachTranscript={() => setTranscript(null)}
             onSend={onSend}
           />
         </animated.div>

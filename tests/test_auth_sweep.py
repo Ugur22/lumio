@@ -27,7 +27,7 @@ def stranger(monkeypatch):
 
 def fill(path):
     # 32 hex characters satisfies the chat id and the profile id patterns alike.
-    return path.replace("{chat_id}", "a" * 32).replace("{profile_id}", "a" * 8).replace("{image_id}", "a" * 32)
+    return path.replace("{chat_id}", "a" * 32).replace("{profile_id}", "a" * 8).replace("{image_id}", "a" * 32).replace("{job_id}", "a" * 32).replace("{transcript_id}", "a" * 32)
 
 
 def test_the_sweep_sees_the_whole_api():

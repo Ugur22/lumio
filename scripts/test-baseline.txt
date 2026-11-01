@@ -1,2 +1,2 @@
-pytest=522
-vitest=344
+pytest=598
+vitest=354

@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
@@ -5,7 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import secret_store
-from app import routes_auth, routes_chats, routes_profiles, runtime
+from app import routes_auth, routes_chats, routes_profiles, routes_transcripts, runtime
 from models import BASE_DIR
 
 try:
@@ -20,7 +23,16 @@ runtime.migrate_profiles_to_admin(runtime.db, runtime.settings)
 # On a server the interactive docs and the schema would be public (the proxy no longer gates them), so they are off there.
 # app.openapi() still works without the URL, which is all scripts/export_openapi.py needs.
 _no_docs = {"docs_url": None, "redoc_url": None, "openapi_url": None} if runtime.settings.deployed else {}
-app = FastAPI(**_no_docs)
+
+
+@contextlib.asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    # The child runs in its own session and would outlive a Ctrl-C or reload, so the job is cancelled explicitly.
+    await asyncio.to_thread(runtime.jobs.shutdown)
+
+
+app = FastAPI(lifespan=lifespan, **_no_docs)
 
 
 @app.exception_handler(RequestValidationError)
@@ -34,6 +46,7 @@ async def validation_error(request: Request, exc: RequestValidationError):
 
 app.include_router(routes_auth.router)
 app.include_router(routes_chats.router)
+app.include_router(routes_transcripts.router)
 app.include_router(routes_profiles.profiles)
 app.include_router(routes_profiles.web_settings)
 

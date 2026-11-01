@@ -13,8 +13,9 @@ import {
 } from "react";
 import { continueList, shiftList, type Edit } from "../lib/lists";
 import { ACCEPT_ATTR, prepareImage, rejectReason, type Attachment } from "../lib/images";
-import { CloseIcon, GlobeIcon, PaperclipIcon, SendIcon, SparklesIcon, StopIcon } from "./icons";
+import { BookIcon, CloseIcon, GlobeIcon, PaperclipIcon, SendIcon, SparklesIcon, StopIcon } from "./icons";
 import { Button, PressButton } from "./ui";
+import type { AttachedTranscript } from "./TranscribeDialog";
 
 export interface ComposerHandle {
   focus: () => void;
@@ -29,6 +30,10 @@ interface Props {
   providerName: string | null;
   // Whether the active provider has an image model; the Illustrate toggle only exists then.
   canIllustrate?: boolean;
+  // The transcript sent along with every message until removed; `onTranscribe` opens the dialog that picks one.
+  transcript?: AttachedTranscript | null;
+  onTranscribe?: () => void;
+  onDetachTranscript?: () => void;
   onSend: (text: string, attachments: Attachment[], web: boolean, illustrate: boolean) => void;
   onStop: () => void;
 }
@@ -62,7 +67,7 @@ function Tip({ id, title, children }: { id: string; title: string; children: Rea
 
 const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
-export function Composer({ ref, disabled, vision, providerName, canIllustrate = false, onSend, onStop }: Props) {
+export function Composer({ ref, disabled, vision, providerName, canIllustrate = false, transcript = null, onTranscribe, onDetachTranscript, onSend, onStop }: Props) {
   const [value, setValue] = useState("");
   const [web, setWeb] = useState(false);
   const [illustrate, setIllustrate] = useState(false);
@@ -259,6 +264,17 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
             ))}
           </ul>
         )}
+        {transcript && (
+          <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 px-1 pt-1 text-[13px]">
+            <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-accent/50 bg-accent/15 py-0.5 pl-2.5 pr-1 text-accent">
+              <span className="truncate">Transcript: {transcript.title}</span>
+              <Button variant="bare" type="button" aria-label="Remove transcript" onClick={onDetachTranscript} className="grid size-5 flex-none place-items-center rounded-full hover:bg-accent/20">
+                <CloseIcon width={11} height={11} />
+              </Button>
+            </span>
+            <span className="text-[12px] text-muted">Sends this transcript to your chat provider</span>
+          </div>
+        )}
         <textarea
           ref={input}
           rows={1}
@@ -343,6 +359,12 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                   : unsupported}
               </Tip>
             </div>
+            {onTranscribe && (
+              <Button type="button" onClick={onTranscribe} className={`${toolBase} ${toolOff} gap-1.5 px-2.5 text-[13px]`}>
+                <BookIcon width={16} height={16} />
+                Transcribe a song
+              </Button>
+            )}
             <input
               ref={picker}
               type="file"

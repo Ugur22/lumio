@@ -52,3 +52,12 @@ export type UserView = Schema<"UserView">;
 export type LoginBody = Schema<"LoginBody">;
 export type RegisterBody = Schema<"RegisterBody">;
 export type PasswordChange = Schema<"PasswordChange">;
+
+export type TranscriptionStatus = Schema<"TranscriptionStatus">;
+export type TranscribeBody = Schema<"TranscribeRequest">;
+export type TranscriptionJob = Schema<"TranscriptionJob">;
+export type JobState = TranscriptionJob["state"];
+export type Transcript = Schema<"Transcript">;
+export type TranscriptSummary = Schema<"TranscriptSummary">;
+export type TranscriptSegment = Schema<"TranscriptSegment">;
+export type TranscriptEdit = Schema<"TranscriptUpdate">;

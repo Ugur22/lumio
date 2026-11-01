@@ -265,6 +265,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chats/{chat_id}/transcriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Active Transcription */
+        get: operations["active_transcription_api_chats__chat_id__transcriptions_get"];
+        put?: never;
+        /** Start Transcription */
+        post: operations["start_transcription_api_chats__chat_id__transcriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/transcriptions/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Transcription */
+        get: operations["get_transcription_api_chats__chat_id__transcriptions__job_id__get"];
+        put?: never;
+        post?: never;
+        /** Cancel Transcription */
+        delete: operations["cancel_transcription_api_chats__chat_id__transcriptions__job_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/transcripts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Transcripts */
+        get: operations["list_transcripts_api_chats__chat_id__transcripts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/transcripts/{transcript_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Transcript */
+        get: operations["get_transcript_api_chats__chat_id__transcripts__transcript_id__get"];
+        /** Update Transcript */
+        put: operations["update_transcript_api_chats__chat_id__transcripts__transcript_id__put"];
+        post?: never;
+        /** Delete Transcript */
+        delete: operations["delete_transcript_api_chats__chat_id__transcripts__transcript_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles": {
         parameters: {
             query?: never;
@@ -332,6 +404,23 @@ export interface paths {
         put?: never;
         /** Activate Profile */
         post: operations["activate_profile_api_profiles__profile_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/transcription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Transcription Status */
+        get: operations["transcription_status_api_transcription_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -678,6 +767,8 @@ export interface components {
              * @default []
              */
             images?: components["schemas"]["ImageData"][];
+            /** Transcript Id */
+            transcript_id?: string | null;
             /**
              * Web
              * @default false
@@ -824,6 +915,111 @@ export interface components {
             summary: string;
             /** Summary Upto */
             summary_upto: number;
+        };
+        /** TranscribeRequest */
+        TranscribeRequest: {
+            /**
+             * Language
+             * @default auto
+             */
+            language?: string;
+            /** Url */
+            url: string;
+        };
+        /** Transcript */
+        Transcript: {
+            /**
+             * Created
+             * Format: date-time
+             */
+            created: string;
+            /** Edited */
+            edited: boolean;
+            /** Edited Text */
+            edited_text: string | null;
+            /** Id */
+            id: string;
+            /** Language */
+            language: string;
+            /** Model */
+            model: string;
+            /** Original Text */
+            original_text: string;
+            /** Segments */
+            segments: components["schemas"]["TranscriptSegment"][];
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Video Id */
+            video_id: string;
+        };
+        /** TranscriptSegment */
+        TranscriptSegment: {
+            /** End */
+            end: number;
+            /** Start */
+            start: number;
+            /** Text */
+            text: string;
+        };
+        /** TranscriptSummary */
+        TranscriptSummary: {
+            /**
+             * Created
+             * Format: date-time
+             */
+            created: string;
+            /** Edited */
+            edited: boolean;
+            /** Id */
+            id: string;
+            /** Language */
+            language: string;
+            /** Model */
+            model: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
+        /** TranscriptUpdate */
+        TranscriptUpdate: {
+            /** Edited Text */
+            edited_text: string | null;
+        };
+        /** TranscriptionJob */
+        TranscriptionJob: {
+            /** Chat Id */
+            chat_id: string;
+            /** Error */
+            error: string;
+            /** Id */
+            id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "checking" | "downloading" | "converting" | "transcribing" | "done" | "failed" | "cancelled";
+            /** Title */
+            title: string;
+            /** Transcript Id */
+            transcript_id: string | null;
+            /** Url */
+            url: string;
+        };
+        /** TranscriptionStatus */
+        TranscriptionStatus: {
+            /** Available */
+            available: boolean;
+            /** Max Download Mb */
+            max_download_mb: number;
+            /** Max Minutes */
+            max_minutes: number;
+            /** Model */
+            model: string;
+            /** Reason */
+            reason: string;
         };
         /** Usage */
         Usage: {
@@ -1421,6 +1617,265 @@ export interface operations {
             };
         };
     };
+    active_transcription_api_chats__chat_id__transcriptions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionJob"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_transcription_api_chats__chat_id__transcriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_transcription_api_chats__chat_id__transcriptions__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_transcription_api_chats__chat_id__transcriptions__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_transcripts_api_chats__chat_id__transcripts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_transcript_api_chats__chat_id__transcripts__transcript_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+                transcript_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transcript"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_transcript_api_chats__chat_id__transcripts__transcript_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+                transcript_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranscriptUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transcript"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_transcript_api_chats__chat_id__transcripts__transcript_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+                transcript_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_profiles_api_profiles_get: {
         parameters: {
             query?: never;
@@ -1600,6 +2055,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcription_status_api_transcription_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptionStatus"];
                 };
             };
         };

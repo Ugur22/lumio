@@ -27,7 +27,7 @@ export function useStreamingSend() {
   }, []);
 
   const send = useCallback(
-    (chatId: string | null, content: string, attachments: Attachment[], web: boolean, illustrate: boolean, onSaved: (chat: Chat) => void, model?: ChatModelBody) => {
+    (chatId: string | null, content: string, attachments: Attachment[], web: boolean, illustrate: boolean, onSaved: (chat: Chat) => void, model?: ChatModelBody, transcriptId?: string | null) => {
       const controller = new AbortController();
       abort.current = controller;
       streamed.current = "";
@@ -43,6 +43,7 @@ export function useStreamingSend() {
           images: attachments.map((a) => a.upload),
           web,
           illustrate,
+          transcriptId,
           model,
           signal: controller.signal,
           onDelta,

@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     admin_user: str | None = None
     # Images are only kept so follow-up questions keep working; they are pruned after this.
     image_retention_days: int = Field(default=30, ge=1)
+    # Local transcription (docs/transcription.md). Off unless both whisper paths are set; never offered on a server.
+    yt_dlp_path: str = "yt-dlp"
+    ffmpeg_path: str = "ffmpeg"
+    whisper_cli_path: Path | None = None
+    whisper_model_path: Path | None = None
+    transcribe_max_minutes: int = Field(default=20, ge=1)
+    transcribe_max_download_mb: int = Field(default=100, ge=1)
+    transcribe_timeout_minutes: int = Field(default=30, ge=1)
 
     @property
     def deployed(self) -> bool:
@@ -306,6 +314,8 @@ class NewMessage(ApiModel):
     images: list[ImageData] = Field(default=[], max_length=MAX_IMAGES)
     web: bool = False
     illustrate: bool = False
+    # A saved transcript of this chat to analyse; its text goes into the prompt, not into the stored message.
+    transcript_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
 
     @model_validator(mode="after")
     def _not_empty(self) -> "NewMessage":
@@ -408,3 +418,57 @@ class ContextInfo(ApiModel):
     window: int | None
     source: Literal["provider", "estimate"]
     parts: ContextParts
+
+
+TranscriptionState = Literal["queued", "checking", "downloading", "converting", "transcribing", "done", "failed", "cancelled"]
+MAX_TRANSCRIPT_CHARS = 200_000
+
+
+class TranscriptionStatus(ApiModel):
+    available: bool
+    reason: str  # setup guidance when unavailable, "" otherwise
+    model: str  # file name of the configured model, "" when unset
+    max_minutes: int
+    max_download_mb: int
+
+
+class TranscribeRequest(ApiModel):
+    url: str = Field(min_length=1, max_length=500)
+    language: str = Field(default="auto", pattern=r"^(auto|[a-z]{2,3})$")
+
+
+class TranscriptionJob(ApiModel):
+    id: str
+    chat_id: str
+    url: str
+    state: TranscriptionState
+    title: str  # "" until the video has been inspected
+    error: str  # "" unless state is failed
+    transcript_id: str | None
+
+
+class TranscriptSegment(ApiModel):
+    start: float  # seconds
+    end: float
+    text: str
+
+
+class TranscriptSummary(ApiModel):
+    id: str
+    title: str
+    url: str
+    language: str
+    model: str
+    created: datetime
+    edited: bool
+
+
+class Transcript(TranscriptSummary):
+    video_id: str
+    original_text: str  # never changes after it is saved
+    edited_text: str | None  # null until the user edits; the text analysed is edited_text if set, else original_text
+    segments: list[TranscriptSegment]
+
+
+class TranscriptUpdate(ApiModel):
+    edited_text: str | None = Field(min_length=1, max_length=MAX_TRANSCRIPT_CHARS)  # null resets to the original

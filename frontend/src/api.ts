@@ -21,6 +21,12 @@ import type {
   StoryBody,
   SummaryBody,
   WebStatus,
+  TranscribeBody,
+  Transcript,
+  TranscriptEdit,
+  TranscriptSummary,
+  TranscriptionJob,
+  TranscriptionStatus,
 } from "./types";
 
 interface ValidationIssue {
@@ -90,6 +96,7 @@ interface StreamOptions {
   images: ImageUpload[];
   web: boolean;
   illustrate: boolean;
+  transcriptId?: string | null;
   signal: AbortSignal;
   onDelta: (text: string) => void;
   onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
@@ -99,11 +106,11 @@ interface StreamOptions {
 // Resolves with the saved chat once the server sends `done`. Aborting rejects with an
 // AbortError; the server then saves whatever text it had already streamed.
 async function streamMessage(id: string, content: string, opts: StreamOptions): Promise<DoneChat> {
-  const { images, web, illustrate, signal, onDelta, onSources, onIllustrationFailed } = opts;
+  const { images, web, illustrate, transcriptId, signal, onDelta, onSources, onIllustrationFailed } = opts;
   const res = await fetch(`/api/chats/${id}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, images, web, illustrate }),
+    body: JSON.stringify({ content, images, web, illustrate, ...(transcriptId ? { transcript_id: transcriptId } : {}) }),
     signal,
   });
   if (!res.ok) throw await apiFailure(res, true);
@@ -176,6 +183,20 @@ export const api = {
   getWebStatus: () => request<WebStatus>("/web"),
   setWebKey: (key: string) => request<WebStatus>("/web/key", { method: "PUT", body: JSON.stringify({ key }) }),
   deleteWebKey: () => request<WebStatus>("/web/key", { method: "DELETE" }),
+  getTranscriptionStatus: () => request<TranscriptionStatus>("/transcription"),
+  startTranscription: (chatId: string, body: TranscribeBody) =>
+    request<TranscriptionJob>(`/chats/${chatId}/transcriptions`, { method: "POST", body: JSON.stringify(body) }),
+  getActiveTranscription: (chatId: string) => request<TranscriptionJob | null>(`/chats/${chatId}/transcriptions`),
+  getTranscriptionJob: (chatId: string, jobId: string) =>
+    request<TranscriptionJob>(`/chats/${chatId}/transcriptions/${jobId}`),
+  cancelTranscription: (chatId: string, jobId: string) =>
+    request<TranscriptionJob>(`/chats/${chatId}/transcriptions/${jobId}`, { method: "DELETE" }),
+  listTranscripts: (chatId: string) => request<TranscriptSummary[]>(`/chats/${chatId}/transcripts`),
+  getTranscript: (chatId: string, id: string) => request<Transcript>(`/chats/${chatId}/transcripts/${id}`),
+  saveTranscript: (chatId: string, id: string, body: TranscriptEdit) =>
+    request<Transcript>(`/chats/${chatId}/transcripts/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteTranscript: (chatId: string, id: string) =>
+    request<void>(`/chats/${chatId}/transcripts/${id}`, { method: "DELETE" }),
   listModels: (body: ModelsQuery) =>
     request<ModelsResult>("/profiles/models", { method: "POST", body: JSON.stringify(body) }),
 };

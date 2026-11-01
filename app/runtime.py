@@ -8,6 +8,7 @@ import images
 import profile_store
 import secret_store
 import storage
+from app import transcribe
 from app.logs import log
 from models import Settings, UserView
 
@@ -47,6 +48,25 @@ if e2e.enabled():
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 images.prune(settings)
 db = storage.Store(settings.database, acquire_wait=2.0)
+
+
+def _save_transcript(owner: str, chat_id: str, result: transcribe.Result) -> str:
+    return db.add_transcript(
+        chat_id,
+        video_id=result.video_id,
+        title=result.title,
+        url=result.url,
+        language=result.language,
+        model=result.model,
+        original_text=result.original_text,
+        segments=result.segments,
+        owner=owner,
+    )
+
+
+# The worker thread starts on the first submit, so importing this module still starts nothing.
+transcribe.sweep_tmp(settings)
+jobs = transcribe.Jobs(settings, save=_save_transcript)
 
 
 def claim_owner(db: storage.Store, settings: Settings) -> str:

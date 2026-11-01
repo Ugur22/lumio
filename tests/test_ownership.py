@@ -86,16 +86,24 @@ CHAT_ROUTES = [
     ("GET", "/api/chats/{c}/context", None),
     ("GET", "/api/chats/{c}/images/{i}", None),
     ("POST", "/api/chats/{c}/messages", {"content": "stolen question"}),
+    ("POST", "/api/chats/{c}/transcriptions", {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}),
+    ("GET", "/api/chats/{c}/transcriptions", None),
+    ("GET", "/api/chats/{c}/transcriptions/{j}", None),
+    ("DELETE", "/api/chats/{c}/transcriptions/{j}", None),
+    ("GET", "/api/chats/{c}/transcripts", None),
+    ("GET", "/api/chats/{c}/transcripts/{t}", None),
+    ("PUT", "/api/chats/{c}/transcripts/{t}", {"edited_text": "stolen"}),
+    ("DELETE", "/api/chats/{c}/transcripts/{t}", None),
 ]
 
 
 def call(client, method, template, body, chat_id, image_id="f" * 32):
-    return client.request(method, template.format(c=chat_id, i=image_id), json=body)
+    return client.request(method, template.format(c=chat_id, i=image_id, j="e" * 32, t="e" * 32), json=body)
 
 
 def test_every_chat_route_is_covered():
     actual = {
-        (method.upper(), path.replace("{chat_id}", "{c}").replace("{image_id}", "{i}"))
+        (method.upper(), path.replace("{chat_id}", "{c}").replace("{image_id}", "{i}").replace("{job_id}", "{j}").replace("{transcript_id}", "{t}"))
         for path, ops in server.app.openapi()["paths"].items()
         if "{chat_id}" in path
         for method in ops

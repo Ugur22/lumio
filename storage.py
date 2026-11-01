@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from models import Chat, ChatSummary, ImageRef, LoreEntry, Message, Usage, utcnow
+from models import Chat, ChatSummary, ImageRef, LoreEntry, Message, Transcript, TranscriptSummary, Usage, utcnow
 
 log = logging.getLogger("dolphinllm")
 
@@ -96,6 +96,22 @@ _SCHEMA = [
     )""",
     "CREATE TABLE IF NOT EXISTS login_attempts (key TEXT, at REAL)",
     "CREATE INDEX IF NOT EXISTS login_attempts_key ON login_attempts(key, at)",
+    # Additive, so SCHEMA_VERSION stays 2: the release before transcripts ignores the table and still opens this file.
+    """CREATE TABLE IF NOT EXISTS transcripts (
+        id TEXT PRIMARY KEY,
+        chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+        video_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        language TEXT NOT NULL,
+        model TEXT NOT NULL,
+        original_text TEXT NOT NULL,
+        segments TEXT NOT NULL,
+        edited_text TEXT,
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS transcripts_chat ON transcripts(chat_id)",
 ]
 
 # Run after the column upgrade in _init: on a database that predates `owner` the index cannot exist before the column does.
@@ -124,6 +140,10 @@ class ChatBusy(Exception):
 
 class LeaseLost(Exception):
     """The generation no longer holds its chat's lease (it expired or another request took over), so its reply is not saved."""
+
+
+class TranscriptNotFound(Exception):
+    pass
 
 
 class UsernameTaken(Exception):
@@ -428,6 +448,78 @@ class Store:
         with self._tx() as conn:
             if conn.execute("DELETE FROM chats WHERE id=? AND owner=?", (chat_id, owner)).rowcount == 0:
                 raise ChatNotFound(chat_id)
+
+    # --- transcripts ------------------------------------------------------------------------
+    # Reached through the chat, so another owner's chat is ChatNotFound and another chat's transcript id is TranscriptNotFound.
+
+    @staticmethod
+    def _owned_chat(conn: sqlite3.Connection, chat_id: str, owner: str) -> None:
+        if conn.execute("SELECT 1 FROM chats WHERE id=? AND owner=?", (chat_id, owner)).fetchone() is None:
+            raise ChatNotFound(chat_id)
+
+    @staticmethod
+    def _transcript(row: sqlite3.Row) -> Transcript:
+        return Transcript(
+            id=row["id"],
+            title=row["title"],
+            url=row["url"],
+            language=row["language"],
+            model=row["model"],
+            created=row["created"],
+            edited=row["edited_text"] is not None,
+            video_id=row["video_id"],
+            original_text=row["original_text"],
+            edited_text=row["edited_text"],
+            segments=json.loads(row["segments"]),
+        )
+
+    def _transcript_row(self, conn: sqlite3.Connection, chat_id: str, transcript_id: str, owner: str) -> sqlite3.Row:
+        self._owned_chat(conn, chat_id, owner)
+        row = conn.execute("SELECT * FROM transcripts WHERE id=? AND chat_id=?", (transcript_id, chat_id)).fetchone()
+        if row is None:
+            raise TranscriptNotFound(transcript_id)
+        return row
+
+    def add_transcript(
+        self, chat_id: str, *, video_id: str, title: str, url: str, language: str, model: str,
+        original_text: str, segments: list[dict], owner: str,
+    ) -> str:  # fmt: skip
+        transcript_id = uuid.uuid4().hex
+        now = _ts(utcnow())
+        with self._tx() as conn:
+            self._owned_chat(conn, chat_id, owner)
+            conn.execute(
+                "INSERT INTO transcripts (id, chat_id, video_id, title, url, language, model, original_text, segments, created, updated) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (transcript_id, chat_id, video_id, title, url, language, model, original_text, json.dumps(segments), now, now),
+            )
+        return transcript_id
+
+    def list_transcripts(self, chat_id: str, *, owner: str) -> list[TranscriptSummary]:
+        with self._read() as conn:
+            self._owned_chat(conn, chat_id, owner)
+            rows = conn.execute(
+                "SELECT id, title, url, language, model, created, edited_text IS NOT NULL AS edited "
+                "FROM transcripts WHERE chat_id=? ORDER BY created DESC, rowid DESC",
+                (chat_id,),
+            ).fetchall()
+        return [TranscriptSummary(**{**dict(r), "edited": bool(r["edited"])}) for r in rows]
+
+    def get_transcript(self, chat_id: str, transcript_id: str, *, owner: str) -> Transcript:
+        with self._read() as conn:
+            return self._transcript(self._transcript_row(conn, chat_id, transcript_id, owner))
+
+    def update_transcript(self, chat_id: str, transcript_id: str, edited_text: str | None, *, owner: str) -> Transcript:
+        """Only edited_text changes; original_text stays as transcribed, and None goes back to it."""
+        with self._tx() as conn:
+            self._transcript_row(conn, chat_id, transcript_id, owner)
+            conn.execute("UPDATE transcripts SET edited_text=?, updated=? WHERE id=?", (edited_text, _ts(utcnow()), transcript_id))
+            return self._transcript(conn.execute("SELECT * FROM transcripts WHERE id=?", (transcript_id,)).fetchone())
+
+    def delete_transcript(self, chat_id: str, transcript_id: str, *, owner: str) -> None:
+        with self._tx() as conn:
+            self._transcript_row(conn, chat_id, transcript_id, owner)
+            conn.execute("DELETE FROM transcripts WHERE id=?", (transcript_id,))
 
     def rename(self, chat_id: str, title: str, *, owner: str) -> Chat:
         with self._tx() as conn:
