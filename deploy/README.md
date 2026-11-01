@@ -1,9 +1,12 @@
 # Deploying Lumio on one EC2 instance
 
-One Ubuntu instance: Caddy terminates HTTPS and proxies to uvicorn on `127.0.0.1:8000`; uvicorn serves the built frontend and handles sign-in itself (invite-only accounts, no `basic_auth` in Caddy). Releases replace `/opt/lumio`; all data lives in `/var/lib/lumio`.
+One Ubuntu instance running two containers (docker compose): Caddy terminates HTTPS and proxies to the app (uvicorn), which serves the built frontend and handles sign-in itself (invite-only accounts, no `basic_auth` in Caddy). GitHub Actions builds the image for every commit on `main` (`.github/workflows/image.yml`) and a release switches the box to that image tag. All data lives in `/var/lib/lumio`, which the container mounts.
+
+Until the one-time [cutover to Docker](#cutover-to-docker) is done, the box still runs the older systemd setup (First-time setup below describes it) and `make deploy-systemd` releases that.
 
 - [Routine release](#routine-release)
 - [First-time setup](#first-time-setup)
+- [Cutover to Docker](#cutover-to-docker)
 - [Accounts](#accounts)
 - [Configuration and storage](#configuration-and-storage)
 - [Backups and the master key](#backups-and-the-master-key)
@@ -12,27 +15,29 @@ One Ubuntu instance: Caddy terminates HTTPS and proxies to uvicorn on `127.0.0.1
 
 ## Routine release
 
-From the repo root, on `main` with no uncommitted changes to tracked files:
+Merge to `main`, wait for the `image` workflow on that commit to go green, then from the repo root, on `main` with no uncommitted changes to tracked files:
 
 ```sh
 make deploy
 ```
 
-It runs `make check` and `make build`, refuses to continue unless you are on `main` with a clean tracked tree and the key file exists, then rsyncs the tree and `frontend/dist` to `/opt/lumio`, runs `pip install -r requirements.txt`, restarts the `lumio` service and prints `systemctl is-active`. The restart interrupts replies that are streaming at that moment.
+It runs `make check`, refuses to continue unless you are on `main` with a clean tracked tree and the key file exists, copies `deploy/docker/docker-compose.yml`, `Caddyfile` and `release.sh` to `/opt/lumio-compose`, and runs `release.sh <the 12-character commit id>` there. The script pulls that image (it stops, changing nothing, if the workflow has not pushed it yet), records the new and previous tag in the `.env` next to it, recreates the containers that changed, waits until the app reports healthy and prints `docker compose ps`. Recreating the app interrupts replies that are streaming at that moment. A changed compose file or Caddyfile takes effect in the same release.
 
-Overrides (the defaults are `~/Downloads/lumio-keypair.pem` and `ubuntu@16-192-71-141.sslip.io`):
+Overrides (the defaults are `~/Downloads/lumio-keypair.pem`, `ubuntu@16-192-71-141.sslip.io` and `/opt/lumio-compose`):
 
 ```sh
-make deploy DEPLOY_KEY=/path/to/key.pem DEPLOY_HOST=ubuntu@<host>
+make deploy DEPLOY_KEY=/path/to/key.pem DEPLOY_HOST=ubuntu@<host> DEPLOY_DIR=/opt/lumio-compose
 ```
 
-Both are plain Make variables, so exporting them in your shell works too.
+They are plain Make variables, so exporting them in your shell works too.
 
-Don't run the `rsync` by hand: it uses `--delete`, so a wrong folder would wipe `/opt/lumio`. It excludes `.git`, `.venv`, `.env*`, `/data`, `logs`, `profiles.json`, `.claude`, `.agents`, `__pycache__`, `frontend/node_modules` and `frontend/dist` (the last is synced separately), so the virtualenv is kept.
+### Releasing the systemd setup (until the cutover)
 
-### When the service file or Caddyfile changes
+`make deploy-systemd` is the old release: it runs `make check` and `make build`, rsyncs the tree and `frontend/dist` to `/opt/lumio`, runs `pip install -r requirements.txt`, restarts the `lumio` service and prints `systemctl is-active`. Don't run its `rsync` by hand: it uses `--delete`, so a wrong folder would wipe `/opt/lumio`. It excludes `.git`, `.venv`, `.env*`, `/data`, `logs`, `profiles.json`, `.claude`, `.agents`, `__pycache__`, `frontend/node_modules` and `frontend/dist` (the last is synced separately), so the virtualenv is kept.
 
-`make deploy` copies `deploy/lumio.service` and `deploy/Caddyfile` to `/opt/lumio/deploy/` but does not install them. After such a release, on the server:
+### When the service file or Caddyfile changes (systemd setup)
+
+`make deploy-systemd` copies `deploy/lumio.service` and `deploy/Caddyfile` to `/opt/lumio/deploy/` but does not install them. After such a release, on the server:
 
 ```sh
 cd /opt/lumio
@@ -57,7 +62,7 @@ If the new release needs a setting that only the new unit file has, `make deploy
 
 ### 2. Hostname
 
-If the hostname is not the committed one (`16-192-71-141.sslip.io`), change it in `deploy/lumio.service` (`DOLPHINLLM_PUBLIC_HOST`), `deploy/Caddyfile` and the `DEPLOY_HOST` default in the `Makefile`, and merge to `main`. The service and Caddyfile must agree.
+If the hostname is not the committed one (`16-192-71-141.sslip.io`), change it in `deploy/lumio.service` (`DOLPHINLLM_PUBLIC_HOST`), `deploy/Caddyfile`, `deploy/docker/docker-compose.yml` (`DOLPHINLLM_PUBLIC_HOST`), `deploy/docker/Caddyfile` and the `DEPLOY_HOST` default in the `Makefile`, and merge to `main`. The app's host and the Caddyfile must agree. `terraform output hostname` prints it.
 
 ### 3. Prepare the server
 
@@ -129,9 +134,68 @@ lumio accounts create-user <admin name> --admin
 
 Open `https://<host>`, sign in, and add a provider and key in **Providers**.
 
+## Cutover to Docker
+
+One time, on the box that runs the systemd setup today. Expect a minute or two of downtime, so pick a moment when nobody is mid-conversation. Nothing here has been run yet; the first real test of the image is the `image` workflow and this cutover.
+
+1. **Back up first:** an EBS snapshot of the volume, then the file-level backup under [Backups](#backups-and-the-master-key). Both keep working afterwards because `/var/lib/lumio` is mounted into the container at the same path.
+2. **Merge the Docker change to `main` and wait for the `image` workflow to go green.** The first push creates the package as private. On GitHub, open your profile > Packages > `lumio` > Package settings > Change visibility > Public, so the server pulls without credentials. The image holds only code from this public repo; the master key, the data and the accounts stay on the server.
+3. **On the server, install Docker and make sure there is swap** (the box has 1 GB of RAM):
+
+   ```sh
+   sudo apt install -y docker.io docker-compose-v2
+   swapon --show        # if it prints nothing:
+   sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+   ```
+
+4. **Create the release directory and its settings.** The container runs as the `lumio` user's UID so it can read the existing 0600 files, and the admin name is the one in the unit file today:
+
+   ```sh
+   sudo mkdir -p /opt/lumio-compose && sudo chown "$USER" /opt/lumio-compose
+   admin=$(grep -oP '(?<=DOLPHINLLM_ADMIN_USER=).*' /etc/systemd/system/lumio.service)
+   echo "admin: $admin"   # must be a real account name: not empty, not CHANGE_ME, no quotes
+   printf 'LUMIO_UID=%s\nLUMIO_GID=%s\nLUMIO_ADMIN_USER=%s\n' "$(id -u lumio)" "$(id -g lumio)" "$admin" > /opt/lumio-compose/.env
+   stat -c '%U %a' /var/lib/lumio   # expect: lumio 700
+   ```
+
+5. **Prove the image before stopping anything.** From your laptop run `make check` (it is part of `make deploy`, and doing it now keeps it out of the downtime), then copy the compose files and pull the image for the current `main` commit while the old setup still serves:
+
+   ```sh
+   scp -i ~/Downloads/lumio-keypair.pem deploy/docker/docker-compose.yml deploy/docker/Caddyfile deploy/docker/release.sh ubuntu@<host>:/opt/lumio-compose/
+   ```
+
+   ```sh
+   git rev-parse --short=12 origin/main                         # on your laptop: the tag to pull
+   cd /opt/lumio-compose && sudo env TAG=<that id> docker compose pull app   # on the server
+   ```
+
+   If the pull fails, fix that first (workflow not finished, package still private, Docker not installed); nothing is down yet.
+6. **Switch.** Both setups want ports 80 and 443, so stop the old services first, on the server, then release from your laptop:
+
+   ```sh
+   sudo systemctl disable --now lumio caddy
+   ```
+
+   ```sh
+   make deploy
+   ```
+
+   Caddy requests a new certificate on its first start (its data volume is new), which takes a few seconds.
+7. **Check.** `https://<host>` loads and you can sign in. Then, on the server, `cd /opt/lumio-compose && sudo docker compose logs --tail 20 app`: the access lines must show your own address. If they show `172.30.0.2` (Caddy's address), uvicorn is ignoring the forwarded address, every visitor would share one rate-limit bucket, and you should go back (below) and investigate.
+8. **Way back,** if anything is wrong (including `make deploy` failing on the first run, when there is no previous tag to roll back to): `cd /opt/lumio-compose && sudo docker compose down && sudo systemctl enable --now lumio caddy`. `/opt/lumio` and the unit file were not touched. Both setups use the same database, so this is safe while the schema has not changed.
+
+After it has run well for a while, remove `deploy-systemd`, the `--exclude /terraform` that goes with it, `/opt/lumio` and the old unit file and Caddyfile.
+
 ## Accounts
 
 Nobody can register without an invite code. All commands run on the server through the `lumio` helper defined in first-time step 6 (define it again in each new shell). It runs a Python module as the service user with the service's `Environment=` values, so it sees the same database, secrets file and master key.
+
+After the cutover to Docker the helper runs the module inside the app container instead, with the same environment and mounts:
+
+```sh
+lumio() { (cd /opt/lumio-compose && sudo docker compose exec app python -m "$@"); }
+```
 
 - **Create an account:** `lumio accounts create-user <name> [--admin]` prompts for a password (10–128 characters; names are 3–32 letters, digits, `_` or `-`). The `--admin` flag matters for the account named in `DOLPHINLLM_ADMIN_USER`, which inherits pre-accounts chats and profiles; no other use of the admin flag was found in the backend.
 - **Invite someone:** `lumio accounts invite` prints a single-use code, valid 7 days (`--days N`). It is shown once. They choose **Create account** and enter it.
@@ -140,7 +204,7 @@ Nobody can register without an invite code. All commands run on the server throu
 
 ## Configuration and storage
 
-Settings are `Environment=` lines in `deploy/lumio.service`:
+Settings are `Environment=` lines in `deploy/lumio.service` (after the cutover to Docker: the `environment:` block of `deploy/docker/docker-compose.yml`, with the same names; the admin name comes from `LUMIO_ADMIN_USER` in the server's settings file next to it, and the master key is mounted at `/run/secrets/secret.key`):
 
 | Variable | Value | Purpose |
 | --- | --- | --- |
@@ -193,6 +257,8 @@ Save the new key in your password manager and back up `secrets.json` again. By t
 `unattended-upgrades` patches the OS; reboot now and then.
 
 ## Rolling back
+
+**Rolling back an image (Docker setup).** `make rollback` switches back to the previous tag recorded on the server, and `make rollback TAG=<12-character commit id>` to any commit whose image still exists in GHCR. It re-pulls that image, so it works even after the server pruned it. The database is not rolled back, so the schema caveats below apply; for a code-only problem it is the fastest way out. Fix forward afterwards: the next `make deploy` ships whatever is on `main`.
 
 **Ordinary rollback.** Revert the bad change on `main` through a pull request, then run `make deploy` (it only ships `main`). This is safe when the releases share the database schema and the secrets and sign-in design. Check the schema the database is stamped with against the older release's `SCHEMA_VERSION` in `storage.py`:
 

@@ -1,0 +1,10 @@
+# <Elastic IP with dashes>.sslip.io resolves to that IP. Let's Encrypt refuses the ec2-*.amazonaws.com names, so don't use those. Caddy gets the HTTPS certificate itself.
+16-192-71-141.sslip.io {
+	# Sign-in is handled by the app (accounts, invite-only), so there is no basic_auth here. The app trusts the
+	# client address Caddy forwards, but only from this container's fixed IP (FORWARDED_ALLOW_IPS in docker-compose.yml),
+	# which is safe while the app publishes no ports and Caddy is the only other container on its network.
+	reverse_proxy app:8000 {
+		# Replies stream; without this the proxy would hold them back until they finish.
+		flush_interval -1
+	}
+}
