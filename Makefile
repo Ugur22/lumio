@@ -55,7 +55,7 @@ deploy: check build
 	@test -z "$$(git status --porcelain --untracked-files=no)" || { echo "uncommitted changes: deploy ships the working tree, so commit them through a PR first"; exit 1; }
 	@test -f "$(DEPLOY_KEY)" || { echo "key not found: $(DEPLOY_KEY)"; exit 1; }
 	rsync -a --delete -e "ssh -i $(DEPLOY_KEY)" --exclude .git --exclude .venv --exclude '.env*' --exclude '/data' --exclude logs \
-		--exclude profiles.json --exclude .claude --exclude .agents --exclude __pycache__ \
+		--exclude profiles.json --exclude .claude --exclude .agents --exclude __pycache__ --exclude /terraform \
 		--exclude frontend/node_modules --exclude frontend/dist ./ $(DEPLOY_HOST):/opt/lumio/
 	rsync -a --delete -e "ssh -i $(DEPLOY_KEY)" frontend/dist/ $(DEPLOY_HOST):/opt/lumio/frontend/dist/
 	ssh -i "$(DEPLOY_KEY)" $(DEPLOY_HOST) 'cd /opt/lumio && .venv/bin/pip install -q -r requirements.txt && sudo systemctl restart lumio && systemctl is-active lumio'

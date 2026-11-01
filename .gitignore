@@ -14,3 +14,8 @@ skills-lock.json
 .taste-skill/
 logs/
 frontend/cypress/screenshots/
+# Terraform state holds resource IDs and the SSH allow-list; tfvars holds the real IP. .terraform.lock.hcl stays tracked.
+terraform.tfstate*
+.terraform/
+*.tfvars
+!*.tfvars.example
