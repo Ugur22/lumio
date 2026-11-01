@@ -1,0 +1,73 @@
+name: lumio
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  app:
+    image: ghcr.io/ugur22/lumio:${TAG:?TAG is set by release.sh}
+    restart: unless-stopped
+    # The host's lumio UID/GID (see .env), so the existing 0600 files in /var/lib/lumio and the 0400 master key stay readable.
+    user: "${LUMIO_UID:?}:${LUMIO_GID:?}"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 400m
+    logging: *logging
+    environment:
+      # Same hostname as the Caddyfile. It unlocks the Providers dialog on that host and stops a saved key being sent to another URL.
+      DOLPHINLLM_PUBLIC_HOST: 16-192-71-141.sslip.io
+      DOLPHINLLM_ADMIN_USER: ${LUMIO_ADMIN_USER:?}
+      DOLPHINLLM_DATA_DIR: /var/lib/lumio/chats
+      DOLPHINLLM_DB_FILE: /var/lib/lumio/lumio.db
+      DOLPHINLLM_PROFILES_FILE: /var/lib/lumio/profiles.json
+      DOLPHINLLM_SECRETS_FILE: /var/lib/lumio/secrets.json
+      DOLPHINLLM_SECRET_KEY_FILE: /run/secrets/secret.key
+      DOLPHINLLM_LOG_FILE: /var/lib/lumio/logs/app.jsonl
+      # uvicorn believes X-Forwarded-For only from this address, Caddy's fixed IP below; the app publishes no ports.
+      FORWARDED_ALLOW_IPS: 172.30.0.2
+    volumes:
+      - /var/lib/lumio:/var/lib/lumio
+      - /etc/lumio/secret.key:/run/secrets/secret.key:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+    networks: [lumio]
+
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports: ["80:80", "443:443"]
+    mem_limit: 100m
+    logging: *logging
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates: losing this volume means a fresh Let's Encrypt issuance, which is rate-limited per hostname.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      lumio:
+        ipv4_address: 172.30.0.2
+
+networks:
+  lumio:
+    ipam:
+      config:
+        # Outside the VPC's 172.31.0.0/16, so it cannot shadow the instance's own network. The pool for dynamic
+        # addresses stays clear of Caddy's fixed .2, which the app would otherwise be handed first.
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -2,7 +2,7 @@
 
 PY ?= .venv/bin/python
 
-.PHONY: check check-fast lint-backend lint-frontend test-backend test-frontend typecheck-frontend test-count types check-types build deploy dev e2e-server e2e
+.PHONY: check check-fast lint-backend lint-frontend test-backend test-frontend typecheck-frontend test-count types check-types build deploy rollback deploy-systemd dev e2e-server e2e
 
 check-fast: lint-backend lint-frontend
 
@@ -45,12 +45,27 @@ typecheck-frontend:
 build:
 	@cd frontend && npm run build
 
-# Ships the current tree to the EC2 box (see deploy/README.md). Override with `make deploy DEPLOY_KEY=... DEPLOY_HOST=...`.
-# Refuses to run off main so an unmerged branch cannot reach the live site, and runs the full check first so an API
-# that has drifted from the frontend types (or any other failure) stops the deploy before anything is copied.
+# Switches the EC2 box to the image the `image` workflow built for this commit (see deploy/README.md). Override with
+# `make deploy DEPLOY_KEY=... DEPLOY_HOST=...`. Refuses to run off main so an unmerged branch cannot reach the live
+# site, and runs the full check first so an API that has drifted from the frontend types stops the deploy early.
+# Wait for the `image` workflow on main to finish: release.sh refuses a tag that has not been pushed yet.
 DEPLOY_HOST ?= ubuntu@16-192-71-141.sslip.io
 DEPLOY_KEY ?= $(HOME)/Downloads/lumio-keypair.pem
-deploy: check build
+DEPLOY_DIR ?= /opt/lumio-compose
+deploy: check
+	@test "$$(git branch --show-current)" = main || { echo "deploy only from main"; exit 1; }
+	@test -z "$$(git status --porcelain --untracked-files=no)" || { echo "uncommitted changes: deploy ships the commit CI built, so commit them through a PR first"; exit 1; }
+	@test -f "$(DEPLOY_KEY)" || { echo "key not found: $(DEPLOY_KEY)"; exit 1; }
+	scp -i "$(DEPLOY_KEY)" deploy/docker/docker-compose.yml deploy/docker/Caddyfile deploy/docker/release.sh $(DEPLOY_HOST):$(DEPLOY_DIR)/
+	ssh -i "$(DEPLOY_KEY)" $(DEPLOY_HOST) 'cd $(DEPLOY_DIR) && chmod +x release.sh && sudo ./release.sh $(shell git rev-parse --short=12 HEAD)'
+
+# Back to an earlier image: `make rollback` (the previous tag) or `make rollback TAG=<12-char commit>`. The database is not rolled back.
+rollback:
+	@test -f "$(DEPLOY_KEY)" || { echo "key not found: $(DEPLOY_KEY)"; exit 1; }
+	ssh -i "$(DEPLOY_KEY)" $(DEPLOY_HOST) 'cd $(DEPLOY_DIR) && sudo ./release.sh $(or $(TAG),previous)'
+
+# The pre-Docker deploy (rsync + systemd). Kept only as the way back until the Docker setup has proven itself.
+deploy-systemd: check build
 	@test "$$(git branch --show-current)" = main || { echo "deploy only from main"; exit 1; }
 	@test -z "$$(git status --porcelain --untracked-files=no)" || { echo "uncommitted changes: deploy ships the working tree, so commit them through a PR first"; exit 1; }
 	@test -f "$(DEPLOY_KEY)" || { echo "key not found: $(DEPLOY_KEY)"; exit 1; }
