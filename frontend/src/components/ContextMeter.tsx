@@ -55,16 +55,16 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
           aria-expanded={pinned}
           aria-describedby="context-tip"
           onClick={() => setPinned((on) => !on)}
-          className={`flex w-full flex-col gap-1.5 rounded px-0.5 text-left ${focusRing}`}
+          className={`flex w-full flex-col gap-1.5 rounded px-0.5 text-left max-[720px]:flex-row max-[720px]:items-center max-[720px]:gap-2 max-[720px]:py-2 ${focusRing}`}
         >
-          <span className="flex items-baseline justify-between gap-2">
+          <span className="flex items-baseline justify-between gap-2 max-[720px]:flex-none">
             <span className="flex items-baseline gap-2">
               <span className={`text-[13px] font-semibold tabular-nums ${TEXT[view.level]}`}>{view.percent}%</span>
-              <span className="tabular-nums text-muted">
+              <span className="tabular-nums text-muted max-[720px]:hidden">
                 {view.label} <span>tokens</span>
               </span>
             </span>
-            {view.sourceLabel === "estimated" && <span className="text-[11px] text-muted">Estimated</span>}
+            {view.sourceLabel === "estimated" && <span className="text-[11px] text-muted max-[720px]:hidden">Estimated</span>}
           </span>
           <span
             role="meter"
@@ -73,7 +73,7 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
             aria-valuemax={100}
             aria-valuenow={view.barPercent}
             aria-valuetext={`${view.percent}% of the context window, ${view.sourceLabel}`}
-            className="block h-2 overflow-hidden rounded-full border border-border bg-bubble"
+            className="block h-2 overflow-hidden rounded-full border border-border bg-bubble max-[720px]:h-1 max-[720px]:min-w-0 max-[720px]:flex-1 max-[720px]:border-0"
           >
             {/* The min width keeps a nonzero usage visible; the aria values above stay true. */}
             <span
@@ -94,6 +94,8 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
           <strong className="block text-[13px] font-semibold">
             {view.percent}% of the context window
           </strong>
+          {/* The phone line drops the token counts, so the tip carries them. */}
+          <span className="tabular-nums text-muted min-[721px]:hidden">{view.label} tokens</span>
           <dl className="mt-1.5 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5">
             {partRows(context.parts).map((r) => (
               <div key={r.key} className="contents">

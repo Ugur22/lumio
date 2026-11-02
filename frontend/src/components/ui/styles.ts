@@ -3,7 +3,8 @@ export const cx = (...parts: (string | false | null | undefined)[]) => parts.fil
 export const focusRing = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
 
 // The background is chosen per use (bg-bg on the page, bg-surface inside a card), so it is not part of the base.
-export const fieldBase = `rounded-xl border border-border px-3 py-2 data-[invalid]:border-warn-bar ${focusRing}`;
+// 16px on phones: iOS Safari zooms the page when a focused field is smaller.
+export const fieldBase = `max-[720px]:text-base rounded-xl border border-border px-3 py-2 data-[invalid]:border-warn-bar ${focusRing}`;
 
 // A ready-made text field on the page background, for controls that take a className (the model combobox).
 export const fieldClass = `${fieldBase} bg-bg`;

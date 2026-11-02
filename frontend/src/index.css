@@ -46,10 +46,23 @@
   color-scheme: dark;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   overflow-x: hidden;
   background: var(--bg);
+  /* Stops rubber-banding and pull-to-refresh from moving the whole app; inner scrollers keep their own scroll. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+[role="button"] {
+  touch-action: manipulation;
 }
 
 * {

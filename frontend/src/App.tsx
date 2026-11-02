@@ -14,6 +14,7 @@ import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, use
 import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTheme } from "./hooks/useTheme";
+import { useVisualViewport } from "./hooks/useVisualViewport";
 import type { Attachment } from "./lib/images";
 import { effectiveProfile } from "./lib/providers";
 import { isRestoring } from "./lib/restoring";
@@ -78,6 +79,8 @@ export function App() {
     const t = setTimeout(() => setFading(false), 220);
     return () => clearTimeout(t);
   }, [fading]);
+
+  useVisualViewport();
 
   const create = useCreateChat();
   const rename = useRenameChat();
@@ -164,7 +167,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-dvh w-full max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
+    <div className="flex h-[calc(100dvh-var(--kb-inset,0px))] w-full max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
       <Sidebar
         chats={chats}
         currentId={currentId}
@@ -175,6 +178,7 @@ export function App() {
         onRename={setRenaming}
         onDelete={setDeleting}
         onToggleTheme={toggle}
+        onOpenChange={setMenuOpen}
         onOpenSettings={() => {
           setMenuOpen(false);
           setSettingsOpen(true);
@@ -222,12 +226,12 @@ export function App() {
       )}
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* backdrop-blur makes the header its own stacking context; without a z-index the model popover paints under the composer and tiles. Stays below the drawer overlay (z-10). */}
-        <header className="relative z-[5] flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/70 px-5 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur max-[720px]:px-3 max-[720px]:pb-2">
+        <header className="relative z-[5] flex flex-wrap items-center gap-x-2 gap-y-1 max-[720px]:flex-nowrap border-b border-border/70 px-5 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur max-[720px]:px-3 max-[720px]:pb-2">
           <PressButton
             type="button"
             aria-label="Open chats"
             onClick={() => setMenuOpen(true)}
-            className="rounded-xl p-2 text-muted hover:bg-bubble focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent min-[721px]:hidden"
+            className="flex items-center justify-center rounded-xl p-2 text-muted hover:bg-bubble focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent max-[720px]:min-h-11 max-[720px]:min-w-11 min-[721px]:hidden"
           >
             <MenuIcon />
           </PressButton>
@@ -238,12 +242,12 @@ export function App() {
             title="Story bible, lore and summary"
             disabled={create.isPending}
             onClick={openStory}
-            className="flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted hover:bg-bubble hover:text-text disabled:opacity-60"
+            className="flex flex-none items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] max-[720px]:min-h-11 max-[720px]:min-w-11 text-muted hover:bg-bubble hover:text-text disabled:opacity-60"
           >
             <BookIcon width={16} height={16} />
             <span className="max-[480px]:hidden">Story</span>
           </Button>
-          <div className="min-w-0 max-[720px]:order-last max-[720px]:w-full">
+          <div className="min-w-0">
             <ProviderSwitcher
               chatId={currentId}
               pendingModel={pendingModel}

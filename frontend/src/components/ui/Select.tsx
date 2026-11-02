@@ -31,7 +31,7 @@ export function Select({ value, onChange, options, variant = "field", className,
       <div className={cx("relative", className)}>
         <ListboxButton
           {...aria}
-          className={cx("flex w-full items-center justify-between gap-2 text-left text-text", buttonVariants[variant], focusRing)}
+          className={cx("flex w-full items-center justify-between gap-2 text-left text-text max-[720px]:min-h-11 max-[720px]:text-base", buttonVariants[variant], focusRing)}
         >
           <span className="truncate">{current?.label ?? value}</span>
           <ChevronDownIcon width={14} height={14} aria-hidden="true" className="flex-none text-muted" />
@@ -46,7 +46,7 @@ export function Select({ value, onChange, options, variant = "field", className,
             <ListboxOption
               key={o.value}
               value={o.value}
-              className="cursor-pointer truncate px-3 py-1.5 text-text data-[focus]:bg-bg data-[selected]:font-medium"
+              className="cursor-pointer truncate px-3 py-1.5 text-text max-[720px]:py-3 max-[720px]:text-base data-[focus]:bg-bg data-[selected]:font-medium"
             >
               {o.label}
             </ListboxOption>

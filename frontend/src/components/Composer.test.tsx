@@ -1,18 +1,39 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubResizeObserver } from "../test/helpers";
 import { Composer } from "./Composer";
 
-const html = (vision: boolean, canIllustrate?: boolean) =>
-  renderToStaticMarkup(
-    <Composer
-      disabled={false}
-      vision={vision}
-      canIllustrate={canIllustrate}
-      providerName="Dolphin"
-      onSend={() => undefined}
-      onStop={() => undefined}
-    />,
-  );
+function stubViewport(phone: boolean) {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: phone && query === "(max-width: 720px)",
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+}
+
+beforeEach(() => {
+  stubViewport(false);
+  stubResizeObserver();
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+const ui = (vision: boolean, canIllustrate?: boolean) => (
+  <Composer
+    disabled={false}
+    vision={vision}
+    canIllustrate={canIllustrate}
+    providerName="Dolphin"
+    onSend={() => undefined}
+    onStop={() => undefined}
+  />
+);
+const html = (vision: boolean, canIllustrate?: boolean) => render(ui(vision, canIllustrate)).container.innerHTML;
 
 describe("Composer image button", () => {
   it("is usable on a vision provider", () => {
@@ -24,7 +45,7 @@ describe("Composer image button", () => {
   it("stays visible but disabled, and says why, on a text-only provider", () => {
     const out = html(false);
     expect(out).toContain('aria-disabled="true"');
-    expect(out).toContain("Dolphin can&#x27;t read images");
+    expect(out).toContain("Dolphin can't read images");
     expect(out).not.toContain("Paste or drop images");
   });
 });
@@ -54,5 +75,59 @@ describe("Composer toolbar tooltips", () => {
       expect(out).toMatch(new RegExp(`id="${id}" role="tooltip"[^>]*>.*${text}`));
     }
     expect(out).not.toContain("title=");
+  });
+});
+
+describe("Composer on a phone", () => {
+  beforeEach(() => stubViewport(true));
+
+  it("replaces the tool row with one + button, without tooltips", () => {
+    const out = html(true, true);
+    expect(screen.getByRole("button", { name: "Add to message" })).toBeTruthy();
+    expect(out).not.toContain('role="tooltip"');
+    expect(screen.queryByRole("button", { name: "Search the web" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Attach images" })).toBeNull();
+  });
+
+  it("uses a 16px textarea so iOS does not zoom on focus", () => {
+    html(true);
+    expect(screen.getByLabelText("Message").className).toContain("text-[16px]");
+  });
+
+  it("opens a sheet with labelled rows, and Illustrate only when available", async () => {
+    const { rerender } = render(ui(true, true));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Add to message" }));
+    const sheet = await screen.findByRole("dialog", { name: "Add to message" });
+    expect(within(sheet).getByRole("button", { name: /Attach images/ })).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: /Search the web/ }).getAttribute("aria-pressed")).toBe("false");
+    expect(within(sheet).getByRole("button", { name: /Illustrate the reply/ })).toBeTruthy();
+    rerender(ui(true, false));
+    expect(within(sheet).queryByRole("button", { name: /Illustrate the reply/ })).toBeNull();
+  });
+
+  it("toggles web from the sheet and shows a chip that removes it", async () => {
+    const user = userEvent.setup();
+    render(ui(true));
+    await user.click(screen.getByRole("button", { name: "Add to message" }));
+    const sheet = await screen.findByRole("dialog");
+    await user.click(within(sheet).getByRole("button", { name: /Search the web/ }));
+    expect(within(sheet).getByRole("button", { name: /Search the web/ }).getAttribute("aria-pressed")).toBe("true");
+    await user.keyboard("{Escape}");
+    const chip = await screen.findByRole("button", { name: "Turn off web search" });
+    expect(chip.textContent).toContain("Web on");
+    await user.click(chip);
+    expect(screen.queryByRole("button", { name: "Turn off web search" })).toBeNull();
+  });
+
+  it("explains why attaching is unavailable and does not open the picker", async () => {
+    const user = userEvent.setup();
+    render(ui(false));
+    await user.click(screen.getByRole("button", { name: "Add to message" }));
+    const sheet = await screen.findByRole("dialog");
+    const row = within(sheet).getByRole("button", { name: /Attach images/ });
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    expect(sheet.textContent).toContain("Dolphin can't read images");
+    await user.click(row);
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 });
