@@ -9,7 +9,7 @@ interface Props {
   className: string;
 }
 
-const optionClass = "cursor-pointer truncate px-3 py-1.5 text-text data-[focus]:bg-bg data-[selected]:font-medium";
+const optionClass = "cursor-pointer truncate px-3 py-1.5 max-[720px]:py-3 max-[720px]:text-base text-text data-[focus]:bg-bg data-[selected]:font-medium";
 
 export function ModelCombobox({ value, models, onChange, className }: Props) {
   const uid = useId();

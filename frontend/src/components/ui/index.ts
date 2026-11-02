@@ -1,4 +1,5 @@
 // Shared building blocks, wrapped around Headless UI so every screen looks and behaves the same.
+export { BottomSheet } from "./BottomSheet";
 export { Button, type ButtonProps } from "./Button";
 export { CheckboxField } from "./CheckboxField";
 export { ConfirmDialog } from "./ConfirmDialog";

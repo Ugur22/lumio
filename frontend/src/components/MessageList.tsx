@@ -101,9 +101,9 @@ export function MessageList({ messages, chatId, loading = false }: Props) {
 function EmptyHeading() {
   const style = useSpring({ from: { opacity: 0, y: 18 }, to: { opacity: 1, y: 0 }, config: { tension: 220, friction: 24 } });
   return (
-    <animated.div style={style} className="mb-2">
-      <h2 className="font-display text-[2.1rem] font-semibold leading-tight">What shall we write?</h2>
-      <p className="mt-2 text-muted">Pick a starting point, or just start typing.</p>
+    <animated.div style={style} className="mb-2 max-[720px]:px-1">
+      <h2 className="font-display text-[2.1rem] font-semibold leading-tight max-[720px]:text-[1.6rem]">What shall we write?</h2>
+      <p className="mt-2 text-muted max-[720px]:mt-1 max-[720px]:text-sm">Pick a starting point, or just start typing.</p>
     </animated.div>
   );
 }
@@ -121,9 +121,9 @@ export function Starters({ ref, leavingAt, onPick, onStory, disabled }: { ref?: 
       ref={ref}
       // Leaving: fade in place without holding layout space, so the composer can dock underneath.
       style={leavingAt === undefined ? undefined : { position: "absolute", top: leavingAt, left: 0, right: 0 }}
-      className={`mx-auto w-full max-w-[760px] px-5 pb-6 transition-opacity duration-200 ${leavingAt === undefined ? "" : "pointer-events-none opacity-0"}`}
+      className={`mx-auto w-full max-w-[760px] px-5 pb-6 max-[720px]:px-4 max-[720px]:pb-3 transition-opacity duration-200 ${leavingAt === undefined ? "" : "pointer-events-none opacity-0"}`}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 max-[720px]:grid-cols-2 max-[720px]:gap-2">
         {trail.map((style, i) => {
           const s = SUGGESTIONS[i];
           if (!s) return null;
@@ -134,16 +134,16 @@ export function Starters({ ref, leavingAt, onPick, onStory, disabled }: { ref?: 
                 press={0.98}
                 disabled={disabled && s.send}
                 onClick={() => onPick(s.text, s.send)}
-                className="h-full w-full rounded-2xl border border-border bg-surface p-4 text-left shadow-soft transition-colors hover:border-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
+                className="h-full w-full rounded-2xl border border-border bg-surface p-4 max-[720px]:min-h-11 max-[720px]:rounded-xl max-[720px]:p-2.5 text-left shadow-soft transition-colors hover:border-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
               >
-                <span className="block font-display text-base font-semibold">{s.title}</span>
-                <span className="mt-1 block text-sm text-muted">{s.text.trim()}</span>
+                <span className="block font-display text-base font-semibold max-[720px]:text-sm">{s.title}</span>
+                <span className="mt-1 block text-sm text-muted max-[720px]:line-clamp-2 max-[720px]:text-xs">{s.text.trim()}</span>
               </PressButton>
             </animated.div>
           );
         })}
       </div>
-      <p className="mt-6 text-sm text-muted">
+      <p className="mt-6 text-sm text-muted max-[720px]:mt-3 max-[720px]:text-xs">
         Writing something longer?{" "}
         <Button variant="bare"
           type="button"

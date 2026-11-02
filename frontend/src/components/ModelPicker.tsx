@@ -10,7 +10,7 @@ type Choice = { kind: "model"; model: string } | { kind: "default" } | { kind: "
 const sameChoice = (a: Choice | null, b: Choice | null) =>
   a?.kind === b?.kind && (a?.kind !== "model" || a.model === (b as { model: string }).model);
 
-const optionClass = "cursor-pointer truncate px-3 py-1.5 text-text data-[focus]:bg-bg data-[selected]:font-medium";
+const optionClass = "cursor-pointer truncate px-3 py-1.5 max-[720px]:py-3 max-[720px]:text-base text-text data-[focus]:bg-bg data-[selected]:font-medium";
 
 interface ChoicesProps {
   heading: string;
@@ -53,7 +53,7 @@ export function ModelChoices({ heading, current, defaultModel, showDefault, mode
           onChange={(e) => setQuery(e.target.value)}
           autoComplete="off"
           spellCheck={false}
-          className={`${fieldClass} w-full py-1.5 text-[13px]`}
+          className={`${fieldClass} w-full py-1.5 text-[13px] max-[720px]:min-h-11`}
         />
       </div>
       {/* Rendered inline and always open: the panel itself is the popup, and no portal keeps focus handling simple. */}
@@ -123,6 +123,11 @@ function ModelPanel({ profileId, saveError, onPickWithWindows, onManage, close, 
       }}
     />
   );
+}
+
+// Inside a bottom sheet the list is shown directly: a popover would be clipped by the sheet.
+export function InlineModelPicker({ onDone, ...panel }: PanelProps & { onDone: () => void }) {
+  return <ModelPanel {...panel} close={onDone} />;
 }
 
 export function ModelPicker({ disabled, ...panel }: PanelProps & { disabled: boolean }) {

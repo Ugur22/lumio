@@ -13,8 +13,9 @@ import {
 } from "react";
 import { continueList, shiftList, type Edit } from "../lib/lists";
 import { ACCEPT_ATTR, prepareImage, rejectReason, type Attachment } from "../lib/images";
-import { CloseIcon, GlobeIcon, PaperclipIcon, SendIcon, SparklesIcon, StopIcon } from "./icons";
-import { Button, PressButton } from "./ui";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { CloseIcon, GlobeIcon, PaperclipIcon, PlusIcon, SendIcon, SparklesIcon, StopIcon } from "./icons";
+import { BottomSheet, Button, PressButton } from "./ui";
 
 export interface ComposerHandle {
   focus: () => void;
@@ -60,6 +61,12 @@ function Tip({ id, title, children }: { id: string; title: string; children: Rea
   );
 }
 
+const chip =
+  "inline-flex h-8 items-center gap-1 rounded-full border border-accent/50 bg-accent/15 pl-3 pr-2 text-[13px] font-medium text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
+const sheetRow =
+  "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[15px] transition-colors hover:bg-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
 const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
 export function Composer({ ref, disabled, vision, providerName, canIllustrate = false, onSend, onStop }: Props) {
@@ -70,6 +77,8 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
   const [preparing, setPreparing] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [sheet, setSheet] = useState(false);
+  const phone = useMediaQuery("(max-width: 720px)");
   const input = useRef<HTMLTextAreaElement>(null);
   const caret = useRef<number | null>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -277,9 +286,32 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                 ? "Ask anything — Lumio will search the web first…"
                 : "Write a message…"
           }
-          className="block max-h-[min(40vh,12rem)] w-full resize-none bg-transparent px-2.5 py-1.5 text-text outline-none min-[721px]:py-2 placeholder:text-muted"
+          className="block max-h-[min(40vh,12rem)] w-full resize-none bg-transparent px-2.5 py-1.5 text-[16px] text-text outline-none min-[721px]:py-2 min-[721px]:text-[length:inherit] placeholder:text-muted"
         />
         <div className="mt-1 flex items-center justify-between gap-2">
+          {phone ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <PressButton
+                type="button"
+                aria-label="Add to message"
+                aria-haspopup="dialog"
+                onClick={() => setSheet(true)}
+                className="grid size-11 flex-none place-items-center rounded-xl text-muted hover:bg-bg hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                <PlusIcon />
+              </PressButton>
+              {web && (
+                <button type="button" aria-label="Turn off web search" onClick={() => setWeb(false)} className={chip}>
+                  Web on <CloseIcon width={12} height={12} />
+                </button>
+              )}
+              {canIllustrate && illustrate && (
+                <button type="button" aria-label="Turn off illustrate" onClick={() => setIllustrate(false)} className={chip}>
+                  Illustrate on <CloseIcon width={12} height={12} />
+                </button>
+              )}
+            </div>
+          ) : (
           <div className="relative flex min-w-0 items-center gap-1">
             <div className="group/tip flex-none">
             <PressButton
@@ -343,25 +375,26 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                   : unsupported}
               </Tip>
             </div>
-            <input
-              ref={picker}
-              type="file"
-              accept={ACCEPT_ATTR}
-              multiple
-              hidden
-              onChange={(e) => {
-                void addFiles(Array.from(e.target.files ?? []));
-                // Cleared so picking the same file again still fires onChange.
-                e.target.value = "";
-              }}
-            />
           </div>
+          )}
+          <input
+            ref={picker}
+            type="file"
+            accept={ACCEPT_ATTR}
+            multiple
+            hidden
+            onChange={(e) => {
+              void addFiles(Array.from(e.target.files ?? []));
+              // Cleared so picking the same file again still fires onChange.
+              e.target.value = "";
+            }}
+          />
           {disabled ? (
             <PressButton
               type="button"
               aria-label="Stop"
               onClick={onStop}
-              className="grid size-9 flex-none place-items-center rounded-xl bg-accent text-on-accent shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              className="grid size-11 flex-none place-items-center rounded-xl bg-accent text-on-accent shadow-soft min-[721px]:size-9 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               <StopIcon />
             </PressButton>
@@ -370,7 +403,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
               type="submit"
               aria-label="Send"
               disabled={!ready}
-              className={`grid size-9 flex-none place-items-center rounded-xl text-on-accent transition-[background-color,opacity] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+              className={`grid size-11 flex-none place-items-center rounded-xl text-on-accent min-[721px]:size-9 transition-[background-color,opacity] duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                 ready ? "bg-accent shadow-soft" : "bg-muted opacity-40"
               }`}
             >
@@ -379,6 +412,48 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
           )}
         </div>
       </div>
+      <BottomSheet open={phone && sheet} onClose={() => setSheet(false)} title="Add to message">
+        <ul className="flex flex-col gap-1">
+          <li>
+            {/* aria-disabled, not disabled: it stays focusable so the reason is reachable. */}
+            <button
+              type="button"
+              aria-disabled={!vision}
+              aria-describedby={vision ? undefined : "sheet-image-why"}
+              onClick={() => {
+                if (!vision) return;
+                setSheet(false);
+                picker.current?.click();
+              }}
+              className={`${sheetRow} ${vision ? "" : "cursor-not-allowed opacity-50"}`}
+            >
+              <PaperclipIcon />
+              Attach images
+            </button>
+            {!vision && (
+              <p id="sheet-image-why" className="px-3 pb-1 text-[13px] text-muted">
+                {unsupported}
+              </p>
+            )}
+          </li>
+          <li>
+            <button type="button" aria-pressed={web} onClick={() => setWeb((on) => !on)} className={sheetRow}>
+              <GlobeIcon />
+              <span className="flex-1">Search the web</span>
+              <span className={web ? "text-accent" : "text-muted"}>{web ? "On" : "Off"}</span>
+            </button>
+          </li>
+          {canIllustrate && (
+            <li>
+              <button type="button" aria-pressed={illustrate} onClick={() => setIllustrate((on) => !on)} className={sheetRow}>
+                <SparklesIcon />
+                <span className="flex-1">Illustrate the reply</span>
+                <span className={illustrate ? "text-accent" : "text-muted"}>{illustrate ? "On" : "Off"}</span>
+              </button>
+            </li>
+          )}
+        </ul>
+      </BottomSheet>
       <p className={`mt-2 text-center text-xs [@media(pointer:coarse)]:hidden ${web ? "text-accent" : "text-muted"}`}>
         {web
           ? "Web search on · your message is sent to Tavily"
