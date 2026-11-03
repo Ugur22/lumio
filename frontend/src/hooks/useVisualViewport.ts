@@ -28,6 +28,16 @@ export function useVisualViewport(): number {
     const update = () => {
       const next = keyboardInset(window.innerHeight, vv);
       root.style.setProperty("--kb-inset", `${next}px`);
+      // The app root is pinned to the visual viewport, so iOS panning the page to reveal the field cannot push the header off-screen.
+      if (Math.abs(vv.scale - 1) <= 0.01) {
+        root.style.setProperty("--vv-height", `${vv.height}px`);
+        root.style.setProperty("--vv-top", `${vv.offsetTop}px`);
+      } else {
+        root.style.removeProperty("--vv-height");
+        root.style.removeProperty("--vv-top");
+      }
+      if (next > 0) root.dataset.keyboard = "open";
+      else delete root.dataset.keyboard;
       setInset(next);
       // iOS pans the page up to reveal the focused field; with the root already shrunk that pan only hides the header.
       if (next > 0 && window.scrollY !== 0) window.scrollTo(0, 0);
@@ -38,7 +48,8 @@ export function useVisualViewport(): number {
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
-      root.style.removeProperty("--kb-inset");
+      for (const v of ["--kb-inset", "--vv-height", "--vv-top"]) root.style.removeProperty(v);
+      delete root.dataset.keyboard;
     };
   }, []);
 

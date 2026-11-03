@@ -44,9 +44,19 @@ describe("useVisualViewport", () => {
     });
     expect(result.current).toBe(320);
     expect(document.documentElement.style.getPropertyValue("--kb-inset")).toBe("320px");
+    expect(document.documentElement.dataset.keyboard).toBe("open");
+
+    act(() => {
+      vv.offsetTop = 40;
+      vv.dispatchEvent(new Event("scroll"));
+    });
+    expect(document.documentElement.style.getPropertyValue("--vv-height")).toBe("480px");
+    expect(document.documentElement.style.getPropertyValue("--vv-top")).toBe("40px");
 
     unmount();
     expect(document.documentElement.style.getPropertyValue("--kb-inset")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--vv-top")).toBe("");
+    expect(document.documentElement.dataset.keyboard).toBeUndefined();
   });
 
   it("does nothing without a visualViewport", () => {

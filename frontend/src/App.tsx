@@ -170,7 +170,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-var(--kb-inset,0px))] w-full max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
+    <div className="flex h-dvh w-full max-[720px]:fixed max-[720px]:inset-x-0 max-[720px]:top-0 max-[720px]:h-[var(--vv-height,100dvh)] max-[720px]:translate-y-[var(--vv-top,0px)] max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
       <Sidebar
         chats={chats}
         currentId={currentId}
