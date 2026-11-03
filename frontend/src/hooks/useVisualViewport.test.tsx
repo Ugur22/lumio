@@ -58,6 +58,8 @@ describe("useVisualViewport", () => {
     vi.stubGlobal("innerHeight", 800);
     const { result, unmount } = renderHook(() => useVisualViewport());
     expect(result.current).toBe(0);
+    // Without a keyboard the root keeps its full-screen size.
+    expect(document.documentElement.style.getPropertyValue("--vv-height")).toBe("");
 
     vv.height = 480;
     vv.dispatchEvent(new Event("resize"));

@@ -93,7 +93,7 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
 function AttachedImages({ urls, live }: { urls: string[]; live: boolean }) {
   if (urls.length === 0) return null;
   return (
-    <Appear live={live} className="mb-2 ml-auto flex max-w-[85%] max-[720px]:max-w-[82%]flex-wrap justify-end gap-2">
+    <Appear live={live} className="mb-2 ml-auto flex max-w-[85%] max-[720px]:max-w-[82%] flex-wrap justify-end gap-2">
       {urls.map((url, i) => (
         <AttachedImage key={url} url={url} label={`Attached image ${i + 1}`} />
       ))}
