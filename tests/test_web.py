@@ -325,6 +325,27 @@ def test_blank_search_key_is_rejected(api):
     assert api.put("/api/web/key", json={"key": ""}).status_code == 422
 
 
+def test_replicate_token_is_kept_in_the_keychain_and_never_returned(api, memory_keyring):
+    key = "r8_0123456789wxyz"
+    assert api.get("/api/replicate").json() == {"configured": False, "last4": None}
+
+    res = api.put("/api/replicate", json={"key": key})
+
+    assert res.json() == {"configured": True, "last4": "wxyz"}
+    assert key not in res.text and key not in api.get("/api/replicate").text
+    assert memory_keyring.store[(secret_store.SERVICE, secret_store.REPLICATE_ACCOUNT)] == key
+    assert (secret_store.SERVICE, secret_store.TAVILY_ACCOUNT) not in memory_keyring.store
+
+    assert api.delete("/api/replicate").json() == {"configured": False, "last4": None}
+    assert (secret_store.SERVICE, secret_store.REPLICATE_ACCOUNT) not in memory_keyring.store
+
+
+def test_replicate_routes_refuse_foreign_origins(api):
+    res = api.put("/api/replicate", json={"key": "r8_0123456789wxyz"}, headers={"Origin": "https://evil.example"})
+
+    assert res.status_code == 403
+
+
 class Rewriter:
     """Fake model for both calls: the non-streaming rewrite and the streamed reply."""
 

@@ -36,6 +36,7 @@ app.include_router(routes_auth.router)
 app.include_router(routes_chats.router)
 app.include_router(routes_profiles.profiles)
 app.include_router(routes_profiles.web_settings)
+app.include_router(routes_profiles.replicate_settings)
 
 # Mounted only when built, so the API (and its tests) work before `make build` has run.
 FRONTEND_DIR = BASE_DIR / "frontend" / "dist"

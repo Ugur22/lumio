@@ -193,6 +193,16 @@ def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
             raise HTTPException(422, f"{profile.name} can't read images. Switch to a vision-capable provider.")
         if body.illustrate and not profile.image_model:
             raise HTTPException(422, f"{profile.name} has no image model. Set one in Providers.")
+        image_key = providers.profile_key(profile, user) if body.illustrate else None
+        if body.illustrate and providers.is_replicate(profile.image_model):
+            try:
+                providers.parse_replicate_model(profile.image_model)
+            except providers.ReplicateError as e:
+                raise HTTPException(422, str(e))
+            # For a Replicate image model this slot carries the Replicate token instead of the text provider's key.
+            image_key = secret_store.get_key(profile_store.replicate_account(user))
+            if not image_key:
+                raise HTTPException(409, "No Replicate key. Add one in Providers.")
         client = providers.get_client(profile, user)
 
         # Gathered before the model call; the pages are plain prompt text, so any provider works.
@@ -230,7 +240,7 @@ def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
         body.images,
         query,
         providers.window_for(chat, profile),
-        (client, profile.image_model, providers.profile_key(profile, user)) if body.illustrate else None,
+        (client, profile.image_model, image_key) if body.illustrate else None,
         lease=lease,
         rev=rev,
     )

@@ -2,8 +2,12 @@
 
 import base64
 import json
+import re
 import threading
+import time
+from urllib.parse import urljoin, urlsplit
 
+import httpx2
 import web
 from fastapi import HTTPException
 from openai import DefaultHttpxClient, OpenAI, OpenAIError
@@ -116,6 +120,138 @@ def generate_image(client: OpenAI, model: str, prompt: str) -> ImageData:
     return ImageData(media_type=media_type, data=encoded)
 
 
+REPLICATE_PREFIX = "replicate:"
+REPLICATE_API = "https://api.replicate.com/v1"
+REPLICATE_HOST = "api.replicate.com"
+# The model's other inputs stay at their defaults; change this one place to change what every image asks for.
+REPLICATE_INPUT = {"scheduler": "Euler flux beta"}
+REPLICATE_WAIT_SECONDS = 60
+REPLICATE_POLL_SECONDS = 2.0
+REPLICATE_POLL_CAP_SECONDS = 120.0
+REPLICATE_TIMEOUT = 75.0  # a request carrying Prefer: wait=60 may legitimately take that long
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
+MAX_IMAGE_REDIRECTS = 4
+_REPLICATE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+_REPLICATE_VERSION = re.compile(r"[A-Za-z0-9]+\Z")
+sleep = time.sleep  # replaced in tests
+
+
+class ReplicateError(ValueError):
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def is_replicate(image_model: str | None) -> bool:
+    return bool(image_model) and image_model.startswith(REPLICATE_PREFIX)
+
+
+def parse_replicate_model(image_model: str) -> tuple[str, str, str | None]:
+    """`replicate:<owner>/<name>[:<version>]` -> (owner, name, version or None)."""
+    spec = image_model.removeprefix(REPLICATE_PREFIX)
+    ref, colon, version = spec.partition(":")
+    owner, slash, name = ref.partition("/")
+    if not (slash and _REPLICATE_NAME.match(owner) and _REPLICATE_NAME.match(name)) or (
+        colon and not _REPLICATE_VERSION.match(version)
+    ):
+        raise ReplicateError("The Replicate image model must look like replicate:owner/name or replicate:owner/name:version")
+    return owner, name, version or None
+
+
+def replicate_client() -> httpx2.Client:
+    # Never follows redirects on its own: the token must only ever go to api.replicate.com.
+    return httpx2.Client(timeout=REPLICATE_TIMEOUT, follow_redirects=False)
+
+
+def _api_error(res: httpx2.Response) -> ReplicateError:
+    detail = ""
+    try:
+        body = res.json()
+        if isinstance(body, dict):
+            detail = body.get("detail") or body.get("error") or ""
+    except ValueError:
+        pass
+    text = " ".join(str(detail).split())[:300]
+    return ReplicateError(f"Replicate returned HTTP {res.status_code}" + (f": {text}" if text else ""), res.status_code)
+
+
+def _prediction_json(res: httpx2.Response) -> dict:
+    if res.status_code >= 300:
+        raise _api_error(res)
+    try:
+        body = res.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        raise ReplicateError("Replicate returned an unreadable answer")
+    return body
+
+
+def _download_image(client: httpx2.Client, url: str) -> bytes:
+    """Follows redirects by hand so every hop is checked; no credentials are sent to the delivery host."""
+    for _ in range(MAX_IMAGE_REDIRECTS + 1):
+        try:
+            web.check_public(url)
+        except (web.WebError, ValueError):
+            raise ReplicateError("The image address is not a public web address") from None
+        with client.stream("GET", url) as res:
+            if res.is_redirect:
+                target = res.headers.get("location")
+                if not target:
+                    raise ReplicateError("The image download redirected without a target")
+                url = urljoin(url, target)
+                continue
+            if res.status_code >= 400:
+                raise ReplicateError(f"The image download failed (HTTP {res.status_code})", res.status_code)
+            body = bytearray()
+            for chunk in res.iter_bytes():
+                body += chunk
+                if len(body) > MAX_IMAGE_BYTES:
+                    raise ReplicateError("The generated image is too large")
+            return bytes(body)
+    raise ReplicateError("The image download redirected too many times")
+
+
+def generate_replicate_image(token: str, image_model: str, prompt: str) -> ImageData:
+    owner, name, version = parse_replicate_model(image_model)
+    headers = {"Authorization": f"Bearer {token}", "Prefer": f"wait={REPLICATE_WAIT_SECONDS}"}
+    payload: dict = {"input": {"prompt": prompt, **REPLICATE_INPUT}}
+    if version:
+        url = f"{REPLICATE_API}/predictions"
+        payload["version"] = version
+    else:
+        url = f"{REPLICATE_API}/models/{owner}/{name}/predictions"
+    with replicate_client() as client:
+        prediction = _prediction_json(client.post(url, headers=headers, json=payload))
+        waited = 0.0
+        while prediction.get("status") not in ("succeeded", "failed", "canceled"):
+            if waited >= REPLICATE_POLL_CAP_SECONDS:
+                raise ReplicateError("Replicate took too long to finish the image")
+            get_url = (prediction.get("urls") or {}).get("get")
+            # The token goes only to Replicate's own API, wherever the answer claims to want it.
+            parts = urlsplit(get_url) if isinstance(get_url, str) else None
+            if parts is None or parts.scheme != "https" or parts.hostname != REPLICATE_HOST:
+                raise ReplicateError("Replicate returned an unexpected status address")
+            sleep(REPLICATE_POLL_SECONDS)
+            waited += REPLICATE_POLL_SECONDS
+            prediction = _prediction_json(client.get(get_url, headers={"Authorization": f"Bearer {token}"}))
+        if prediction["status"] != "succeeded":
+            reason = prediction.get("error")
+            reason = " ".join(reason.split()) if isinstance(reason, str) else ""
+            message = f"Replicate {prediction['status']} the image" + (f": {reason}" if reason else "")
+            raise ReplicateError(redact(message, token)[:500])
+        output = prediction.get("output")
+        first = output[0] if isinstance(output, list) and output else output
+        if not isinstance(first, str) or not first:
+            raise ReplicateError("Replicate returned no image")
+    with replicate_client() as downloader:
+        raw = _download_image(downloader, first)
+    media_type = sniff_media_type(raw[:12])
+    if media_type is None:
+        raise ReplicateError("Replicate returned an unsupported image format")
+    return ImageData(media_type=media_type, data=base64.b64encode(raw).decode())
+
+
 def provider_error_parts(e: Exception, key: str | None, limit: int = 500) -> tuple[int | None, str]:
     """HTTP status and whitespace-collapsed, redacted body of a failed provider call: the SDK's own message drops both when the body is not OpenAI-shaped."""
     status = getattr(e, "status_code", None)
@@ -123,6 +259,8 @@ def provider_error_parts(e: Exception, key: str | None, limit: int = 500) -> tup
         status = None
     if isinstance(e, ValueError) and not isinstance(e, ValidationError):
         body = str(e)
+    elif isinstance(e, httpx2.HTTPError):
+        body = "the connection to Replicate failed"  # transport errors can quote the URL
     elif isinstance(e, OpenAIError):
         body = getattr(getattr(e, "response", None), "text", "") or getattr(e, "message", str(e))
     else:

@@ -283,3 +283,13 @@ def test_readable_reason_unwraps_json_error_bodies():
     assert providers.readable_reason('{"error":{"message":"bad  prompt"}}') == "bad prompt"
     assert providers.readable_reason("plain text") == "plain text"
     assert providers.readable_reason('{"other":1}') == '{"other":1}'
+
+
+def test_a_pinned_replicate_model_fits_the_image_model_field(api):
+    model = "replicate:aisha-ai-official/flux.1dev-uncensored-msfluxnsfw-v3:" + "b477d8fc" * 8
+    assert len(model) > 120
+    pid = setup_profile(api, image_model=model)
+    profile = next(p for p in api.get("/api/profiles").json()["profiles"] if p["id"] == pid)
+    assert profile["image_model"] == model
+    edited = api.patch(f"/api/profiles/{pid}", json={"image_model": model})
+    assert edited.status_code == 200

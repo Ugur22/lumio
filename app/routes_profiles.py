@@ -21,6 +21,8 @@ from models import (
     Profile,
     ProfileList,
     ProfileView,
+    ReplicateKey,
+    ReplicateStatus,
     WebKey,
     UserView,
     WebStatus,
@@ -218,3 +220,28 @@ def set_web_key(body: WebKey, user: CurrentUser):
 def delete_web_key(user: CurrentUser):
     secret_store.delete_key(profile_store.tavily_account(user))
     return web_status(user)
+
+
+replicate_settings = APIRouter(prefix="/api/replicate", dependencies=[Depends(require_local_origin)])
+
+
+def replicate_status(user: UserView) -> ReplicateStatus:
+    key = secret_store.get_key(profile_store.replicate_account(user))
+    return ReplicateStatus(configured=key is not None, last4=key[-4:] if key and len(key) >= 12 else None)
+
+
+@replicate_settings.get("", response_model=ReplicateStatus)
+def get_replicate_status(user: CurrentUser):
+    return replicate_status(user)
+
+
+@replicate_settings.put("", response_model=ReplicateStatus)
+def set_replicate_key(body: ReplicateKey, user: CurrentUser):
+    store_key(profile_store.replicate_account(user), body.key.get_secret_value())
+    return replicate_status(user)
+
+
+@replicate_settings.delete("", response_model=ReplicateStatus)
+def delete_replicate_key(user: CurrentUser):
+    secret_store.delete_key(profile_store.replicate_account(user))
+    return replicate_status(user)

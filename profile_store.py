@@ -50,6 +50,12 @@ def tavily_account(user: UserView) -> str:
     return secret_store.user_tavily_account(_safe_id(user))
 
 
+def replicate_account(user: UserView) -> str:
+    if is_local(user):
+        return secret_store.REPLICATE_ACCOUNT
+    return secret_store.user_replicate_account(_safe_id(user))
+
+
 def _inherits_legacy(settings: Settings, user: UserView) -> bool:
     """Whether the pre-profiles single key and the e2e stub are this user's: the local user, or the admin on a server."""
     return is_local(user) or is_admin_user(settings, user)

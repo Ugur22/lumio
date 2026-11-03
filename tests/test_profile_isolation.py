@@ -268,6 +268,21 @@ def test_the_web_search_key_is_per_user(alice, bob, upstream):
     assert secret_store.get_key("tavily") is None
 
 
+def test_the_replicate_token_is_per_user(alice, bob):
+    token = "r8_alice-token-1111"
+    assert alice.put("/api/replicate", json={"key": token}).json() == {"configured": True, "last4": "1111"}
+
+    assert bob.get("/api/replicate").json() == {"configured": False, "last4": None}
+    assert secret_store.get_key(f"u:{A}:replicate") == token
+    assert secret_store.get_key("replicate") is None
+    bob.delete("/api/replicate")
+    assert alice.get("/api/replicate").json()["last4"] == "1111"
+    with pytest.raises(AssertionError):
+        profile_store.replicate_account(user("../x"))
+    with pytest.raises(ValueError):
+        secret_store.user_replicate_account("a:b")
+
+
 def test_deployed_url_guard_and_key_redirect_refusal_apply_per_user(alice, bob, monkeypatch):
     monkeypatch.setattr(runtime.settings, "public_host", HOST)
     a, b = client_for(A, HTTPS), client_for(B, HTTPS)

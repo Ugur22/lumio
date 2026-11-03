@@ -216,7 +216,7 @@ class Profile(ApiModel):
     # Set by the user (OpenRouter's model list can prefill it): used only for the usage meter.
     context_window: int | None = Field(default=None, ge=1000)
     # Model for POST /images/generations; None means the provider can't illustrate replies.
-    image_model: str | None = Field(default=None, max_length=120)
+    image_model: str | None = Field(default=None, max_length=200)
 
     _blank_image_model = field_validator("image_model", mode="before")(lambda cls, v: blank_to_none(v))
 
@@ -258,7 +258,7 @@ class NewProfile(ApiModel):
     needs_key: bool = True
     vision: bool = False
     context_window: int | None = Field(default=None, ge=1000)
-    image_model: str | None = Field(default=None, max_length=120)
+    image_model: str | None = Field(default=None, max_length=200)
     key: SecretStr | None = None
 
     _url = field_validator("base_url")(lambda cls, v: clean_base_url(v))
@@ -272,7 +272,7 @@ class EditProfile(ApiModel):
     vision: bool | None = None
     context_window: int | None = Field(default=None, ge=1000)
     # Nullable like context_window: an explicit null clears it (see edit_profile).
-    image_model: str | None = Field(default=None, max_length=120)
+    image_model: str | None = Field(default=None, max_length=200)
     key: SecretStr | None = None
 
     _blank_image_model = field_validator("image_model", mode="before")(lambda cls, v: blank_to_none(v))
@@ -358,6 +358,15 @@ class WebStatus(ApiModel):
     configured: bool
     last4: str | None = None
     key_store: Literal["keychain", "file"] = "keychain"
+
+
+class ReplicateKey(ApiModel):
+    key: SecretStr = Field(min_length=1, max_length=512)
+
+
+class ReplicateStatus(ApiModel):
+    configured: bool
+    last4: str | None = None
 
 
 class RenameChat(ApiModel):

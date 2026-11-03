@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { DialogTitle, Field, Label } from "@headlessui/react";
 import { shouldAutoFetch } from "../lib/modelOptions";
 import { useProfileActions, useProfiles } from "../hooks/useProfiles";
+import { useReplicateKeyActions, useReplicateStatus } from "../hooks/useReplicate";
 import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
 import { formatTokens } from "../lib/context";
 import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
@@ -105,6 +106,7 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
       </ul>
       {failure && <p role="alert" className="text-warn-bar">{failure}</p>}
       <WebSearchSection />
+      <ReplicateSection />
       <div className="flex items-center gap-2">
         <PressButton type="button" onClick={onAdd} hover={1.02} press={0.97} variant="primary">
           <PlusIcon width={16} height={16} />
@@ -118,9 +120,19 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
   );
 }
 
-function WebSearchSection() {
-  const { data } = useWebStatus();
-  const actions = useWebKeyActions();
+interface KeySectionProps {
+  title: string;
+  provider: string;
+  status: { configured: boolean } | undefined;
+  detail: string;
+  emptyText: string;
+  placeholder: string;
+  actions: { save: (key: string) => Promise<void>; remove: () => Promise<void> };
+  children?: ReactNode;
+}
+
+// One service-wide key (not tied to a profile): status row, Replace/Remove, and a paste form.
+function KeySection({ title, provider, status, detail, emptyText, placeholder, actions, children }: KeySectionProps) {
   const [key, setKey] = useState("");
   const [replacing, setReplacing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -150,19 +162,17 @@ function WebSearchSection() {
     });
   }
 
-  const showForm = data !== undefined && (!data.configured || replacing);
+  const showForm = status !== undefined && (!status.configured || replacing);
 
   return (
     <div className="flex flex-col gap-2 border-t border-border pt-4">
-      <h3 className="text-[13px] font-medium">Web search</h3>
-      {data?.configured && (
+      <h3 className="text-[13px] font-medium">{title}</h3>
+      {status?.configured && (
         <div className="flex items-center gap-3 rounded-xl border border-border bg-bg px-3 py-2.5">
           <span aria-hidden="true" className="size-2.5 flex-none rounded-full bg-note-bar" />
           <div className="min-w-0 flex-1">
-            <div className="truncate font-medium">Tavily</div>
-            <div className="truncate text-[12px] text-muted">
-              Key {keyHome(data.key_store)}{data.last4 ? ` ending in ${data.last4}` : ""}
-            </div>
+            <div className="truncate font-medium">{provider}</div>
+            <div className="truncate text-[12px] text-muted">{detail}</div>
           </div>
           <Button onClick={() => setReplacing((on) => !on)}>{replacing ? "Cancel" : "Replace"}</Button>
           <Button variant="danger" disabled={busy} onClick={() => run(actions.remove)}>
@@ -171,19 +181,18 @@ function WebSearchSection() {
           </Button>
         </div>
       )}
-      {data && !data.configured && (
-        <p className="text-[12px] text-muted">No Tavily key. The Web toggle needs one; pasted links work without it.</p>
-      )}
+      {status && !status.configured && <p className="text-[12px] text-muted">{emptyText}</p>}
+      {children}
       {showForm && (
         <form onSubmit={onSubmit} className="flex items-center gap-2">
           <TextInput
             type="password"
-            aria-label="Tavily API key"
+            aria-label={`${provider} API key`}
             value={key}
             onChange={(e) => setKey(e.target.value)}
             autoComplete="off"
             spellCheck={false}
-            placeholder="Paste your Tavily API key"
+            placeholder={placeholder}
             className="min-w-0 flex-1"
           />
           <PressButton type="submit" disabled={busy || !key.trim()} hover={1.02} press={0.97} variant="secondary">
@@ -193,6 +202,42 @@ function WebSearchSection() {
       )}
       {failure && <p role="alert" className="text-warn-bar">{failure}</p>}
     </div>
+  );
+}
+
+function WebSearchSection() {
+  const { data } = useWebStatus();
+  const actions = useWebKeyActions();
+  return (
+    <KeySection
+      title="Web search"
+      provider="Tavily"
+      status={data}
+      detail={data?.configured ? `Key ${keyHome(data.key_store)}${data.last4 ? ` ending in ${data.last4}` : ""}` : ""}
+      emptyText="No Tavily key. The Web toggle needs one; pasted links work without it."
+      placeholder="Paste your Tavily API key"
+      actions={actions}
+    />
+  );
+}
+
+export function ReplicateSection() {
+  const { data } = useReplicateStatus();
+  const actions = useReplicateKeyActions();
+  return (
+    <KeySection
+      title="Replicate (images)"
+      provider="Replicate"
+      status={data}
+      detail={data?.last4 ? `Key ending in ••••${data.last4}` : "Key saved"}
+      emptyText="No Replicate key. Illustrate with a replicate: image model needs one."
+      placeholder="Paste your Replicate API key"
+      actions={actions}
+    >
+      <p className="text-[12px] text-muted">
+        Each image is billed by Replicate (about $0.06 for the Flux model), and the prompt is sent to Replicate.
+      </p>
+    </KeySection>
   );
 }
 
@@ -461,7 +506,7 @@ function ProfileForm({ profile, onDone }: { profile: Profile | null; onDone: () 
           onChange={(e) => setImageModel(e.target.value)}
           placeholder="e.g. grok-imagine-image-2.0"
           spellCheck={false}
-          description="Lets the model illustrate its replies. Leave blank if this provider has no image generation; the Illustrate button then stays hidden."
+          description="Lets the model illustrate its replies. Leave blank if this provider has no image generation; the Illustrate button then stays hidden. To use Replicate instead, enter replicate:owner/name[:version]; that uses the Replicate key from the Providers list, not this profile's key."
         />
 
         <CheckboxField

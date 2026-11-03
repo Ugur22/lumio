@@ -9,6 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, ValidationError
 
+import httpx2
 import images
 import storage
 from app import providers, runtime
@@ -67,8 +68,12 @@ async def illustrate_reply(
             return ""
         prompt = match.group(1)[:MAX_IMAGE_PROMPT_CHARS]
         try:
-            data = await run_in_threadpool(providers.generate_image, client, model, prompt)
-        except (OpenAIError, ValueError, ValidationError, IndexError, AttributeError) as e:
+            if providers.is_replicate(model):
+                # `key` is the Replicate token here (see routes_chats.py), so the redaction below covers it.
+                data = await run_in_threadpool(providers.generate_replicate_image, key, model, prompt)
+            else:
+                data = await run_in_threadpool(providers.generate_image, client, model, prompt)
+        except (OpenAIError, httpx2.HTTPError, ValueError, ValidationError, IndexError, AttributeError) as e:
             log.warning("Illustration failed (%s) for prompt %r", providers.describe_provider_error(e, key), prompt[:200])
             status, detail = providers.provider_error_parts(e, key, 2000)
             failures.append(IllustrationFailure(prompt=prompt[:200], status=status, detail=providers.readable_reason(detail)[:200]))

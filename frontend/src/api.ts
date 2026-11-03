@@ -21,6 +21,7 @@ import type {
   StoryBody,
   SummaryBody,
   WebStatus,
+  ReplicateStatus,
 } from "./types";
 
 interface ValidationIssue {
@@ -176,6 +177,10 @@ export const api = {
   getWebStatus: () => request<WebStatus>("/web"),
   setWebKey: (key: string) => request<WebStatus>("/web/key", { method: "PUT", body: JSON.stringify({ key }) }),
   deleteWebKey: () => request<WebStatus>("/web/key", { method: "DELETE" }),
+  getReplicate: () => request<ReplicateStatus>("/replicate"),
+  setReplicateKey: (key: string) =>
+    request<ReplicateStatus>("/replicate", { method: "PUT", body: JSON.stringify({ key }) }),
+  deleteReplicateKey: () => request<ReplicateStatus>("/replicate", { method: "DELETE" }),
   listModels: (body: ModelsQuery) =>
     request<ModelsResult>("/profiles/models", { method: "POST", body: JSON.stringify(body) }),
 };

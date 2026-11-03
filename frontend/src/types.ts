@@ -45,6 +45,7 @@ export type NewProfileBody = Schema<"NewProfile">;
 export type EditProfileBody = Schema<"EditProfile">;
 
 export type WebStatus = Schema<"WebStatus">;
+export type ReplicateStatus = Schema<"ReplicateStatus">;
 export type ModelsQuery = Schema<"ModelsQuery">;
 export type ModelsResult = Schema<"ModelsResult">;
 

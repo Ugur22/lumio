@@ -19,6 +19,7 @@ SERVICE = "dolphinllm-client"
 # The pre-profiles single key; still read so existing setups keep working.
 LEGACY_ACCOUNT = "api-key"
 TAVILY_ACCOUNT = "tavily"
+REPLICATE_ACCOUNT = "replicate"
 # A server has no OS keychain: when this points at a file, keys live there instead (mode 0600).
 SECRETS_FILE_ENV = "DOLPHINLLM_SECRETS_FILE"
 # Master key(s) for that file, comma-separated: the first encrypts, all decrypt (so a key can be rotated). The key file is the fallback.
@@ -53,6 +54,10 @@ def user_profile_account(user_id: str, profile_id: str) -> str:
 
 def user_tavily_account(user_id: str) -> str:
     return f"u:{_safe(user_id)}:tavily"
+
+
+def user_replicate_account(user_id: str) -> str:
+    return f"u:{_safe(user_id)}:replicate"
 
 
 def _secrets_file() -> Path | None:

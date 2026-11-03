@@ -338,6 +338,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/replicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Replicate Status */
+        get: operations["get_replicate_status_api_replicate_get"];
+        /** Set Replicate Key */
+        put: operations["set_replicate_key_api_replicate_put"];
+        post?: never;
+        /** Delete Replicate Key */
+        delete: operations["delete_replicate_key_api_replicate_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/web": {
         parameters: {
             query?: never;
@@ -785,6 +804,21 @@ export interface components {
         RenameChat: {
             /** Title */
             title: string;
+        };
+        /** ReplicateKey */
+        ReplicateKey: {
+            /**
+             * Key
+             * Format: password
+             */
+            key: string;
+        };
+        /** ReplicateStatus */
+        ReplicateStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Last4 */
+            last4: string | null;
         };
         /** Source */
         Source: {
@@ -1600,6 +1634,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_replicate_status_api_replicate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicateStatus"];
+                };
+            };
+        };
+    };
+    set_replicate_key_api_replicate_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplicateKey"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicateStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_replicate_key_api_replicate_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplicateStatus"];
                 };
             };
         };
