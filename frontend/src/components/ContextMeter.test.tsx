@@ -19,6 +19,14 @@ describe("ContextMeter", () => {
     expect(out).not.toContain("Summarize older chapters");
   });
 
+  it("lays the phone line out as percent, bar, token count, ahead of the messages", () => {
+    const out = html(info({}));
+    expect(out).toContain("max-[720px]:order-[-1]");
+    expect(out.indexOf("27%")).toBeLessThan(out.indexOf('role="meter"'));
+    expect(out.indexOf('role="meter"')).toBeLessThan(out.indexOf("max-[720px]:inline"));
+    expect(out).toContain("34k / 128k tokens</span>");
+  });
+
   it("marks estimates", () => {
     expect(html(info({ source: "estimate" }))).toContain("Estimated");
   });

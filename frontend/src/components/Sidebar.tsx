@@ -31,8 +31,8 @@ type Row =
 
 const HEADER_HEIGHT = 30;
 const CHAT_HEIGHT = 40;
-// Row plus its my-0.5; the phone row is a 44px touch target.
-const CHAT_HEIGHT_TOUCH = 48;
+// The phone row is a 44px touch target with no vertical margin.
+const CHAT_HEIGHT_TOUCH = 44;
 
 const DAY = 86_400_000;
 
@@ -98,6 +98,8 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
     enter: (row) => ({ opacity: 1, height: row.kind === "header" ? HEADER_HEIGHT : chatHeight, x: 0 }),
     update: (row) => ({ height: row.kind === "header" ? HEADER_HEIGHT : chatHeight }),
     leave: { opacity: 0, height: 0, x: -14 },
+    // Tweening height relayouts the whole list every frame; on phones rows fade and slide, then snap to size.
+    immediate: (key) => mobile && key === "height",
     trail: 18,
     config: { tension: 320, friction: 30 },
   });
@@ -118,7 +120,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         onClick={onNew}
         hover={1.02}
         press={0.97}
-        className={`flex items-center justify-center gap-2 rounded-xl bg-accent px-3.5 py-2.5 font-semibold max-[720px]:min-h-11 text-on-accent hover:brightness-90 ${focusRing} focus-visible:outline-offset-2`}
+        className={`flex items-center justify-center gap-2 rounded-xl bg-accent px-3.5 py-2.5 font-semibold text-on-accent max-[720px]:min-h-12 max-[720px]:rounded-[14px] hover:brightness-90 ${focusRing} focus-visible:outline-offset-2`}
       >
         <PlusIcon /> New chat
       </PressButton>
@@ -130,7 +132,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
             className="overflow-hidden"
           >
             {row.kind === "header" ? (
-              <div className="flex h-full items-end px-3.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+              <div className="flex h-[30px] items-end px-3.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
                 {row.label}
               </div>
             ) : (
@@ -148,29 +150,31 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         ))}
       </nav>
 
-      <PressButton
-        type="button"
-        onClick={onOpenSettings}
-        press={0.97}
-        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-11 ${focusRing}`}
-      >
-        <PlugIcon /> Providers
-      </PressButton>
+      <div className="flex flex-col gap-3 max-[720px]:gap-0 max-[720px]:border-t max-[720px]:border-border max-[720px]:pt-1.5">
+        <PressButton
+          type="button"
+          onClick={onOpenSettings}
+          press={0.97}
+          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-[46px] max-[720px]:px-2 max-[720px]:text-[15px] ${focusRing}`}
+        >
+          <PlugIcon /> Providers
+        </PressButton>
 
-      <PressButton
-        type="button"
-        aria-label="Toggle theme"
-        onClick={onToggleTheme}
-        press={0.97}
-        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-11 ${focusRing}`}
-      >
-        <ThemeIcon theme={theme} />
-        {theme === "dark" ? "Light mode" : "Dark mode"}
-      </PressButton>
+        <PressButton
+          type="button"
+          aria-label="Toggle theme"
+          onClick={onToggleTheme}
+          press={0.97}
+          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-[46px] max-[720px]:px-2 max-[720px]:text-[15px] ${focusRing}`}
+        >
+          <ThemeIcon theme={theme} />
+          {theme === "dark" ? "Light mode" : "Dark mode"}
+        </PressButton>
 
-      {/* The menu lives in its own component; widen its buttons here so every drawer target is 44px on a phone. */}
-      <div className="max-[720px]:[&_button]:min-h-11">
-        <UserMenu />
+        {/* The menu lives in its own component; widen its buttons here so every drawer target is 44px on a phone. */}
+        <div className="max-[720px]:[&_button]:min-h-11">
+          <UserMenu />
+        </div>
       </div>
     </animated.aside>
     <BottomSheet open={menuFor !== null} onClose={() => setMenuFor(null)} title={menuFor?.title ?? "Chat"}>
@@ -228,7 +232,7 @@ const iconBtn = `rounded-lg p-1.5 text-muted transition-colors duration-200 hove
 function ChatRow({ chat, active, onOpen, onRename, onDelete, touch, onMore }: RowProps) {
   return (
     <div
-      className={`group relative mx-1 my-0.5 flex h-9 items-center max-[720px]:h-11 gap-0.5 rounded-lg pl-2.5 pr-1.5 transition-colors ${
+      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-lg pl-2.5 max-[720px]:my-0 max-[720px]:h-11 max-[720px]:rounded-xl max-[720px]:pl-3 pr-1.5 transition-colors ${
         active ? "bg-border" : "hover:bg-bubble"
       }`}
     >
