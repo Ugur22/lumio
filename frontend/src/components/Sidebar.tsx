@@ -106,7 +106,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
     <>
     <animated.aside
       style={mobile ? { transform: slide.x.to((v) => `translateX(${v}%)`) } : undefined}
-      className="flex w-[264px] flex-none flex-col gap-3 border-r border-border bg-panel p-3 max-[720px]:fixed max-[720px]:inset-y-0 max-[720px]:left-0 max-[720px]:z-20 max-[720px]:shadow-lift max-[720px]:pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] max-[720px]:pl-[calc(0.75rem+env(safe-area-inset-left,0px))] max-[720px]:pt-[calc(0.75rem+env(safe-area-inset-top,0px))]"
+      className="flex w-[264px] flex-none flex-col gap-3 border-r border-border bg-panel p-3 max-[720px]:fixed max-[720px]:left-0 max-[720px]:top-0 max-[720px]:h-dvh max-[720px]:z-20 max-[720px]:shadow-lift max-[720px]:pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] max-[720px]:pl-[calc(0.75rem+env(safe-area-inset-left,0px))] max-[720px]:pt-[calc(0.75rem+env(safe-area-inset-top,0px))]"
     >
       <div className="flex items-center gap-2.5 px-1.5 pt-1">
         <LumioMark size={30} />

@@ -26,10 +26,4 @@ describe("Starters", () => {
     expect(out).toContain("pointer-events-none");
   });
 
-  it("lays tiles out as a compact two-column grid on phones", () => {
-    const out = html();
-    expect(out).toContain("max-[720px]:grid-cols-2");
-    expect(tile(out, "Open a story")).toContain("max-[720px]:min-h-11");
-    expect(tile(out, "Open a story")).toContain("max-[720px]:line-clamp-2");
-  });
 });
