@@ -37,6 +37,10 @@ export function MessageList({ messages, chatId, loading = false }: Props) {
   const stick = useRef(true);
   const streaming = pending?.status === "streaming";
 
+  // Not cancelled when a new token arrives: that would turn the once-per-frame throttle into a debounce and
+  // the list would only follow the reply when tokens pause.
+  const frame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
   useEffect(() => {
     if (pending && pending.status !== "streaming") stick.current = true;
     const el = ref.current;
@@ -45,11 +49,11 @@ export function MessageList({ messages, chatId, loading = false }: Props) {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       return;
     }
-    // Tokens arrive faster than frames; one scroll per frame is all the eye sees and avoids layout thrash.
-    const frame = requestAnimationFrame(() => {
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
       if (stick.current) el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
     });
-    return () => cancelAnimationFrame(frame);
   }, [messages, pending, streaming]);
 
   // Messages alternate user/assistant, so pairing them gives one visual turn each.

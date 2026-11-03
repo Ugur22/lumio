@@ -35,8 +35,9 @@ export function useVisualViewport(): number {
       if (key !== applied) {
         applied = key;
         root.style.setProperty("--kb-inset", `${next}px`);
-        // The app root is pinned to the visual viewport, so iOS panning the page to reveal the field cannot push the header off-screen.
-        if (Math.abs(vv.scale - 1) <= 0.01) {
+        // Only while the keyboard is up is the root pinned to the visual viewport, so iOS panning the page to reveal the
+        // field cannot push the header off-screen. Otherwise it keeps its full-screen size, which home-screen mode needs.
+        if (next > 0 && Math.abs(vv.scale - 1) <= 0.01) {
           root.style.setProperty("--vv-height", `${vv.height}px`);
           root.style.setProperty("--vv-top", `${vv.offsetTop}px`);
         } else {

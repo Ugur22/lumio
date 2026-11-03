@@ -256,7 +256,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
       }}
       onDrop={onDrop}
-      className="mx-auto w-full max-w-[760px] px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] [:root[data-keyboard=open]_&]:pb-2 pt-2 min-[721px]:px-5 min-[721px]:pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] min-[721px]:pt-3"
+      className="mx-auto w-full max-w-[760px] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] [:root[data-keyboard=open]_&]:pb-2 pt-2 min-[721px]:px-5 min-[721px]:pt-3"
     >
       {(notice || blocked) && (
         <p role="status" className="mb-2 rounded-xl bg-warn-bg px-3 py-2 text-[13px] text-warn-bar">
