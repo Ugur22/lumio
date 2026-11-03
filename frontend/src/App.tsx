@@ -4,7 +4,7 @@ import { CodeActionsContext } from "./components/CodeActionsContext";
 import { ContextMeter } from "./components/ContextMeter";
 import { Composer, type ComposerHandle } from "./components/Composer";
 import { BookIcon, MenuIcon } from "./components/icons";
-import { MessageList, Starters } from "./components/MessageList";
+import { MessageList, QuickActions, Starters } from "./components/MessageList";
 import { Button, ConfirmDialog, PressButton, PromptDialog } from "./components/ui";
 import { ProviderSwitcher } from "./components/ProviderSwitcher";
 import { ProvidersDialog } from "./components/ProvidersDialog";
@@ -170,7 +170,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-var(--kb-inset,0px))] w-full max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
+    <div className="flex h-dvh w-full max-[720px]:fixed max-[720px]:inset-x-0 max-[720px]:top-0 max-[720px]:h-[var(--vv-height,100dvh)] max-[720px]:translate-y-[var(--vv-top,0px)] max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
       <Sidebar
         chats={chats}
         currentId={currentId}
@@ -229,28 +229,29 @@ export function App() {
       )}
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* backdrop-blur makes the header its own stacking context; without a z-index the model popover paints under the composer and tiles. Stays below the drawer overlay (z-10). */}
-        <header className="relative z-[5] flex flex-wrap items-center gap-x-2 gap-y-1 max-[720px]:flex-nowrap border-b border-border/70 px-5 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur max-[720px]:px-3 max-[720px]:pb-2">
+        {/* On phones the header is a 44px | title + model chip | 44px grid. It drops the blur (costly to repaint while the keyboard moves) for a solid bg, and order-first keeps it above the meter, which is later in the DOM. */}
+        <header className="relative z-[5] flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/70 px-5 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur max-[720px]:order-first max-[720px]:grid max-[720px]:grid-cols-[44px_1fr_44px] max-[720px]:gap-y-0 max-[720px]:border-b-0 max-[720px]:bg-bg max-[720px]:px-2.5 max-[720px]:pb-2 max-[720px]:pt-[calc(0.375rem+env(safe-area-inset-top,0px))] max-[720px]:backdrop-blur-none">
           <PressButton
             type="button"
             aria-label="Open chats"
             onClick={() => setMenuOpen(true)}
-            className="flex items-center justify-center rounded-xl p-2 text-muted hover:bg-bubble focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent max-[720px]:min-h-11 max-[720px]:min-w-11 min-[721px]:hidden"
+            className="flex items-center justify-center rounded-xl p-2 text-muted hover:bg-bubble focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent max-[720px]:col-start-1 max-[720px]:row-span-2 max-[720px]:row-start-1 max-[720px]:size-11 max-[720px]:rounded-full max-[720px]:border max-[720px]:border-border max-[720px]:bg-surface max-[720px]:p-0 max-[720px]:text-text min-[721px]:hidden"
           >
             <MenuIcon />
           </PressButton>
-          <h1 title={title} className="min-w-0 flex-1 truncate font-display text-lg font-semibold max-[480px]:text-base">{title}</h1>
+          <h1 title={title} className="min-w-0 flex-1 truncate font-display text-lg font-semibold max-[720px]:col-start-2 max-[720px]:row-start-1 max-[720px]:text-center max-[720px]:text-base">{title}</h1>
           <Button variant="bare"
             type="button"
             aria-label="Story"
             title="Story bible, lore and summary"
             disabled={create.isPending}
             onClick={openStory}
-            className="flex flex-none items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] max-[720px]:min-h-11 max-[720px]:min-w-11 text-muted hover:bg-bubble hover:text-text disabled:opacity-60"
+            className="flex flex-none items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted hover:bg-bubble hover:text-text disabled:opacity-60 max-[720px]:col-start-3 max-[720px]:row-span-2 max-[720px]:row-start-1 max-[720px]:size-11 max-[720px]:rounded-full max-[720px]:border max-[720px]:border-border max-[720px]:bg-surface max-[720px]:p-0 max-[720px]:text-text"
           >
-            <BookIcon width={16} height={16} />
-            <span className="max-[480px]:hidden">Story</span>
+            <BookIcon width={16} height={16} className="max-[720px]:size-[22px]" />
+            <span className="max-[720px]:hidden">Story</span>
           </Button>
-          <div className="min-w-0">
+          <div className="min-w-0 max-[720px]:col-start-2 max-[720px]:row-start-2 max-[720px]:justify-self-center">
             <ProviderSwitcher
               chatId={currentId}
               pendingModel={pendingModel}
@@ -276,6 +277,16 @@ export function App() {
           onSetWindow={() => setSettingsOpen(true)}
           onSummarize={() => setStory({ open: true, tab: "summary" })}
         />
+        {blank && phone && (
+          <QuickActions
+            focused={focused}
+            canAttach={activeProfile?.vision ?? false}
+            onStory={openStory}
+            onScene={() => composer.current?.setText("Write a scene where ")}
+            onWeb={() => composer.current?.enableWeb()}
+            onAttach={() => composer.current?.openPicker()}
+          />
+        )}
         <animated.div ref={dock} style={dockStyle} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onTouchStart={dragStart} onTouchMove={dragScroll}>
           <Composer
             ref={composer}

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubResizeObserver } from "../test/helpers";
-import { Composer } from "./Composer";
+import { createRef } from "react";
+import { Composer, type ComposerHandle } from "./Composer";
 
 function stubViewport(phone: boolean) {
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -129,5 +130,35 @@ describe("Composer on a phone", () => {
     expect(sheet.textContent).toContain("Dolphin can't read images");
     await user.click(row);
     expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("explains each sheet row on one line and shows the provider name", async () => {
+    const user = userEvent.setup();
+    render(ui(true, true));
+    await user.click(screen.getByRole("button", { name: "Add to message" }));
+    const sheet = await screen.findByRole("dialog");
+    expect(sheet.textContent).toContain("Up to 4. Dolphin can read them.");
+    expect(sheet.textContent).toContain("Looks it up first, then answers.");
+    expect(sheet.textContent).toContain("Adds pictures between paragraphs.");
+  });
+
+  it("does not animate the card border or shadow on focus", () => {
+    const { container } = render(ui(true));
+    expect(container.innerHTML).not.toContain("transition-[border-color,box-shadow]");
+  });
+
+  it("exposes enableWeb and openPicker on the handle", async () => {
+    const ref = createRef<ComposerHandle>();
+    const { rerender } = render(<Composer ref={ref} disabled={false} vision providerName="Dolphin" onSend={() => undefined} onStop={() => undefined} />);
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
+    act(() => ref.current?.openPicker());
+    expect(click).toHaveBeenCalledTimes(1);
+    act(() => ref.current?.enableWeb());
+    expect(await screen.findByRole("button", { name: "Turn off web search" })).toBeTruthy();
+    rerender(<Composer ref={ref} disabled={false} vision={false} providerName="Dolphin" onSend={() => undefined} onStop={() => undefined} />);
+    act(() => ref.current?.openPicker());
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status").textContent).toContain("Dolphin can't read images");
+    click.mockRestore();
   });
 });

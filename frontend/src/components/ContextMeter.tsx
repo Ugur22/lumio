@@ -47,9 +47,10 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-2 text-xs">
+    // order-[-1] lifts the phone line to just under the header (it sits below the messages in the DOM).
+    <div className="mx-auto flex w-full max-w-[760px] flex-wrap items-center gap-x-3 gap-y-1 px-5 pt-2 text-xs max-[720px]:order-[-1] max-[720px]:flex-nowrap max-[720px]:px-[18px] max-[720px]:pt-0">
       {/* Hover and keyboard focus reveal the tip like the Composer's; a click pins it for touch screens. */}
-      <div ref={tip} className="group relative min-w-[11rem] flex-1">
+      <div ref={tip} className="group relative min-w-[11rem] flex-1 max-[720px]:min-w-0">
         <Button variant="bare"
           type="button"
           aria-expanded={pinned}
@@ -83,19 +84,20 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
               style={{ width: `${view.barPercent}%` }}
             />
           </span>
+          <span className="hidden flex-none tabular-nums text-muted max-[720px]:inline">
+            {view.label} tokens
+          </span>
         </Button>
         <div
           id="context-tip"
           role="tooltip"
-          className={`pointer-events-none absolute bottom-full left-0 z-20 mb-2.5 w-[min(16rem,calc(100vw-2.5rem))] rounded-xl border border-border bg-surface px-3 py-2.5 leading-snug text-text shadow-lift transition-opacity duration-150 group-has-[:focus-visible]:opacity-100 group-hover:opacity-100 ${
+          className={`pointer-events-none absolute bottom-full left-0 z-20 mb-2.5 max-[720px]:bottom-auto max-[720px]:top-full max-[720px]:mb-0 max-[720px]:mt-1 w-[min(16rem,calc(100vw-2.5rem))] rounded-xl border border-border bg-surface px-3 py-2.5 leading-snug text-text shadow-lift transition-opacity duration-150 group-has-[:focus-visible]:opacity-100 group-hover:opacity-100 ${
             pinned ? "opacity-100" : "opacity-0"
           }`}
         >
           <strong className="block text-[13px] font-semibold">
             {view.percent}% of the context window
           </strong>
-          {/* The phone line drops the token counts, so the tip carries them. */}
-          <span className="tabular-nums text-muted min-[721px]:hidden">{view.label} tokens</span>
           <dl className="mt-1.5 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5">
             {partRows(context.parts).map((r) => (
               <div key={r.key} className="contents">

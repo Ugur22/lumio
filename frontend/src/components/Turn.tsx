@@ -49,12 +49,12 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
   const [live] = useState(reply.kind === "thinking");
 
   return (
-    <div className="mb-8 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border [&:not(:first-child)]:pt-8">
+    <div className="mb-8 max-[720px]:mb-5 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border [&:not(:first-child)]:pt-8 max-[720px]:[&:not(:first-child)]:border-t-0 max-[720px]:[&:not(:first-child)]:pt-0">
       <AttachedImages urls={images} live={live} />
       {question && (
         <Appear
           live={live}
-          className="ml-auto w-fit max-w-[85%] origin-right whitespace-pre-wrap break-words rounded-[12px_12px_3px_12px] bg-bubble px-4 py-2.5 shadow-soft [overflow-wrap:anywhere]"
+          className="ml-auto w-fit max-w-[85%] origin-right whitespace-pre-wrap break-words rounded-[12px_12px_3px_12px] bg-bubble px-4 py-2.5 shadow-soft [overflow-wrap:anywhere] max-[720px]:max-w-[82%] max-[720px]:rounded-[18px_18px_4px_18px] max-[720px]:px-3.5 max-[720px]:py-[9px] max-[720px]:text-[15px] max-[720px]:shadow-none"
         >
           {question}
         </Appear>
@@ -93,7 +93,7 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
 function AttachedImages({ urls, live }: { urls: string[]; live: boolean }) {
   if (urls.length === 0) return null;
   return (
-    <Appear live={live} className="mb-2 ml-auto flex max-w-[85%] flex-wrap justify-end gap-2">
+    <Appear live={live} className="mb-2 ml-auto flex max-w-[85%] max-[720px]:max-w-[82%]flex-wrap justify-end gap-2">
       {urls.map((url, i) => (
         <AttachedImage key={url} url={url} label={`Attached image ${i + 1}`} />
       ))}
@@ -145,7 +145,8 @@ function SourceChips({ sources, notes, query }: { sources: SourceRef[]; notes: s
 
 function Who() {
   return (
-    <div className="mb-2.5 flex items-center gap-2 text-[13px] font-semibold leading-none text-muted">
+    // Phone replies run straight into the serif, like the mockup; the name row would only push them down.
+    <div className="mb-2.5 flex items-center max-[720px]:hidden gap-2 text-[13px] font-semibold leading-none text-muted">
       <LumioMark size={20} />
       {APP_NAME}
     </div>

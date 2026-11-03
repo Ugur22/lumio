@@ -4,6 +4,7 @@ import { match } from "ts-pattern";
 import { imageUrl } from "../api";
 import { useStream } from "../store/stream";
 import type { IllustrationFailure, Message, SourceRef } from "../types";
+import { BookIcon, GlobeIcon, ImageIcon, LumioMark, PencilIcon } from "./icons";
 import { Button, PressButton } from "./ui";
 import { Turn, type Reply } from "./Turn";
 
@@ -39,7 +40,16 @@ export function MessageList({ messages, chatId, loading = false }: Props) {
   useEffect(() => {
     if (pending && pending.status !== "streaming") stick.current = true;
     const el = ref.current;
-    if (el && stick.current) el.scrollTo({ top: el.scrollHeight, behavior: streaming ? "auto" : "smooth" });
+    if (!el || !stick.current) return;
+    if (!streaming) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      return;
+    }
+    // Tokens arrive faster than frames; one scroll per frame is all the eye sees and avoids layout thrash.
+    const frame = requestAnimationFrame(() => {
+      if (stick.current) el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [messages, pending, streaming]);
 
   // Messages alternate user/assistant, so pairing them gives one visual turn each.
@@ -101,8 +111,9 @@ export function MessageList({ messages, chatId, loading = false }: Props) {
 function EmptyHeading() {
   const style = useSpring({ from: { opacity: 0, y: 18 }, to: { opacity: 1, y: 0 }, config: { tension: 220, friction: 24 } });
   return (
-    <animated.div style={style} className="mb-2 max-[720px]:px-1">
-      <h2 className="font-display text-[2.1rem] font-semibold leading-tight max-[720px]:text-[1.6rem]">What shall we write?</h2>
+    <animated.div style={style} className="mb-2 max-[720px]:flex max-[720px]:flex-col max-[720px]:items-center max-[720px]:gap-3.5 max-[720px]:px-1 max-[720px]:text-center">
+      <LumioMark size={48} aria-hidden="true" className="min-[721px]:hidden" />
+      <h2 className="font-display text-[2.1rem] font-semibold leading-tight max-[720px]:text-2xl">What shall we write?</h2>
       <p className="mt-2 text-muted max-[720px]:hidden">Pick a starting point, or just start typing.</p>
     </animated.div>
   );
@@ -155,5 +166,47 @@ export function Starters({ ref, leavingAt, onPick, onStory, disabled }: { ref?: 
         so the characters and world stay consistent.
       </p>
     </div>
+  );
+}
+
+// Phone counterpart of Starters: plain one-line rows above the composer, gone once typing starts.
+// The keyboard check is CSS (root carries data-keyboard="open") so it never waits on a render.
+export function QuickActions({
+  focused,
+  canAttach,
+  onStory,
+  onScene,
+  onWeb,
+  onAttach,
+}: {
+  focused: boolean;
+  canAttach: boolean;
+  onStory: () => void;
+  onScene: () => void;
+  onWeb: () => void;
+  onAttach: () => void;
+}) {
+  if (focused) return null;
+  const rows = [
+    { label: "Continue my story", Icon: BookIcon, run: onStory },
+    { label: "Write a scene", Icon: PencilIcon, run: onScene },
+    { label: "Search the web", Icon: GlobeIcon, run: onWeb },
+    ...(canAttach ? [{ label: "Attach an image", Icon: ImageIcon, run: onAttach }] : []),
+  ];
+  return (
+    <ul aria-label="Quick actions" className="flex flex-none flex-col px-[18px] pb-2.5 [[data-keyboard=open]_&]:hidden">
+      {rows.map(({ label, Icon, run }) => (
+        <li key={label}>
+          <button
+            type="button"
+            onClick={run}
+            className="flex min-h-12 w-full items-center gap-3.5 rounded-lg text-left text-[16px] text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <Icon width={22} height={22} className="flex-none text-muted" />
+            {label}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

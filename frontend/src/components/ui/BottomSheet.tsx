@@ -5,11 +5,13 @@ interface Props {
   open: boolean;
   onClose: () => void;
   title: string;
+  // Renders the title as a small uppercase section label (for titles that are fixed UI text, not user content).
+  eyebrow?: boolean;
   children: ReactNode;
 }
 
 // Phone counterpart of Modal: same Headless Dialog (focus trap, scroll lock, Escape, scrim tap), anchored to the bottom.
-export function BottomSheet({ open, onClose, title, children }: Props) {
+export function BottomSheet({ open, onClose, title, eyebrow = false, children }: Props) {
   return (
     <Dialog open={open} onClose={onClose} className="relative z-50">
       <DialogBackdrop
@@ -19,10 +21,10 @@ export function BottomSheet({ open, onClose, title, children }: Props) {
       <div className="fixed inset-x-0 bottom-0 flex justify-center">
         <DialogPanel
           transition
-          className="max-h-[85dvh] w-full max-w-[560px] overflow-y-auto overscroll-contain rounded-t-2xl border border-b-0 border-border bg-surface px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-2 text-text shadow-lift transition-transform duration-200 ease-out data-[closed]:translate-y-full motion-reduce:transition-none"
+          className="max-h-[85dvh] w-full max-w-[560px] overflow-y-auto overscroll-contain rounded-t-3xl border border-b-0 border-border bg-surface px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-2 text-text shadow-lift transition-transform duration-200 ease-out data-[closed]:translate-y-full motion-reduce:transition-none"
         >
-          <div aria-hidden="true" className="mx-auto mb-3 h-1 w-10 rounded-full bg-border" />
-          <DialogTitle className="mb-2 text-[15px] font-semibold">{title}</DialogTitle>
+          <div aria-hidden="true" className="mx-auto mb-2.5 h-[5px] w-9 rounded-full bg-border" />
+          <DialogTitle className={eyebrow ? "mb-1 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted" : "mb-2 text-[15px] font-semibold"}>{title}</DialogTitle>
           {children}
         </DialogPanel>
       </div>

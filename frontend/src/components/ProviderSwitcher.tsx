@@ -91,12 +91,13 @@ export function ProviderSwitcher({ chatId, pendingModel, onPendingModel, onManag
           disabled={chatId !== null && !chat}
           aria-label={`Provider and model: ${active.name}, ${modelProps.current}`}
           onClick={() => setSheetOpen(true)}
-          className={`flex min-h-11 min-w-11 max-w-[10.5rem] items-center gap-1 rounded-lg border border-border bg-surface px-2.5 text-[13px] text-muted hover:text-text disabled:opacity-60 ${focusRing}`}
+          // The pill is visually small, so the pseudo-element extends the tap area to 44px.
+          className={`relative inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-[''] hover:text-text disabled:opacity-60 ${focusRing}`}
         >
           <span className="truncate">
             {active.name} · {modelProps.current}
           </span>
-          <ChevronDownIcon width={14} height={14} aria-hidden="true" className="flex-none" />
+          <ChevronDownIcon width={12} height={12} aria-hidden="true" className="flex-none" />
         </button>
         <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Provider and model">
           <div className="flex flex-col gap-3 text-muted">
