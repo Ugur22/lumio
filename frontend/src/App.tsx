@@ -11,6 +11,7 @@ import { ProvidersDialog } from "./components/ProvidersDialog";
 import { Sidebar } from "./components/Sidebar";
 import { StoryDialog, type StoryTab } from "./components/StoryDialog";
 import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, useRenameChat, useSetChatModel } from "./hooks/useChats";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTheme } from "./hooks/useTheme";
@@ -47,8 +48,10 @@ export function App() {
   const blank = !restoring && !pendingHere && (currentId === null || (chat.isSuccess && chat.data.messages.length === 0));
 
   // On a phone the keyboard would cover a centred input, so focusing it docks the layout early.
+  const phone = useMediaQuery("(max-width: 720px)");
   const [focused, setFocused] = useState(false);
-  const centered = blank && !(focused && window.matchMedia("(pointer: coarse)").matches);
+  // Phones never centre: the input stays at the bottom like a messaging app, so focusing it moves nothing.
+  const centered = blank && !phone && !(focused && window.matchMedia("(pointer: coarse)").matches);
 
   // FLIP: when the layout docks it snaps, so play the composer from where it was.
   const dock = useRef<HTMLDivElement>(null);
