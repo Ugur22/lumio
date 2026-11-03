@@ -18,7 +18,6 @@ import { useTheme } from "./hooks/useTheme";
 import { useVisualViewport } from "./hooks/useVisualViewport";
 import type { Attachment } from "./lib/images";
 import { effectiveProfile } from "./lib/providers";
-import { isRestoring } from "./lib/restoring";
 import { useStream } from "./store/stream";
 import type { ChatModelBody, ChatSummary } from "./types";
 
@@ -27,11 +26,9 @@ export function App() {
   const list = useChatList();
   const chats = list.data ?? [];
 
-  // undefined = nothing chosen yet, so the newest chat opens once the list loads.
-  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
-  const currentId = chosen === undefined ? (chats[0]?.id ?? null) : chosen;
+  // The app opens on a blank chat; an older chat only opens when picked from the drawer.
+  const [currentId, setCurrentId] = useState<string | null>(null);
   const chat = useChat(currentId);
-  const restoring = isRestoring({ chosen, listPending: list.isPending, currentId, chatPending: chat.isPending });
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -45,7 +42,7 @@ export function App() {
   const context = useChatContext(currentId);
   const pendingHere = useStream((s) => s.pending?.chatId === currentId);
   // One Composer instance serves both layouts, so a draft survives the move to the bottom.
-  const blank = !restoring && !pendingHere && (currentId === null || (chat.isSuccess && chat.data.messages.length === 0));
+  const blank = !pendingHere && (currentId === null || (chat.isSuccess && chat.data.messages.length === 0));
 
   // On a phone the keyboard would cover a centred input, so focusing it docks the layout early.
   const phone = useMediaQuery("(max-width: 720px)");
@@ -97,7 +94,7 @@ export function App() {
   const select = (id: string | null) => {
     useStream.getState().clearFailures();
     if (id !== currentId) setPendingModel(null);
-    setChosen(id);
+    setCurrentId(id);
     setMenuOpen(false);
     if (id === null) composer.current?.focus();
   };
@@ -113,7 +110,7 @@ export function App() {
       illustrate,
       (saved) => {
         // Only jump to the new chat if the user is still on the blank one.
-        setChosen((cur) => (chatId === null && (cur === null || cur === undefined) ? saved.id : cur));
+        setCurrentId((cur) => (chatId === null && cur === null ? saved.id : cur));
         // Not if a newer pick was made while this send was in flight.
         if (chatId === null) setPendingModel((cur) => (cur === model ? null : cur));
       },
@@ -142,9 +139,7 @@ export function App() {
 
   const title = currentId
     ? (chat.data?.title ?? chats.find((c) => c.id === currentId)?.title ?? "")
-    : restoring
-      ? ""
-      : "New chat";
+    : "New chat";
   const loadError = list.error ?? chat.error ?? create.error;
 
   const scrim = useTransition(menuOpen, {
@@ -170,7 +165,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-dvh w-full max-[720px]:fixed max-[720px]:inset-x-0 max-[720px]:top-[var(--vv-top,0px)] max-[720px]:h-[var(--vv-height,100dvh)] max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
+    <div className="flex h-dvh w-full max-[720px]:fixed max-[720px]:inset-x-0 max-[720px]:top-[var(--vv-top,0px)] max-[720px]:h-[var(--vv-height,100%)] max-w-full overflow-x-hidden font-sans text-[15px] leading-[1.6] text-text">
       <Sidebar
         chats={chats}
         currentId={currentId}
@@ -269,11 +264,10 @@ export function App() {
           <MessageList
             messages={currentId ? (chat.data?.messages ?? []) : []}
             chatId={currentId}
-            loading={restoring}
           />
         </CodeActionsContext.Provider>
         <ContextMeter
-          context={currentId ? context.data : undefined}
+          context={currentId && !(blank && phone) ? context.data : undefined}
           onSetWindow={() => setSettingsOpen(true)}
           onSummarize={() => setStory({ open: true, tab: "summary" })}
         />
