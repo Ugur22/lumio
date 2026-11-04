@@ -10,7 +10,7 @@ HOST = "lumio.example.com"
 ORIGIN = f"https://{HOST}"
 METHODS = {"get", "post", "put", "patch", "delete"}
 # The only routes a stranger may call: they create or end a session, so they cannot require one.
-OPEN = {("POST", "/api/auth/register"), ("POST", "/api/auth/login"), ("POST", "/api/auth/logout")}
+OPEN = {("POST", "/api/auth/register"), ("POST", "/api/auth/login"), ("POST", "/api/auth/token"), ("POST", "/api/auth/logout")}
 
 
 def api_routes():

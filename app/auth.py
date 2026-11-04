@@ -17,6 +17,10 @@ def check_origin(request: Request, allowed: frozenset[str] = frozenset()) -> Non
     browsers omit Origin on same-origin GETs and they change nothing."""
     if request.method in ("GET", "HEAD", "OPTIONS"):
         return
+    # A bearer token is no ambient credential (a browser never attaches it by itself), so CSRF does not apply. current_user
+    # reads only the bearer when the header is present, so a cookie cannot ride along on such a request.
+    if bearer_token(request):
+        return
     host_header = request.headers.get("host", "")
     origin = request.headers.get("origin")
     if origin is None:
@@ -43,19 +47,34 @@ def clear_cookie(response: Response) -> None:
     response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax", secure=runtime.settings.deployed)
 
 
+def bearer_token(request: Request) -> str | None:
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    token = token.strip()
+    return token if scheme.lower() == "bearer" and token else None
+
+
+def request_token(request: Request) -> tuple[str | None, bool]:
+    """The session token of this request and whether it came by cookie. Why the bearer wins when both are present: the
+    Origin check is skipped for bearer requests, so the cookie must never be what authenticates one."""
+    bearer = bearer_token(request)
+    if bearer:
+        return bearer, False
+    return request.cookies.get(COOKIE), True
+
+
 def session_token_hash(request: Request) -> str | None:
-    token = request.cookies.get(COOKIE)
+    token, _ = request_token(request)
     return accounts.sha256(token) if token else None
 
 
 def current_user(request: Request, response: Response) -> UserView:
     if not runtime.settings.deployed:
         return LOCAL_USER
-    token_hash = session_token_hash(request)
-    found = runtime.db.session_account(token_hash) if token_hash else None
+    token, by_cookie = request_token(request)
+    found = runtime.db.session_account(accounts.sha256(token)) if token else None
     if found is None:
         raise HTTPException(401, "Not signed in")
     account, refreshed = found
-    if refreshed:  # the server-side expiry slid, so the browser's copy has to as well
-        set_cookie(response, request.cookies[COOKIE])
+    if refreshed and by_cookie:  # the server-side expiry slid, so the browser's copy has to as well
+        set_cookie(response, token)
     return UserView(id=account.id, username=account.username, is_admin=account.is_admin)
