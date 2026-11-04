@@ -91,3 +91,12 @@ describe("Sidebar swipe", () => {
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 });
+
+describe("Sidebar list", () => {
+  it("keeps rows at full height so a long list scrolls instead of squeezing them", () => {
+    stubPhone(true);
+    setup();
+    const row = screen.getByRole("navigation", { name: "Saved chats" }).firstElementChild;
+    expect(row?.classList.contains("shrink-0")).toBe(true);
+  });
+});
