@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 // Below this the visual viewport only moved because of browser chrome (URL bar), not an on-screen keyboard.
 const MIN_KEYBOARD = 80;
+// The keyboard slide-out takes about this long, so a check right at blur can still see the old height.
+const KEYBOARD_SETTLE_MS = 350;
 
 interface ViewportBox {
   height: number;
@@ -55,12 +57,29 @@ export function useVisualViewport(): number {
       if (!frame) frame = requestAnimationFrame(update);
     };
     update();
+    // Android Chrome can close the keyboard (back gesture, field still focused) without a visualViewport event, which
+    // would leave the root pinned to the keyboard-open height. The window events and a late re-check after blur catch that.
+    let settle = 0;
+    const onFocusOut = () => {
+      schedule();
+      window.clearTimeout(settle);
+      settle = window.setTimeout(schedule, KEYBOARD_SETTLE_MS);
+    };
     vv.addEventListener("resize", schedule);
     vv.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    document.addEventListener("visibilitychange", schedule);
+    document.addEventListener("focusout", onFocusOut);
     return () => {
       if (frame) cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      document.removeEventListener("visibilitychange", schedule);
+      document.removeEventListener("focusout", onFocusOut);
       for (const v of ["--kb-inset", "--vv-height", "--vv-top"]) root.style.removeProperty(v);
       delete root.dataset.keyboard;
     };

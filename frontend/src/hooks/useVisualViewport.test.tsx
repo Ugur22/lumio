@@ -103,6 +103,46 @@ describe("useVisualViewport", () => {
     expect(set).toHaveBeenCalledTimes(3);
   });
 
+  it("drops the keyboard pin when the keyboard closes without a visualViewport event", () => {
+    const frames = manualFrames();
+    const vv = Object.assign(new EventTarget(), { height: 800, offsetTop: 0, scale: 1 });
+    vi.stubGlobal("visualViewport", vv);
+    vi.stubGlobal("innerHeight", 800);
+    renderHook(() => useVisualViewport());
+    vv.height = 480;
+    vv.dispatchEvent(new Event("resize"));
+    frames.flush();
+    expect(document.documentElement.style.getPropertyValue("--vv-height")).toBe("480px");
+
+    vv.height = 800;
+    window.dispatchEvent(new Event("resize"));
+    frames.flush();
+    expect(document.documentElement.style.getPropertyValue("--vv-height")).toBe("");
+    expect(document.documentElement.dataset.keyboard).toBeUndefined();
+  });
+
+  it("re-checks shortly after a field loses focus", () => {
+    vi.useFakeTimers();
+    try {
+      const frames = manualFrames();
+      const vv = Object.assign(new EventTarget(), { height: 480, offsetTop: 0, scale: 1 });
+      vi.stubGlobal("visualViewport", vv);
+      vi.stubGlobal("innerHeight", 800);
+      renderHook(() => useVisualViewport());
+      frames.flush();
+      expect(document.documentElement.dataset.keyboard).toBe("open");
+
+      document.dispatchEvent(new Event("focusout"));
+      frames.flush();
+      vv.height = 800;
+      vi.advanceTimersByTime(400);
+      frames.flush();
+      expect(document.documentElement.dataset.keyboard).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does nothing without a visualViewport", () => {
     vi.stubGlobal("visualViewport", null);
     const { result } = renderHook(() => useVisualViewport());

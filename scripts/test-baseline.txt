@@ -1,2 +1,2 @@
 pytest=522
-vitest=377
+vitest=379
