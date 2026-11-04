@@ -345,6 +345,11 @@ class LoginBody(ApiModel):
     password: SecretStr = Field(min_length=1, max_length=1024)
 
 
+class TokenLogin(ApiModel):
+    token: str
+    user: UserView
+
+
 class PasswordChange(ApiModel):
     current_password: SecretStr = Field(min_length=1, max_length=1024)
     new_password: Password

@@ -8,9 +8,13 @@ import accounts
 import storage
 from app import auth, runtime
 from app.logs import log
-from models import LoginBody, PasswordChange, RegisterBody, UserView
+from models import LoginBody, PasswordChange, RegisterBody, TokenLogin, UserView
 
 router = APIRouter(prefix="/api/auth", dependencies=[Depends(auth.require_same_origin)])
+
+# A native client sends no Origin and has no cookie to protect, so its login cannot sit behind the Origin check. A forged
+# cross-site call gains nothing: no cookie is set and the token is in a response the other site cannot read.
+token_router = APIRouter(prefix="/api/auth")
 
 INVALID_LOGIN = "Invalid username or password"
 INVALID_INVITE = "That invite is not valid"
@@ -42,10 +46,14 @@ def credit(attempts: list[int]) -> None:
     runtime.db.forget_login_attempts(attempts)
 
 
-def start_session(response: Response, user_id: str) -> None:
+def new_session(user_id: str) -> str:
     token = accounts.new_token()
     runtime.db.create_session(accounts.sha256(token), user_id)
-    auth.set_cookie(response, token)
+    return token
+
+
+def start_session(response: Response, user_id: str) -> None:
+    auth.set_cookie(response, new_session(user_id))
 
 
 def view(account: storage.Account) -> UserView:
@@ -73,8 +81,8 @@ def register(body: RegisterBody, request: Request, response: Response):
     return view(account)
 
 
-@router.post("/login", response_model=UserView)
-def login(body: LoginBody, request: Request, response: Response):
+def authenticate(body: LoginBody, request: Request) -> storage.Account:
+    """Shared by the cookie and the token login: throttling, identical-cost failures, credit on success."""
     keys = [user_key(body.username), ip_key(request)]
     attempts = throttle(keys)
     account = runtime.db.get_account(body.username)
@@ -85,9 +93,24 @@ def login(body: LoginBody, request: Request, response: Response):
         raise HTTPException(401, INVALID_LOGIN)
     credit(attempts)
     runtime.db.clear_login_failures(keys[0])
+    return account
+
+
+@router.post("/login", response_model=UserView)
+def login(body: LoginBody, request: Request, response: Response):
+    account = authenticate(body, request)
     start_session(response, account.id)
     log.info("User logged in", extra={"user_id": account.id})
     return view(account)
+
+
+@token_router.post("/token", response_model=TokenLogin)
+def token_login(body: LoginBody, request: Request):
+    """Login for a native client: the same session as the cookie one, handed back in the body instead of a cookie."""
+    account = authenticate(body, request)
+    token = new_session(account.id)
+    log.info("User logged in with a token", extra={"user_id": account.id})
+    return TokenLogin(token=token, user=view(account))
 
 
 @router.post("/logout", response_model=None, status_code=204)

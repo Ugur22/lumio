@@ -33,6 +33,7 @@ async def validation_error(request: Request, exc: RequestValidationError):
 
 
 app.include_router(routes_auth.router)
+app.include_router(routes_auth.token_router)
 app.include_router(routes_chats.router)
 app.include_router(routes_profiles.profiles)
 app.include_router(routes_profiles.web_settings)

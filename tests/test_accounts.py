@@ -440,3 +440,140 @@ def test_a_database_without_the_account_tables_upgrades_in_place(tmp_path):
     assert "a" in db.chat_ids()
     accounts.create_user(db, "alice", PASSWORD)
     assert db.get_account("ALICE").username == "alice"
+
+
+# --- bearer tokens for native clients -------------------------------------------------------------
+
+@pytest.fixture
+def native(monkeypatch):
+    """A client with no cookie jar use and no Origin, like an app."""
+    monkeypatch.setattr(runtime.settings, "public_host", HOST)
+    return TestClient(server.app, base_url=ORIGIN, cookies={})
+
+
+def bearer(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+def token_login(native, username="alice", password=PASSWORD):
+    return native.post("/api/auth/token", json={"username": username, "password": password})
+
+
+def test_token_login_returns_a_token_and_sets_no_cookie(native):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    r = token_login(native, "ALICE")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {"token", "user"} and body["user"]["username"] == "alice"
+    assert "set-cookie" not in r.headers and not native.cookies
+    with runtime.db._read() as conn:
+        stored = [row[0] for row in conn.execute("SELECT token_hash FROM sessions")]
+    assert stored == [accounts.sha256(body["token"])] and body["token"] not in stored
+
+
+@pytest.mark.parametrize("username,password", [("alice", "wrong-password"), ("nobody", PASSWORD)])
+def test_token_login_failures_read_the_same_as_login(native, username, password):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    r = token_login(native, username, password)
+    assert r.status_code == 401 and r.json() == {"detail": "Invalid username or password"}
+    assert session_count() == 0
+
+
+def test_token_login_refuses_a_disabled_account_alike(native):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    accounts.disable_user(runtime.db, "alice")
+    r = token_login(native)
+    assert r.status_code == 401 and r.json() == {"detail": "Invalid username or password"}
+
+
+def test_token_login_is_throttled_with_login(native, web):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    for _ in range(5):
+        assert token_login(native, password="wrong-password").status_code == 401
+    r = token_login(native)
+    assert r.status_code == 429 and int(r.headers["retry-after"]) > 0
+    assert web.post("/api/auth/login", json={"username": "alice", "password": PASSWORD}).status_code == 429
+
+
+def test_bearer_reaches_a_protected_route(native):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    token = token_login(native).json()["token"]
+    r = native.get("/api/auth/me", headers=bearer(token))
+    assert r.status_code == 200 and r.json()["username"] == "alice"
+    assert native.get("/api/chats", headers=bearer(token)).status_code == 200
+    assert native.get("/api/auth/me").status_code == 401
+
+
+def test_bearer_post_needs_no_origin_but_a_cookie_post_does(native, web):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    token = token_login(native).json()["token"]
+    assert native.post("/api/chats", json={}, headers=bearer(token)).status_code != 403
+
+    register(web)
+    cookie_only = TestClient(server.app, base_url=ORIGIN, cookies=web.cookies)
+    r = cookie_only.post("/api/auth/logout")
+    assert r.status_code == 403 and r.json() == {"detail": "Missing Origin header"}
+    # A non-bearer Authorization header does not lift the requirement either.
+    assert cookie_only.post("/api/auth/logout", headers={"Authorization": "Basic abc"}).status_code == 403
+    assert cookie_only.post("/api/auth/logout", headers={"Authorization": "Bearer "}).status_code == 403
+
+
+def test_the_cookie_cannot_authenticate_a_bearer_request(native, web):
+    register(web)
+    cookie_only = TestClient(server.app, base_url=ORIGIN, cookies=web.cookies)
+    assert cookie_only.get("/api/auth/me").status_code == 200
+    assert cookie_only.get("/api/auth/me", headers=bearer("not-a-session")).status_code == 401
+
+
+def test_logout_with_bearer_ends_that_session(native):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    token = token_login(native).json()["token"]
+    assert native.post("/api/auth/logout", headers=bearer(token)).status_code == 204
+    assert session_count() == 0
+    assert native.get("/api/auth/me", headers=bearer(token)).status_code == 401
+
+
+def test_password_change_with_bearer_keeps_only_that_session(native):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    mine = token_login(native).json()["token"]
+    other = token_login(native).json()["token"]
+    r = native.post(
+        "/api/auth/password",
+        json={"current_password": PASSWORD, "new_password": "a brand new secret"},
+        headers=bearer(mine),
+    )
+    assert r.status_code == 204
+    assert native.get("/api/auth/me", headers=bearer(mine)).status_code == 200
+    assert native.get("/api/auth/me", headers=bearer(other)).status_code == 401
+
+
+@pytest.mark.parametrize("header", ["Bearer garbage", "bearer garbage", "Bearer", "Token garbage"])
+def test_invalid_bearer_is_401(native, header):
+    assert native.get("/api/auth/me", headers={"Authorization": header}).status_code == 401
+
+
+def test_expired_bearer_is_401(native):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    token = token_login(native).json()["token"]
+    past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    with runtime.db._tx() as conn:
+        conn.execute("UPDATE sessions SET expires=?", (past,))
+    assert native.get("/api/auth/me", headers=bearer(token)).status_code == 401
+
+
+def test_bearer_session_slides_without_a_cookie(native):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    token = token_login(native).json()["token"]
+    with runtime.db._tx() as conn:
+        conn.execute("UPDATE sessions SET last_seen=?", ((datetime.now(timezone.utc) - timedelta(days=3)).isoformat(),))
+    r = native.get("/api/auth/me", headers=bearer(token))
+    assert r.status_code == 200 and "set-cookie" not in r.headers
+    assert runtime.db.session_account(accounts.sha256(token))[1] is False
+
+
+def test_the_token_never_reaches_the_logs(native, caplog):
+    accounts.create_user(runtime.db, "alice", PASSWORD)
+    with caplog.at_level(logging.DEBUG):
+        token = token_login(native).json()["token"]
+        native.get("/api/auth/me", headers=bearer(token))
+    assert token not in caplog.text
