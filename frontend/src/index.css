@@ -60,6 +60,14 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* iOS home-screen apps take the top safe-area inset off 100dvh, so the root stops short of the screen bottom.
+   100lvh is the full screen there; plain Safari tabs keep 100dvh, since lvh would hide the composer under the toolbar. */
+@media (display-mode: standalone) and (max-width: 720px) {
+  .app-root {
+    height: var(--vv-height, 100lvh);
+  }
+}
+
 button,
 [role="button"] {
   touch-action: manipulation;

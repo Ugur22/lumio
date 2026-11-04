@@ -129,7 +129,7 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
         {transitions((style, row) => (
           <animated.div
             style={{ opacity: style.opacity, height: style.height, x: style.x }}
-            className="overflow-hidden"
+            className="shrink-0 overflow-hidden"
           >
             {row.kind === "header" ? (
               <div className="flex h-[30px] items-end px-3.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
