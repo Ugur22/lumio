@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Profile, ProfileList } from "../types";
-import { detectPreset, effectiveProfile, hostOf, PRESETS } from "./providers";
+import { detectPreset, effectiveProfile, hostOf, PRESETS, profileLabel } from "./providers";
 
 describe("detectPreset", () => {
   it.each([
@@ -53,8 +53,8 @@ describe("image model defaults", () => {
 describe("DeepSeek preset", () => {
   it("points at the DeepSeek API and leaves sk- keys to the OpenAI hint", () => {
     const p = PRESETS.find((x) => x.id === "deepseek");
-    expect(p?.baseUrl).toBe("https://api.deepseek.com/v1");
-    expect(p?.model).toBe("deepseek-chat");
+    expect(p?.baseUrl).toBe("https://api.deepseek.com");
+    expect(p?.model).toBe("deepseek-flash");
     expect(detectPreset("sk-abc123")?.id).toBe("openai");
   });
 });
@@ -77,5 +77,12 @@ describe("effectiveProfile", () => {
 
   it("does not flag a fallback before profiles load", () => {
     expect(effectiveProfile(undefined, "b")).toEqual({ profile: undefined, fellBack: false });
+  });
+});
+
+describe("profileLabel", () => {
+  it("calls the managed profile Free trial whatever its stored name", () => {
+    expect(profileLabel({ name: "internal-name", managed: true })).toBe("Free trial");
+    expect(profileLabel({ name: "Groq", managed: false })).toBe("Groq");
   });
 });

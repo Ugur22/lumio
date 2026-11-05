@@ -75,7 +75,7 @@ export function MessageList({ messages, chatId }: Props) {
         .returnType<Reply>()
         .with({ status: "thinking" }, () => ({ kind: "thinking" }))
         .with({ status: "streaming" }, (p) => ({ kind: "text", content: p.reply, streaming: true }))
-        .with({ status: "error" }, (p) => ({ kind: "error", message: p.error }))
+        .with({ status: "error" }, (p) => ({ kind: "error", message: p.error, notice: p.notice }))
         .exhaustive(),
       sources: liveSources,
       notes: liveNotes,
@@ -177,6 +177,7 @@ export function Starters({ ref, leavingAt, onPick, onStory, disabled }: { ref?: 
 export function QuickActions({
   focused,
   canAttach,
+  canWeb = true,
   onStory,
   onScene,
   onWeb,
@@ -184,6 +185,8 @@ export function QuickActions({
 }: {
   focused: boolean;
   canAttach: boolean;
+  // False for the free trial, which has no web search.
+  canWeb?: boolean;
   onStory: () => void;
   onScene: () => void;
   onWeb: () => void;
@@ -193,7 +196,7 @@ export function QuickActions({
   const rows = [
     { label: "Continue my story", Icon: BookIcon, run: onStory },
     { label: "Write a scene", Icon: PencilIcon, run: onScene },
-    { label: "Search the web", Icon: GlobeIcon, run: onWeb },
+    ...(canWeb ? [{ label: "Search the web", Icon: GlobeIcon, run: onWeb }] : []),
     ...(canAttach ? [{ label: "Attach an image", Icon: ImageIcon, run: onAttach }] : []),
   ];
   return (

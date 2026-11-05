@@ -55,9 +55,47 @@ class Settings(BaseSettings):
     # Images are only kept so follow-up questions keep working; they are pruned after this.
     image_retention_days: int = Field(default=30, ge=1)
 
+    # Free trial: new users sign in with Google or GitHub and get a few text-only replies on a key the operator owns.
+    # Off unless every piece below is configured (see trial_enabled); open_signup is the kill switch.
+    open_signup: bool = False
+    trial_api_key: SecretStr | None = None  # never the same setting as api_key: that one belongs to the admin
+    trial_base_url: str = "https://api.deepseek.com"
+    trial_model: str = "deepseek-flash"
+    trial_calls: int = Field(default=5, ge=1)
+    trial_daily_calls: int = Field(default=150, ge=1)  # all trials together, per UTC day
+    oauth_google_client_id: str | None = None
+    oauth_google_client_secret: SecretStr | None = None
+    oauth_github_client_id: str | None = None
+    oauth_github_client_secret: SecretStr | None = None
+    # Keys the HMACs that identify a person across account deletion; changing it forgets every earlier trial.
+    oauth_pepper: SecretStr | None = None
+    # Origin used to build the OAuth redirect URIs; defaults to https://<public_host>.
+    public_base_url: str | None = None
+    # Lets the native app's sign-in come back to an Expo Go address (exp://<host>/--/auth), which changes per network. For
+    # testing only; the only redirect accepted when it is off is lumio://auth.
+    oauth_app_dev_redirects: bool = False
+
     @property
     def deployed(self) -> bool:
         return self.public_host is not None
+
+    def oauth_providers(self) -> list[str]:
+        """Providers with both a client id and a secret."""
+        found = []
+        for name in ("google", "github"):
+            if getattr(self, f"oauth_{name}_client_id") and getattr(self, f"oauth_{name}_client_secret"):
+                found.append(name)
+        return found
+
+    @property
+    def trial_enabled(self) -> bool:
+        return bool(
+            self.deployed and self.open_signup and self.trial_api_key and self.oauth_pepper and self.oauth_providers()
+        )
+
+    @property
+    def origin(self) -> str:
+        return (self.public_base_url or f"https://{self.public_host}").rstrip("/")
 
     @property
     def database(self) -> Path:
@@ -241,7 +279,10 @@ class ProfileStore(ApiModel):
 class ProfileView(Profile):
     configured: bool
     last4: str | None = None
-    source: Literal["keychain", "env"] | None = None
+    # "server": the free-trial profile, whose key belongs to the operator and is never shown.
+    source: Literal["keychain", "env", "server"] | None = None
+    # A profile the server provides and the user can neither edit nor delete.
+    managed: bool = False
     # Where saved keys live: the OS keychain locally, a file on a server.
     key_store: Literal["keychain", "file"] = "keychain"
 
@@ -350,9 +391,24 @@ class TokenLogin(ApiModel):
     user: UserView
 
 
+class ExchangeBody(ApiModel):
+    # No length rules here: any bad code or verifier must fail with the one generic 400, not a validation error.
+    code: str
+    verifier: str
+
+
 class PasswordChange(ApiModel):
     current_password: SecretStr = Field(min_length=1, max_length=1024)
     new_password: Password
+
+
+class TrialStatus(ApiModel):
+    enrolled: bool
+    limit: int
+    used: int
+    remaining: int
+    # Used up, or the operator switched trials off: either way the user's own provider is what is left.
+    ended: bool
 
 
 class WebKey(ApiModel):

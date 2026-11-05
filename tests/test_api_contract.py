@@ -22,3 +22,10 @@ def test_every_json_route_replies_with_a_named_model():
         and (method.upper(), path) not in NOT_JSON
     ]
     assert anonymous == []
+
+
+def test_the_app_code_exchange_is_a_named_post_returning_a_token_login():
+    op = server.app.openapi()["paths"]["/api/auth/oauth/exchange"]["post"]
+
+    assert op["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith("/ExchangeBody")
+    assert op["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith("/TokenLogin")

@@ -132,9 +132,15 @@ async def stream_reply(
     *,
     lease: storage.Lease,
     rev: int | None = None,
+    trial_call: storage.TrialCall | None = None,
+    key: str | None = None,
 ) -> AsyncIterator[str]:
-    """Streams the reply, then appends it in one short transaction. `lease` is released on every exit path."""
+    """Streams the reply, then appends it in one short transaction. `lease` is released on every exit path.
+
+    A `trial_call` is given back when the provider fails before any text reached the client, and never after, nor when the
+    client stops or disconnects. `key` is only used to keep it out of error text."""
     parts: list[str] = []
+    received = False  # any delta, reasoning included: the provider has already spent tokens on it
     usage: Usage | None = None
     finished = False
     saving = False  # the final save runs in a worker thread that outlives a cancelled request and then releases the lease
@@ -153,7 +159,10 @@ async def stream_reply(
             reported = getattr(getattr(chunk, "usage", None), "prompt_tokens", None)
             if isinstance(reported, int) and not isinstance(reported, bool):
                 usage = Usage(prompt_tokens=reported)
-            text = chunk.choices[0].delta.content if chunk.choices else None
+            delta = chunk.choices[0].delta if chunk.choices else None
+            text = getattr(delta, "content", None)
+            if text or any(getattr(delta, f, None) for f in ("reasoning_content", "reasoning", "thinking")):
+                received = True
             if text:
                 parts.append(text)
                 yield sse("delta", {"text": text})
@@ -202,11 +211,19 @@ async def stream_reply(
             | {
                 "usage": usage.model_dump() if usage else None,
                 "context": context_info(saved, window).model_dump(),
-            },
+            }
+            | ({"trial": {"remaining": trial_call.remaining}} if trial_call else {}),
         )
     except OpenAIError as e:
         finished = True
-        yield sse("error", {"detail": providers.error_text(e)})
+        if trial_call and not received:
+            trial_call.refund()
+        yield sse("error", {"detail": providers.client_error(e, key)})
+    except Exception:
+        # Not a provider error and not a cancellation: nothing was delivered yet, so the call is not the user's to lose.
+        if trial_call and not received:
+            trial_call.refund()
+        raise
     finally:
         # Plain synchronous calls only: this block also runs on cancellation, where an await would be cut short.
         try:

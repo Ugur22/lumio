@@ -76,6 +76,38 @@ describe("AuthScreen", () => {
   });
 });
 
+describe("free trial sign-in", () => {
+  const links = () => ({
+    google: screen.getByRole("link", { name: "Continue with Google" }) as HTMLAnchorElement,
+    github: screen.getByRole("link", { name: "Continue with GitHub" }) as HTMLAnchorElement,
+  });
+
+  it("offers Google and GitHub as plain links to the server's start routes", () => {
+    const fetchMock = mockFetch(() => json({}));
+    render(<AuthScreen />);
+    expect(links().google.getAttribute("href")).toBe("/api/auth/oauth/google/start");
+    expect(links().github.getAttribute("href")).toBe("/api/auth/oauth/github/start");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps them, and the one-line explanation, on the create-account view", async () => {
+    const user = userEvent.setup();
+    render(<AuthScreen />);
+    expect(screen.getByText("Free trial: 5 messages, no card")).toBeTruthy();
+    await openRegister(user);
+    expect(links().google).toBeTruthy();
+    expect(links().github).toBeTruthy();
+    expect(screen.getByText("Free trial: 5 messages, no card")).toBeTruthy();
+    expect(field("Invite code").required).toBe(true);
+  });
+
+  it("shows the message for an auth_error code through the notice", () => {
+    useSession.getState().reportAuthError("too_new");
+    render(<AuthScreen />);
+    expect(screen.getByRole("status").textContent).toBe("That GitHub account is too new to start a trial");
+  });
+});
+
 describe("sign in", () => {
   it("signs in with Enter, sends the lowercased name, and clears the password", async () => {
     const user = userEvent.setup();

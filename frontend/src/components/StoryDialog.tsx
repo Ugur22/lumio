@@ -2,6 +2,8 @@ import { DialogTitle, Tab, TabGroup, TabList, TabPanel, TabPanels } from "@headl
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api";
 import { useChat } from "../hooks/useChats";
+import { useProfiles } from "../hooks/useProfiles";
+import { effectiveProfile } from "../lib/providers";
 import { useSaveBehavior, useSaveStory, useSaveSummary, useSummarize } from "../hooks/useStory";
 import {
   behaviorProblems,
@@ -506,6 +508,8 @@ function LoreTab({ drafts, onChange }: { drafts: LoreDraft[]; onChange: (d: Lore
 function SummaryTab({ chat, draft, onChange }: { chat: Chat; draft: SummaryDraft; onChange: (d: SummaryDraft) => void }) {
   const summarize = useSummarize(chat.id);
   const save = useSaveSummary(chat.id);
+  // The server refuses to generate summaries on the free trial's provider, so the button is not offered there.
+  const canGenerate = !effectiveProfile(useProfiles().data, chat.profile_id).profile?.managed;
   const [error, setError] = useState<string | null>(null);
   const busy = summarize.isPending || save.isPending;
   const edited = !draft.proposed && draft.text !== chat.summary;
@@ -559,19 +563,22 @@ function SummaryTab({ chat, draft, onChange }: { chat: Chat; draft: SummaryDraft
         </p>
       </TextAreaField>
       {error && <p role="alert" className="text-warn-bar">{error}</p>}
+      {!canGenerate && <p className="text-[12px] text-muted">Generating a summary is not part of the free trial. You can still write one yourself.</p>}
       <div className="flex flex-wrap items-center gap-2">
-        <PressButton
-          type="button"
-          onClick={generate}
-          disabled={busy || edited}
-          loading={summarize.isPending}
-          title={edited ? "Save or discard your edits first" : undefined}
-          hover={1.02}
-          press={0.97}
-          variant="secondary"
-        >
-          {summarize.isPending ? "Generating…" : "Generate"}
-        </PressButton>
+        {canGenerate && (
+          <PressButton
+            type="button"
+            onClick={generate}
+            disabled={busy || edited}
+            loading={summarize.isPending}
+            title={edited ? "Save or discard your edits first" : undefined}
+            hover={1.02}
+            press={0.97}
+            variant="secondary"
+          >
+            {summarize.isPending ? "Generating…" : "Generate"}
+          </PressButton>
+        )}
         <PressButton
           type="button"
           onClick={() => persist({ summary: draft.text, summary_upto: draft.text.trim() ? draft.upto : 0 })}

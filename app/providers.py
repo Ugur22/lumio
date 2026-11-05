@@ -10,8 +10,9 @@ from openai import DefaultHttpxClient, OpenAI, OpenAIError
 from pydantic import ValidationError
 
 import profile_store
-from app import runtime
-from models import Chat, ImageData, Profile, UserView
+import storage
+from app import runtime, story
+from models import Chat, ImageData, NewMessage, Profile, ProfileStore, UserView
 
 _clients: dict[tuple[str, str], OpenAI] = {}
 _clients_lock = threading.Lock()
@@ -19,35 +20,125 @@ PRIVATE_URL = "That address is not allowed: this server only connects to public 
 NO_KEY = "not-needed"  # the OpenAI SDK insists on a non-empty key even for local servers
 
 
+TRIAL_ENDED = "Your free trial has ended. Add your own provider to continue."
+TRIAL_FULL = "Free trials are full today, try tomorrow"
+TRIAL_LOCKED = "Adding your own provider unlocks when your free trial ends"
+# Enforced on the server whatever the client sends.
+TRIAL_MAX_TOKENS = 1500
+TRIAL_MESSAGE_CHARS = 4000
+TRIAL_HISTORY_MESSAGES = 20
+TRIAL_PROMPT_CHARS = 60_000
+TRIAL_MAX_CHATS = 50
+MAX_PROFILES = 5
+
+
+def trial_state(user: UserView) -> storage.Trial | None:
+    """The user's trial while it can still be used, else None (no trial, used up, or trials switched off)."""
+    if not runtime.settings.trial_enabled or profile_store.is_local(user):
+        return None
+    trial = runtime.db.get_trial(user.id)
+    return None if trial is None or trial.exhausted else trial
+
+
+def trial_active(user: UserView) -> bool:
+    return trial_state(user) is not None
+
+
+def user_store(user: UserView, store: ProfileStore | None = None) -> ProfileStore:
+    """The user's saved profiles plus, while their trial is live, the synthetic trial profile. Never write this to disk:
+    saving goes through profile_store.load_store, which does not know the trial profile."""
+    store = store or profile_store.load_store(runtime.settings, user)
+    if trial_state(user) is None:
+        return store
+    own = [p for p in store.profiles if p.id != profile_store.TRIAL_ID]
+    active = store.active if store.active in {p.id for p in own} else profile_store.TRIAL_ID
+    return store.model_copy(update={"profiles": [*own, profile_store.trial_profile(runtime.settings)], "active": active})
+
+
+def no_provider(user: UserView) -> HTTPException:
+    # A user whose trial has run out is told to add a provider; anyone else sees the original message.
+    if not profile_store.is_local(user) and runtime.db.get_trial(user.id) is not None:
+        return HTTPException(402, TRIAL_ENDED)
+    return HTTPException(409, "No provider configured. Add one in Providers.")
+
+
+def is_trial(profile: Profile) -> bool:
+    return isinstance(profile, profile_store.TrialProfile)
+
+
 def active_profile(user: UserView) -> Profile:
-    store = profile_store.load_store(runtime.settings, user)
+    store = user_store(user)
     profile = next((p for p in store.profiles if p.id == store.active), None)
     if profile is None:
-        raise HTTPException(409, "No provider configured. Add one in Providers.")
+        raise no_provider(user)
     return profile
 
 
 def override_applies(chat: Chat, profile: Profile) -> bool:
     # A model ID belongs to the provider it was picked on; after a fallback to another provider it is stale.
-    return bool(chat.model) and chat.profile_id == profile.id
+    # The trial's model is fixed by the server, whatever the chat says.
+    return bool(chat.model) and chat.profile_id == profile.id and not is_trial(profile)
 
 
 def profile_for(chat: Chat, user: UserView) -> Profile:
     """The chat's own provider, falling back to the caller's default when it has none, it was deleted, or it is not in
     the caller's store (indistinguishable from deleted, so another user's profile id is never confirmed)."""
-    store = profile_store.load_store(runtime.settings, user)
+    store = user_store(user)
     wanted = chat.profile_id if chat.profile_id in {p.id for p in store.profiles} else store.active
     profile = next((p for p in store.profiles if p.id == wanted), None)
     if profile is None:
-        raise HTTPException(409, "No provider configured. Add one in Providers.")
+        raise no_provider(user)
     # A copy, so the stored profile is never changed by a per-chat override.
     return profile.model_copy(update={"model": chat.model}) if override_applies(chat, profile) else profile
 
 
 def profile_key(profile: Profile, user: UserView) -> str | None:
+    if is_trial(profile):
+        # Only profile_for/user_store build a TrialProfile, and only for a user with a live trial.
+        key = runtime.settings.trial_api_key
+        return key.get_secret_value() if key else None
     if not profile.needs_key:
         return NO_KEY
     return profile_store.resolve_key(runtime.settings, user, profile)[0]
+
+
+def trial_prompt(chat: Chat, body: NewMessage) -> tuple[str, list[dict]]:
+    """The system prompt and history for a trial reply, within the trial's limits. Raises 422 before anything is reserved."""
+    if body.web:
+        raise HTTPException(422, "Web search is not available during the free trial.")
+    if len(body.content) > TRIAL_MESSAGE_CHARS:
+        raise HTTPException(422, f"Messages are limited to {TRIAL_MESSAGE_CHARS} characters during the free trial.")
+    system = story.system_for(chat, body.content, False)
+    history = story.history_for(chat, False)[-TRIAL_HISTORY_MESSAGES:]
+    while history and history[0]["role"] != "user":
+        history.pop(0)
+    # Oldest first out: a long chat keeps working, only its far past stops being sent.
+    while history and len(system) + len(body.content) + sum(len(m["content"]) for m in history) > TRIAL_PROMPT_CHARS:
+        history.pop(0)
+    if len(system) + len(body.content) > TRIAL_PROMPT_CHARS:
+        raise HTTPException(422, "This chat's instructions and story notes are too long for the free trial.")
+    return system, history
+
+
+def trial_sampling(chat: Chat) -> dict:
+    sampling = sampling_params(chat)
+    sampling["max_tokens"] = min(sampling.get("max_tokens") or TRIAL_MAX_TOKENS, TRIAL_MAX_TOKENS)
+    return sampling
+
+
+def reserve_trial(user: UserView) -> storage.TrialCall:
+    try:
+        return runtime.db.reserve_trial_call(user.id, runtime.settings.trial_daily_calls)
+    except storage.TrialExhausted:
+        raise HTTPException(402, TRIAL_ENDED)
+    except storage.TrialFull as e:
+        raise HTTPException(503, TRIAL_FULL, headers={"Retry-After": str(e.retry_after)})
+
+
+def require_no_trial(user: UserView) -> None:
+    """Adding a provider of your own waits until the trial is over."""
+    if trial_active(user):
+        raise HTTPException(403, TRIAL_LOCKED)
 
 
 def is_public_url(url: str) -> bool:
@@ -91,6 +182,13 @@ def get_client(profile: Profile, user: UserView) -> OpenAI:
 
 def redact(message: str, key: str | None) -> str:
     return message.replace(key, "…") if key else message
+
+
+def client_error(e: Exception, key: str | None) -> str:
+    """error_text for a client: the key of the call and the operator's trial key are both removed, since a provider's
+    error body can echo the Authorization it was sent."""
+    trial = runtime.settings.trial_api_key
+    return redact(redact(error_text(e), key), trial.get_secret_value() if trial else None)
 
 
 def sniff_media_type(raw: bytes) -> str | None:

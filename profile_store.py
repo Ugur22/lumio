@@ -10,11 +10,24 @@ from pydantic import ValidationError
 
 log = logging.getLogger("dolphinllm")
 
+# The synthetic free-trial profile: built from settings for users with a live trial, never saved anywhere.
+TRIAL_ID = "trial"
 # The profile created from a pre-profiles setup (one key, one base URL).
 DEFAULT_ID = "default"
 # User ids are uuid hex; this is the only thing that may ever become part of a path or a secret account.
 _SAFE_USER_ID = re.compile(r"^[0-9a-f-]{8,64}$")
 MIGRATION_KEY = "profiles_migrated_to_admin"
+
+
+class TrialProfile(Profile):
+    """Marks the server-owned profile. Its key is settings.trial_api_key and nothing else; a stored profile that merely
+    has the id "trial" is a plain Profile and gets no such key."""
+
+
+def trial_profile(settings: Settings) -> TrialProfile:
+    return TrialProfile(
+        id=TRIAL_ID, name="Free trial", base_url=settings.trial_base_url, model=settings.trial_model, vision=False, image_model=None
+    )
 
 
 def is_local(user: UserView) -> bool:
@@ -24,7 +37,8 @@ def is_local(user: UserView) -> bool:
 def is_admin_user(settings: Settings, user: UserView) -> bool:
     """The account named by DOLPHINLLM_ADMIN_USER, which inherits the pre-accounts global profiles and env key."""
     name = (settings.admin_user or "").strip().lower()
-    return settings.deployed and bool(name) and user.username == name
+    # The flag is checked as well as the name: the name alone could be registered by a stranger before the admin exists.
+    return settings.deployed and bool(name) and user.is_admin and user.username == name
 
 
 def _safe_id(user: UserView) -> str:

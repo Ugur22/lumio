@@ -305,7 +305,7 @@ def test_secret_account_parts_cannot_forge_another_account(bad):
 def test_the_admin_inherits_the_env_key_but_other_users_do_not(monkeypatch):
     monkeypatch.setattr(runtime.settings, "public_host", HOST)
     monkeypatch.setattr(runtime.settings, "admin_user", "Boss ")
-    boss, other = user(A, "boss"), user(B, "other")
+    boss, other = UserView(id=A, username="boss", is_admin=True), user(B, "other")
 
     store = profile_store.load_store(runtime.settings, boss)
     assert [p.id for p in store.profiles] == [profile_store.DEFAULT_ID]
@@ -314,13 +314,24 @@ def test_the_admin_inherits_the_env_key_but_other_users_do_not(monkeypatch):
     assert profile_store.resolve_key(runtime.settings, other, store.profiles[0]) == (None, None)
 
 
+def test_a_non_admin_with_the_admins_name_inherits_nothing(monkeypatch):
+    # The name alone used to be enough: with open sign-in a stranger could register it and be handed the operator's key.
+    monkeypatch.setattr(runtime.settings, "public_host", HOST)
+    monkeypatch.setattr(runtime.settings, "admin_user", "boss")
+    impostor = user(B, "boss")
+
+    assert not profile_store.is_admin_user(runtime.settings, impostor)
+    assert profile_store.load_store(runtime.settings, impostor) == ProfileStore()
+    assert profile_store.resolve_key(runtime.settings, impostor, Profile(id="default", name="x", base_url="https://x.example/v1", model="m")) == (None, None)
+
+
 # --- moving the global profiles to the admin ------------------------------------------------------------------------
 
 
 @pytest.fixture
 def admin(monkeypatch):
     name = f"boss{uuid.uuid4().hex[:8]}"
-    account = runtime.db.create_user(name, "x")
+    account = runtime.db.create_user(name, "x", is_admin=True)
     monkeypatch.setattr(runtime.settings, "public_host", HOST)
     monkeypatch.setattr(runtime.settings, "admin_user", name)
     yield user(account.id, name)
@@ -356,6 +367,25 @@ def test_migration_moves_profiles_and_keys_to_the_admin(admin, memory_keyring):
         profile_store.tavily_account(admin),
     }
     assert runtime.db.get_meta(profile_store.MIGRATION_KEY) == admin.id
+
+
+def test_a_non_admin_account_with_the_admin_name_gets_nothing(monkeypatch, caplog, memory_keyring):
+    name = f"boss{uuid.uuid4().hex[:8]}"
+    stranger = runtime.db.create_user(name, "x")  # registered before the upgrade, not an admin
+    monkeypatch.setattr(runtime.settings, "public_host", HOST)
+    monkeypatch.setattr(runtime.settings, "admin_user", name)
+    monkeypatch.setattr(runtime, "_warned_not_admin", False)
+    seed_globals("p1")
+
+    with caplog.at_level(logging.WARNING, logger="dolphinllm"):
+        runtime.migrate_profiles_to_admin(runtime.db, runtime.settings)
+        runtime.migrate_profiles_to_admin(runtime.db, runtime.settings)
+
+    assert runtime.settings.profiles_file.exists()
+    assert secret_store.get_key("profile:p1") == "sk-global-p1-123456"
+    assert not any(stranger.id in k[1] for k in memory_keyring.store)
+    assert not runtime.db.get_meta(profile_store.MIGRATION_KEY)
+    assert caplog.text.count("not an admin") == 1 and "sk-global" not in caplog.text
 
 
 def test_migration_runs_once_and_never_again(admin):

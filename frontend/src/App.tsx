@@ -7,6 +7,7 @@ import { BookIcon, MenuIcon } from "./components/icons";
 import { MessageList, QuickActions, Starters } from "./components/MessageList";
 import { Button, ConfirmDialog, PressButton, PromptDialog } from "./components/ui";
 import { ProviderSwitcher } from "./components/ProviderSwitcher";
+import { FlashNotice } from "./components/FlashNotice";
 import { ProvidersDialog } from "./components/ProvidersDialog";
 import { Sidebar } from "./components/Sidebar";
 import { StoryDialog, type StoryTab } from "./components/StoryDialog";
@@ -14,10 +15,12 @@ import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, use
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
+import { useTrial } from "./hooks/useTrial";
 import { useTheme } from "./hooks/useTheme";
 import { useVisualViewport } from "./hooks/useVisualViewport";
 import type { Attachment } from "./lib/images";
 import { effectiveProfile } from "./lib/providers";
+import { isManaged, sendBlocked } from "./lib/trial";
 import { useStream } from "./store/stream";
 import type { ChatModelBody, ChatSummary } from "./types";
 
@@ -85,9 +88,14 @@ export function App() {
   const create = useCreateChat();
   const rename = useRenameChat();
   const remove = useDeleteChat();
-  const { send, stop, isPending: sending } = useStreamingSend();
+  const { send, stop, isPending: sending } = useStreamingSend({
+    // Used up: the way forward is a provider of their own. Full for today needs nothing but the message.
+    onTrialRefused: (failure) => failure.kind === "ended" && setSettingsOpen(true),
+  });
   const profiles = useProfiles().data;
   const activeProfile = effectiveProfile(profiles, chat.data?.profile_id).profile;
+  const trial = useTrial().data;
+  const managed = isManaged(activeProfile);
 
   const setChatModel = useSetChatModel();
 
@@ -100,6 +108,8 @@ export function App() {
   };
 
   function onSend(content: string, attachments: Attachment[], web: boolean, illustrate: boolean) {
+    // Starters and code actions send without passing the composer's own check.
+    if (sendBlocked(trial, activeProfile)) return setSettingsOpen(true);
     const chatId = currentId;
     const model = chatId === null ? (pendingModel ?? undefined) : undefined;
     send(
@@ -255,6 +265,7 @@ export function App() {
             />
           </div>
         </header>
+        <FlashNotice onAddProvider={() => setSettingsOpen(true)} />
         {loadError && (
           <div role="alert" className="px-5 py-2 text-warn-bar">
             Failed: {loadError.message}
@@ -269,12 +280,13 @@ export function App() {
         <ContextMeter
           context={currentId && !(blank && phone) ? context.data : undefined}
           onSetWindow={() => setSettingsOpen(true)}
-          onSummarize={() => setStory({ open: true, tab: "summary" })}
+          onSummarize={managed ? undefined : () => setStory({ open: true, tab: "summary" })}
         />
         {blank && phone && (
           <QuickActions
             focused={focused}
             canAttach={activeProfile?.vision ?? false}
+            canWeb={!managed}
             onStory={openStory}
             onScene={() => composer.current?.setText("Write a scene where ")}
             onWeb={() => composer.current?.enableWeb()}
@@ -287,6 +299,9 @@ export function App() {
             disabled={sending}
             vision={activeProfile?.vision ?? false}
             canIllustrate={Boolean(activeProfile?.image_model)}
+            managed={managed}
+            trial={trial}
+            onAddProvider={() => setSettingsOpen(true)}
             providerName={activeProfile?.name ?? null}
             onStop={stop}
             onSend={onSend}

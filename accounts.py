@@ -10,11 +10,13 @@ printed once by `invite` and never again.
 """
 
 import argparse
+import contextlib
 import functools
 import getpass
 import hashlib
 import secrets
 import sys
+import threading
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
@@ -24,6 +26,11 @@ import storage
 from models import Password, Settings, Username
 
 hasher = PasswordHasher()
+# Each argon2 hash takes tens of megabytes; with open sign-in a burst of requests must not run them all at once.
+_hashing = threading.BoundedSemaphore(2)
+HASH_WAIT = 2.0
+# Names a stranger must never get: they read as staff, and the admin's name inherits the pre-accounts key.
+RESERVED_USERNAMES = frozenset({"admin", "root", "support", "local", "system"})
 _username = TypeAdapter(Username)
 _password = TypeAdapter(Password)
 
@@ -36,19 +43,44 @@ def new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def is_reserved(username: str, admin_user: str | None) -> bool:
+    name = username.strip().lower()
+    return name in RESERVED_USERNAMES or (bool(admin_user) and name == admin_user.strip().lower())
+
+
+class Busy(Exception):
+    """All hashing slots stayed taken for HASH_WAIT seconds; the route answers 503 instead of holding a worker thread."""
+
+
+@contextlib.contextmanager
+def _slot():
+    if not _hashing.acquire(timeout=HASH_WAIT):
+        raise Busy()
+    try:
+        yield
+    finally:
+        _hashing.release()
+
+
 def hash_password(password: str) -> str:
-    return hasher.hash(password)
+    with _slot():
+        return hasher.hash(password)
 
 
 @functools.cache
 def _dummy_hash() -> str:
-    return hasher.hash(secrets.token_hex(8))
+    with _slot():
+        return hasher.hash(secrets.token_hex(8))
 
 
 def verify_password(password_hash: str | None, password: str) -> bool:
     """Always costs one argon2 verification, so an unknown user cannot be told from a wrong password by timing."""
+    if password_hash == storage.UNUSABLE_PASSWORD:
+        password_hash = None  # an account that signs in with a provider: fail like an unknown user, at the same cost
+    stored = password_hash or _dummy_hash()  # before taking a slot, so the dummy's own hash cannot wait on this one
     try:
-        return hasher.verify(password_hash or _dummy_hash(), password) and password_hash is not None
+        with _slot():
+            return hasher.verify(stored, password) and password_hash is not None
     except (VerificationError, InvalidHashError):
         return False
 

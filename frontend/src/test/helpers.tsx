@@ -39,7 +39,7 @@ export function stubResizeObserver() {
   );
 }
 
-export const resetSession = () => useSession.setState({ status: "pending", user: null, notice: null });
+export const resetSession = () => useSession.setState({ status: "pending", user: null, notice: null, flash: null });
 
 export function renderWithClient(ui: ReactElement, client = new QueryClient()) {
   return { client, ...render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>) };

@@ -2,6 +2,7 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TrialStatus } from "../types";
 import { stubResizeObserver } from "../test/helpers";
 import { createRef } from "react";
 import { Composer, type ComposerHandle } from "./Composer";
@@ -160,5 +161,85 @@ describe("Composer on a phone", () => {
     expect(click).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("status").textContent).toContain("Dolphin can't read images");
     click.mockRestore();
+  });
+});
+
+describe("Composer free trial", () => {
+  const trial = (remaining: number, over: Partial<TrialStatus> = {}): TrialStatus => ({ enrolled: true, limit: 5, used: 5 - remaining, remaining, ended: false, ...over });
+  const managedUi = (t: TrialStatus | undefined, extra: { onSend?: () => void; onAddProvider?: () => void } = {}) => (
+    <Composer
+      disabled={false}
+      vision={false}
+      canIllustrate
+      managed
+      trial={t}
+      providerName="Free trial"
+      onAddProvider={extra.onAddProvider}
+      onSend={extra.onSend ?? (() => undefined)}
+      onStop={() => undefined}
+    />
+  );
+
+  it("shows how many free messages are left, from the server's limit", () => {
+    render(managedUi({ ...trial(3), limit: 8 }));
+    expect(screen.getByRole("status").textContent).toBe("3 of 8 free messages left");
+  });
+
+  it("words the last message differently", () => {
+    render(managedUi(trial(1)));
+    expect(screen.getByRole("status").textContent).toBe("Last free message");
+  });
+
+  it("shows no chip for a provider of the user's own", () => {
+    render(<Composer disabled={false} vision providerName="Mine" trial={trial(3)} onSend={() => undefined} onStop={() => undefined} />);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("hides image attach, illustrate and web search on the trial, on desktop", () => {
+    render(managedUi(trial(3)));
+    expect(screen.queryByLabelText("Attach images")).toBeNull();
+    expect(screen.queryByLabelText("Illustrate the reply")).toBeNull();
+    expect(screen.queryByLabelText("Search the web")).toBeNull();
+    expect(screen.getByLabelText("Message")).toBeTruthy();
+  });
+
+  it("hides the add-to-message sheet on a phone", () => {
+    stubViewport(true);
+    render(managedUi(trial(3)));
+    expect(screen.queryByLabelText("Add to message")).toBeNull();
+  });
+
+  it("sends without web or illustrate even after they were on for another provider", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const view = render(
+      <Composer disabled={false} vision canIllustrate providerName="Mine" onSend={onSend} onStop={() => undefined} />,
+    );
+    await user.click(screen.getByLabelText("Search the web"));
+    await user.click(screen.getByLabelText("Illustrate the reply"));
+    view.rerender(managedUi(trial(3), { onSend }));
+    await user.type(screen.getByLabelText("Message"), "hello{Enter}");
+    expect(onSend).toHaveBeenCalledWith("hello", [], false, false);
+  });
+
+  it("disables send once the trial has ended and points at Providers", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const onAddProvider = vi.fn();
+    render(managedUi(trial(0, { ended: true }), { onSend, onAddProvider }));
+    expect(screen.getByRole("status").textContent).toContain("Your free trial has ended. Add your own provider to continue.");
+    await user.type(screen.getByLabelText("Message"), "hello{Enter}");
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onSend).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Open Providers" }));
+    expect(onAddProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps sending enabled while messages remain", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    render(managedUi(trial(1), { onSend }));
+    await user.type(screen.getByLabelText("Message"), "hi{Enter}");
+    expect(onSend).toHaveBeenCalledTimes(1);
   });
 });

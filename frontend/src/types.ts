@@ -34,7 +34,8 @@ export type ContextParts = Schema<"ContextParts">;
 export type ContextInfo = Schema<"ContextInfo">;
 
 // The chat as sent in the SSE `done` event.
-export type DoneChat = Chat & { usage: Schema<"Usage"> | null; context: ContextInfo };
+// `trial` is only present on replies the free trial paid for.
+export type DoneChat = Chat & { usage: Schema<"Usage"> | null; context: ContextInfo; trial?: { remaining: number } };
 
 export type Profile = Schema<"ProfileView">;
 // Where the server keeps saved keys: the OS keychain locally, a file on a deployed host.
@@ -47,6 +48,8 @@ export type EditProfileBody = Schema<"EditProfile">;
 export type WebStatus = Schema<"WebStatus">;
 export type ModelsQuery = Schema<"ModelsQuery">;
 export type ModelsResult = Schema<"ModelsResult">;
+
+export type TrialStatus = Schema<"TrialStatus">;
 
 export type UserView = Schema<"UserView">;
 export type LoginBody = Schema<"LoginBody">;

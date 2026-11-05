@@ -1,5 +1,8 @@
 """Accounts: invite-only registration, login, logout and password change."""
 
+import base64
+import hashlib
+import hmac
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -8,7 +11,7 @@ import accounts
 import storage
 from app import auth, runtime
 from app.logs import log
-from models import LoginBody, PasswordChange, RegisterBody, TokenLogin, UserView
+from models import ExchangeBody, LoginBody, PasswordChange, RegisterBody, TokenLogin, UserView
 
 router = APIRouter(prefix="/api/auth", dependencies=[Depends(auth.require_same_origin)])
 
@@ -65,6 +68,8 @@ def register(body: RegisterBody, request: Request, response: Response):
     # Every refusal counts (a bad invite, and a taken name, which would otherwise list the users that exist). Only the IP is
     # keyed: a per-name key would just let a stranger lock a name out.
     attempts = throttle([ip_key(request)])
+    if accounts.is_reserved(body.username, runtime.settings.admin_user):
+        raise HTTPException(409, "That username is taken")  # said like any taken name; the invite is not used up
     password_hash = accounts.hash_password(body.password.get_secret_value())
     try:
         account = runtime.db.create_user(
@@ -110,6 +115,41 @@ def token_login(body: LoginBody, request: Request):
     account = authenticate(body, request)
     token = new_session(account.id)
     log.info("User logged in with a token", extra={"user_id": account.id})
+    return TokenLogin(token=token, user=view(account))
+
+
+GENERIC_EXCHANGE = "Invalid or expired code"
+MAX_EXCHANGE_FIELD = 256
+
+
+@token_router.post("/oauth/exchange", response_model=TokenLogin)
+def oauth_exchange(body: ExchangeBody, request: Request):
+    """Trades the one-time code the OAuth callback gave the native app, plus its PKCE verifier, for a session token.
+
+    The code is consumed before the verifier is checked, so a wrong verifier burns it: a guess costs the attacker the code,
+    and the app just starts the sign-in again. Which check failed is never said."""
+    attempts = throttle([f"exchange:{ip_key(request)}"])
+    refused = HTTPException(400, GENERIC_EXCHANGE)
+    if not (0 < len(body.code) <= MAX_EXCHANGE_FIELD and 0 < len(body.verifier) <= MAX_EXCHANGE_FIELD):
+        raise refused
+    try:
+        code_hash = hashlib.sha256(body.code.encode()).hexdigest()
+        verifier_digest = base64.urlsafe_b64encode(hashlib.sha256(body.verifier.encode()).digest()).rstrip(b"=")
+    except UnicodeEncodeError:  # a lone surrogate from a JSON escape
+        raise refused from None
+    taken = runtime.db.take_app_login_code(code_hash)
+    if taken is None:
+        raise refused
+    user_id, challenge = taken
+    # Bytes on both sides: compare_digest raises on a non-ASCII str.
+    if not hmac.compare_digest(verifier_digest, challenge.encode()):
+        raise refused
+    account = runtime.db.get_account_by_id(user_id)
+    if account is None or account.disabled:
+        raise refused
+    credit(attempts)
+    token = new_session(account.id)
+    log.info("User logged in with an app code", extra={"user_id": account.id})
     return TokenLogin(token=token, user=view(account))
 
 

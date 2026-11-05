@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { DialogTitle, Field, Label } from "@headlessui/react";
 import { shouldAutoFetch } from "../lib/modelOptions";
 import { useProfileActions, useProfiles } from "../hooks/useProfiles";
+import { useTrial } from "../hooks/useTrial";
 import { useWebKeyActions, useWebStatus } from "../hooks/useWebSearch";
 import { formatTokens } from "../lib/context";
-import { detectPreset, hostOf, PRESETS, presetById } from "../lib/providers";
+import { detectPreset, hostOf, PRESETS, presetById, profileLabel } from "../lib/providers";
+import { bannerText, trialActive, trialBanner, TRIAL_LOCKED } from "../lib/trial";
 import type { KeyStore, Profile } from "../types";
 import { CheckIcon, PlusIcon, RefreshIcon, TrashIcon } from "./icons";
 import { ModelCombobox } from "./ModelCombobox";
@@ -60,6 +62,10 @@ interface ListProps {
 function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
   const { data, isPending, error } = useProfiles();
   const actions = useProfileActions();
+  const trial = useTrial().data;
+  // The server refuses new providers, model lists and a web key while the trial runs; say so up front.
+  const locked = trialActive(trial);
+  const banner = trialBanner(trial);
   const [failure, setFailure] = useState<string | null>(null);
 
   async function activate(id: string) {
@@ -93,32 +99,56 @@ function ProfileListView({ onAdd, onEdit, onClose }: ListProps) {
               className={`accent-[var(--accent)] ${focusRing}`}
             />
             <div className="min-w-0 flex-1">
-              <div className="truncate font-medium">{p.name}</div>
+              <div className="truncate font-medium">{profileLabel(p)}</div>
               <div className="truncate text-[12px] text-muted">
-                {hostOf(p.base_url)} · {p.model} · {keyLabel(p)}
-                {p.context_window ? ` · ${formatTokens(p.context_window)} context` : ""}
+                {p.managed ? (
+                  <>
+                    {p.model} · {banner ? bannerText(banner) : "Included with your account"}
+                  </>
+                ) : (
+                  <>
+                    {hostOf(p.base_url)} · {p.model} · {keyLabel(p)}
+                    {p.context_window ? ` · ${formatTokens(p.context_window)} context` : ""}
+                  </>
+                )}
               </div>
             </div>
-            <Button onClick={() => onEdit(p)}>Edit</Button>
+            {/* Read-only: the server owns the trial provider's settings and key. */}
+            {!p.managed && <Button onClick={() => onEdit(p)}>Edit</Button>}
           </li>
         ))}
       </ul>
       {failure && <p role="alert" className="text-warn-bar">{failure}</p>}
-      <WebSearchSection />
-      <div className="flex items-center gap-2">
-        <PressButton type="button" onClick={onAdd} hover={1.02} press={0.97} variant="primary">
-          <PlusIcon width={16} height={16} />
-          Add provider
-        </PressButton>
-        <Button onClick={onClose} className="ml-auto">
-          Close
-        </Button>
+      <WebSearchSection locked={locked} />
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <PressButton
+            type="button"
+            onClick={onAdd}
+            disabled={locked}
+            aria-describedby={locked ? "add-provider-locked" : undefined}
+            hover={1.02}
+            press={0.97}
+            variant="primary"
+          >
+            <PlusIcon width={16} height={16} />
+            Add provider
+          </PressButton>
+          <Button onClick={onClose} className="ml-auto">
+            Close
+          </Button>
+        </div>
+        {locked && (
+          <p id="add-provider-locked" className="text-[12px] text-muted">
+            {TRIAL_LOCKED}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-function WebSearchSection() {
+function WebSearchSection({ locked }: { locked: boolean }) {
   const { data } = useWebStatus();
   const actions = useWebKeyActions();
   const [key, setKey] = useState("");
@@ -141,7 +171,7 @@ function WebSearchSection() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const typed = key.trim();
-    if (!typed) return;
+    if (!typed || locked) return;
     // Cleared before the request settles so the secret never lingers in the DOM or state.
     setKey("");
     return run(async () => {
@@ -150,7 +180,7 @@ function WebSearchSection() {
     });
   }
 
-  const showForm = data !== undefined && (!data.configured || replacing);
+  const showForm = data !== undefined && (!data.configured || replacing || locked);
 
   return (
     <div className="flex flex-col gap-2 border-t border-border pt-4">
@@ -164,14 +194,19 @@ function WebSearchSection() {
               Key {keyHome(data.key_store)}{data.last4 ? ` ending in ${data.last4}` : ""}
             </div>
           </div>
-          <Button onClick={() => setReplacing((on) => !on)}>{replacing ? "Cancel" : "Replace"}</Button>
-          <Button variant="danger" disabled={busy} onClick={() => run(actions.remove)}>
+          <Button disabled={locked} onClick={() => setReplacing((on) => !on)}>{replacing ? "Cancel" : "Replace"}</Button>
+          <Button variant="danger" disabled={busy || locked} onClick={() => run(actions.remove)}>
             <TrashIcon width={16} height={16} />
             Remove
           </Button>
         </div>
       )}
-      {data && !data.configured && (
+      {locked && (
+        <p id="web-key-locked" className="text-[12px] text-muted">
+          Web search is not part of the free trial. You can add a Tavily key when it ends.
+        </p>
+      )}
+      {data && !data.configured && !locked && (
         <p className="text-[12px] text-muted">No Tavily key. The Web toggle needs one; pasted links work without it.</p>
       )}
       {showForm && (
@@ -179,6 +214,8 @@ function WebSearchSection() {
           <TextInput
             type="password"
             aria-label="Tavily API key"
+            disabled={locked}
+            aria-describedby={locked ? "web-key-locked" : undefined}
             value={key}
             onChange={(e) => setKey(e.target.value)}
             autoComplete="off"
@@ -186,7 +223,7 @@ function WebSearchSection() {
             placeholder="Paste your Tavily API key"
             className="min-w-0 flex-1"
           />
-          <PressButton type="submit" disabled={busy || !key.trim()} hover={1.02} press={0.97} variant="secondary">
+          <PressButton type="submit" disabled={busy || locked || !key.trim()} hover={1.02} press={0.97} variant="secondary">
             Save
           </PressButton>
         </form>

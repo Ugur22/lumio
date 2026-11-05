@@ -56,8 +56,11 @@ def list_chats(user: CurrentUser):
 
 @router.post("/api/chats", response_model=Chat, status_code=201)
 def create_chat(user: CurrentUser):
-    store = profile_store.load_store(runtime.settings, user)
-    return runtime.db.create_chat(store.active, owner=user.id)
+    cap = providers.TRIAL_MAX_CHATS if providers.trial_active(user) else None
+    try:
+        return runtime.db.create_chat(providers.user_store(user).active, owner=user.id, max_chats=cap)
+    except storage.ChatLimit:
+        raise HTTPException(403, f"The free trial is limited to {providers.TRIAL_MAX_CHATS} chats.")
 
 
 @router.get("/api/chats/{chat_id}", response_model=Chat)
@@ -112,7 +115,7 @@ def update_story(chat_id: ChatId, body: StoryUpdate, user: CurrentUser):
 def update_behavior(chat_id: ChatId, body: BehaviorUpdate, user: CurrentUser):
     load_chat(chat_id, user)
     if body.profile_id is not None:
-        providers.find_profile(profile_store.load_store(runtime.settings, user), body.profile_id)
+        providers.find_profile(providers.user_store(user), body.profile_id)
     values = body.model_dump(exclude={"profile_id"})
     try:
         return runtime.db.update_behavior(chat_id, values, "profile_id" in body.model_fields_set, body.profile_id, owner=user.id)
@@ -139,6 +142,8 @@ def summarize_chat(chat_id: ChatId, user: CurrentUser):
     if upto <= chat.summary_upto:
         raise HTTPException(409, "Not enough new messages to summarize yet")
     profile = providers.profile_for(chat, user)
+    if providers.is_trial(profile):
+        raise HTTPException(403, "Summaries are not available during the free trial.")
     client = providers.get_client(profile, user)
     transcript = "\n\n".join(
         f"{m.role}: {web.clip(m.content.strip(), story.SUMMARY_MESSAGE_CHARS)}" for m in chat.messages[chat.summary_upto : upto]
@@ -155,7 +160,7 @@ def summarize_chat(chat_id: ChatId, user: CurrentUser):
         )
         text = (res.choices[0].message.content or "").strip()
     except OpenAIError as e:
-        raise HTTPException(502, providers.error_text(e))
+        raise HTTPException(502, providers.client_error(e, providers.profile_key(profile, user)))
     if not text:
         raise HTTPException(502, "The model returned an empty summary")
     return SummaryProposal(summary=text[:MAX_SUMMARY_CHARS], summary_upto=upto)
@@ -186,39 +191,53 @@ def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
         raise chat_gone()
     except storage.ChatBusy:
         raise HTTPException(409, "A reply is already being generated in this chat")
+    call = None
     try:
         chat, rev = runtime.db.get_chat_rev(chat_id, owner=user.id)
         profile = providers.profile_for(chat, user)
+        trial = providers.is_trial(profile)
+        if trial:
+            system, history = providers.trial_prompt(chat, body)
         if body.images and not profile.vision:
             raise HTTPException(422, f"{profile.name} can't read images. Switch to a vision-capable provider.")
-        if body.illustrate and not profile.image_model:
+        illustrate = body.illustrate and not trial
+        if illustrate and not profile.image_model:
             raise HTTPException(422, f"{profile.name} has no image model. Set one in Providers.")
         client = providers.get_client(profile, user)
+        key = providers.profile_key(profile, user)
 
-        # Gathered before the model call; the pages are plain prompt text, so any provider works.
-        tavily_key = secret_store.get_key(profile_store.tavily_account(user)) if body.web else None
-        query = None
-        if tavily_key and body.content.strip():
-            query = web.rewrite_query(client, profile.model, story.recent_for(chat), body.content)
-        sources, notes = web.gather(body.content, body.web, tavily_key, query)
-        history = story.history_for(chat, profile.vision)
-        uploaded = [f"data:{i.media_type};base64,{i.data}" for i in body.images]
-        message = story.content_for(web.with_context(body.content, sources, notes), uploaded, profile.vision)
-        history.append({"role": "user", "content": message})
+        if trial:
+            # Every 422 above is behind us, so a refused request has taken nothing; from here the call is paid for.
+            call = providers.reserve_trial(user)
+            sources, notes, query = [], [], None
+            messages = [{"role": "system", "content": system}, *history, {"role": "user", "content": body.content}]
+            sampling = providers.trial_sampling(chat)
+        else:
+            # Gathered before the model call; the pages are plain prompt text, so any provider works.
+            tavily_key = secret_store.get_key(profile_store.tavily_account(user)) if body.web else None
+            query = None
+            if tavily_key and body.content.strip():
+                query = web.rewrite_query(client, profile.model, story.recent_for(chat), body.content)
+            sources, notes = web.gather(body.content, body.web, tavily_key, query)
+            history = story.history_for(chat, profile.vision)
+            uploaded = [f"data:{i.media_type};base64,{i.data}" for i in body.images]
+            message = story.content_for(web.with_context(body.content, sources, notes), uploaded, profile.vision)
+            history.append({"role": "user", "content": message})
+            messages = [{"role": "system", "content": story.system_for(chat, body.content, illustrate)}, *history]
+            sampling = providers.sampling_params(chat)
         try:
-            stream = providers.open_stream(
-                client,
-                profile,
-                [{"role": "system", "content": story.system_for(chat, body.content, body.illustrate)}, *history],
-                providers.sampling_params(chat),
-            )
+            stream = providers.open_stream(client, profile, messages, sampling)
         except OpenAIError as e:
-            raise HTTPException(502, providers.error_text(e))
+            raise HTTPException(502, providers.client_error(e, key))
     except storage.ChatNotFound:
         lease.release()
+        if call:
+            call.refund()
         raise chat_gone()
     except BaseException:
         lease.release()
+        if call:
+            call.refund()  # nothing reached the model's reply, so the call is not spent
         raise
 
     reply = streaming.stream_reply(
@@ -230,9 +249,11 @@ def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
         body.images,
         query,
         providers.window_for(chat, profile),
-        (client, profile.image_model, providers.profile_key(profile, user)) if body.illustrate else None,
+        (client, profile.image_model, key) if illustrate else None,
         lease=lease,
         rev=rev,
+        trial_call=call,
+        key=key,
     )
     # A generator that never starts (client gone before the first byte) never reaches its own finally, and the
     # lease thread would keep renewing; release is idempotent, so these are only backstops.

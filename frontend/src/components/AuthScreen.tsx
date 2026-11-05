@@ -3,7 +3,9 @@ import { useRef, useState, type FormEvent, type RefObject } from "react";
 import { api } from "../api";
 import { authErrorMessage, normalizeUsername, passwordHint, usernameHint } from "../lib/auth";
 import { useSession } from "../store/session";
-import { LumioMark } from "./icons";
+import { oauthStartUrl, type OAuthProvider } from "../lib/oauth";
+import { TRIAL_PITCH } from "../lib/trial";
+import { GitHubIcon, GoogleIcon, LumioMark } from "./icons";
 import { APP_NAME } from "../lib/brand";
 import { PressButton, TextField, cx, focusRing } from "./ui";
 
@@ -45,8 +47,37 @@ export function AuthScreen() {
             </TabPanel>
           </TabPanels>
         </TabGroup>
+        <OAuthButtons />
       </div>
     </main>
+  );
+}
+
+const oauthLink = cx(
+  "flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-bg px-3 py-2 text-[14px] font-medium text-text transition-colors hover:border-accent/50 hover:bg-bubble",
+  focusRing,
+);
+
+const PROVIDERS: { id: OAuthProvider; label: string; Icon: typeof GoogleIcon }[] = [
+  { id: "google", label: "Continue with Google", Icon: GoogleIcon },
+  { id: "github", label: "Continue with GitHub", Icon: GitHubIcon },
+];
+
+// Plain links: the server answers with a redirect to the provider, so the browser has to navigate, not fetch.
+// Below the tabs, so one copy serves both the sign-in and the create-account view.
+function OAuthButtons() {
+  return (
+    <section aria-label="Free trial" className="flex flex-col gap-3 border-t border-border pt-5">
+      <div className="flex flex-col gap-2">
+        {PROVIDERS.map(({ id, label, Icon }) => (
+          <a key={id} href={oauthStartUrl(id)} className={oauthLink}>
+            <Icon className="flex-none" />
+            <span>{label}</span>
+          </a>
+        ))}
+      </div>
+      <p className="text-center text-[13px] text-muted">{TRIAL_PITCH}</p>
+    </section>
   );
 }
 

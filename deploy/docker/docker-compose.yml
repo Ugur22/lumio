@@ -30,6 +30,20 @@ services:
       DOLPHINLLM_LOG_FILE: /var/lib/lumio/logs/app.jsonl
       # uvicorn believes X-Forwarded-For only from this address, Caddy's fixed IP below; the app publishes no ports.
       FORWARDED_ALLOW_IPS: 172.30.0.2
+      # Free trial (optional). Pass-throughs with no values here: set them in the settings file next to this one. Unset means off.
+      DOLPHINLLM_OPEN_SIGNUP:
+      DOLPHINLLM_TRIAL_API_KEY:
+      DOLPHINLLM_TRIAL_BASE_URL:
+      DOLPHINLLM_TRIAL_MODEL:
+      DOLPHINLLM_TRIAL_CALLS:
+      DOLPHINLLM_TRIAL_DAILY_CALLS:
+      DOLPHINLLM_OAUTH_PEPPER:
+      DOLPHINLLM_OAUTH_GOOGLE_CLIENT_ID:
+      DOLPHINLLM_OAUTH_GOOGLE_CLIENT_SECRET:
+      DOLPHINLLM_OAUTH_GITHUB_CLIENT_ID:
+      DOLPHINLLM_OAUTH_GITHUB_CLIENT_SECRET:
+      DOLPHINLLM_OAUTH_APP_DEV_REDIRECTS:
+      DOLPHINLLM_PUBLIC_BASE_URL:
     volumes:
       - /var/lib/lumio:/var/lib/lumio
       - /etc/lumio/secret.key:/run/secrets/secret.key:ro

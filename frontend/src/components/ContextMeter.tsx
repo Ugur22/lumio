@@ -7,7 +7,8 @@ interface Props {
   // Undefined while the first measurement is loading or if it failed; the meter then stays out of the way.
   context: ContextInfo | undefined;
   onSetWindow: () => void;
-  onSummarize: () => void;
+  // Omitted where summaries are unavailable (the free trial), which also hides the button.
+  onSummarize?: () => void;
 }
 
 
@@ -113,7 +114,7 @@ export function ContextMeter({ context, onSetWindow, onSummarize }: Props) {
           </span>
         </div>
       </div>
-      {view.suggestSummary && (
+      {view.suggestSummary && onSummarize && (
         <Button variant="bare"
           type="button"
           onClick={onSummarize}

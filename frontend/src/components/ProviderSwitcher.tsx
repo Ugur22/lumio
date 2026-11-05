@@ -4,7 +4,7 @@ import { useChat, useSetChatModel } from "../hooks/useChats";
 import { useProfileActions, useProfiles } from "../hooks/useProfiles";
 import { useSwitchChatProfile } from "../hooks/useStory";
 import { modelBody, overrideModel, shownModel, showDefaultItem } from "../lib/chatModel";
-import { effectiveProfile } from "../lib/providers";
+import { effectiveProfile, profileLabel } from "../lib/providers";
 import type { ChatModelBody } from "../types";
 import { InlineModelPicker, ModelPicker } from "./ModelPicker";
 import { ChevronDownIcon } from "./icons";
@@ -77,7 +77,7 @@ export function ProviderSwitcher({ chatId, pendingModel, onPendingModel, onManag
       aria-label={chatId ? "Provider for this chat" : "Provider for new chats"}
       value={active.id}
       onChange={change}
-      options={data.profiles.map((p) => ({ value: p.id, label: p.name }))}
+      options={data.profiles.map((p) => ({ value: p.id, label: profileLabel(p) }))}
       className="max-w-[10rem] max-[720px]:max-w-none"
     />
   );
@@ -89,13 +89,13 @@ export function ProviderSwitcher({ chatId, pendingModel, onPendingModel, onManag
         <button
           type="button"
           disabled={chatId !== null && !chat}
-          aria-label={`Provider and model: ${active.name}, ${modelProps.current}`}
+          aria-label={`Provider and model: ${profileLabel(active)}, ${modelProps.current}`}
           onClick={() => setSheetOpen(true)}
           // The pill is visually small, so the pseudo-element extends the tap area to 44px.
           className={`relative inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-muted after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-[''] hover:text-text disabled:opacity-60 ${focusRing}`}
         >
           <span className="truncate">
-            {active.name} · {modelProps.current}
+            {profileLabel(active)} · {modelProps.current}
           </span>
           <ChevronDownIcon width={12} height={12} aria-hidden="true" className="flex-none" />
         </button>
@@ -108,14 +108,18 @@ export function ProviderSwitcher({ chatId, pendingModel, onPendingModel, onManag
               </p>
             )}
             {providerSelect}
-            <InlineModelPicker
-              {...modelProps}
-              onManage={() => {
-                setSheetOpen(false);
-                onManage();
-              }}
-              onDone={() => setSheetOpen(false)}
-            />
+            {active.managed ? (
+              <p className="text-[13px]">The free trial uses {active.model}. You can pick a model once you add your own provider.</p>
+            ) : (
+              <InlineModelPicker
+                {...modelProps}
+                onManage={() => {
+                  setSheetOpen(false);
+                  onManage();
+                }}
+                onDone={() => setSheetOpen(false)}
+              />
+            )}
           </div>
         </BottomSheet>
       </>
@@ -135,10 +139,17 @@ export function ProviderSwitcher({ chatId, pendingModel, onPendingModel, onManag
         </span>
       )}
       {providerSelect}
-      <ModelPicker
-        disabled={chatId !== null && !chat}
-        {...modelProps}
-      />
+      {active.managed ? (
+        // Listing models is a provider action the trial does not allow, so the model is shown, not offered.
+        <span className="truncate" title="Fixed during the free trial">
+          {active.model}
+        </span>
+      ) : (
+        <ModelPicker
+          disabled={chatId !== null && !chat}
+          {...modelProps}
+        />
+      )}
     </div>
   );
 }

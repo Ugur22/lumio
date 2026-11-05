@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useStream } from "../store/stream";
 import type { Attachment } from "../lib/images";
+import { trialFailure, type TrialFailure } from "../lib/trial";
 import type { Chat, ChatModelBody } from "../types";
 import { useSendMessage } from "./useChats";
 
-export function useStreamingSend() {
+interface Options {
+  // The trial refused the send (used up, or full for today); the app opens Providers when it ended.
+  onTrialRefused?: (failure: TrialFailure) => void;
+}
+
+export function useStreamingSend({ onTrialRefused }: Options = {}) {
+  const refused = useRef(onTrialRefused);
+  refused.current = onTrialRefused;
   const { mutate, isPending } = useSendMessage();
   const abort = useRef<AbortController | null>(null);
   const streamed = useRef("");
@@ -58,6 +66,12 @@ export function useStreamingSend() {
           },
           onError: (err) => {
             endStream();
+            const trial = trialFailure(err);
+            if (trial) {
+              useStream.getState().fail(trial.message, true);
+              refused.current?.(trial);
+              return;
+            }
             useStream.getState().fail(err.message);
           },
         },
