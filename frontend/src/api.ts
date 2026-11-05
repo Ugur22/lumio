@@ -1,4 +1,5 @@
 import { createSseParser } from "./lib/sse";
+import { normalizeTrial } from "./lib/trial";
 import type {
   Chat,
   ChatSummary,
@@ -20,6 +21,7 @@ import type {
   BehaviorBody,
   StoryBody,
   SummaryBody,
+  TrialStatus,
   WebStatus,
 } from "./types";
 
@@ -173,6 +175,7 @@ export const api = {
     request<ProfileList>(`/profiles/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteProfile: (id: string) => request<ProfileList>(`/profiles/${id}`, { method: "DELETE" }),
   activateProfile: (id: string) => request<ProfileList>(`/profiles/${id}/activate`, { method: "POST" }),
+  getTrial: (): Promise<TrialStatus> => request<unknown>("/trial").then(normalizeTrial),
   getWebStatus: () => request<WebStatus>("/web"),
   setWebKey: (key: string) => request<WebStatus>("/web/key", { method: "PUT", body: JSON.stringify({ key }) }),
   deleteWebKey: () => request<WebStatus>("/web/key", { method: "DELETE" }),

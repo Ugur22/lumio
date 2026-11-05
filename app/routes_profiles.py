@@ -49,6 +49,8 @@ def new_profile_id() -> str:
 
 
 def view(profile: Profile, user: UserView) -> ProfileView:
+    if providers.is_trial(profile):
+        return ProfileView(**profile.model_dump(), configured=True, last4=None, source="server", managed=True, key_store=secret_store.store_kind())
     key, source = profile_store.resolve_key(runtime.settings, user, profile)
     configured = key is not None or not profile.needs_key
     last4 = key[-4:] if key and len(key) >= 12 else None
@@ -56,7 +58,7 @@ def view(profile: Profile, user: UserView) -> ProfileView:
 
 
 def listing(user: UserView, store=None) -> ProfileList:
-    store = store or profile_store.load_store(runtime.settings, user)
+    store = providers.user_store(user, store)
     return ProfileList(active=store.active, profiles=[view(p, user) for p in store.profiles])
 
 
@@ -91,7 +93,10 @@ def list_profiles(user: CurrentUser):
 
 @profiles.post("", response_model=ProfileList, status_code=201)
 def create_profile(body: NewProfile, user: CurrentUser):
+    providers.require_no_trial(user)
     store = profile_store.load_store(runtime.settings, user)
+    if len(store.profiles) >= providers.MAX_PROFILES:
+        raise HTTPException(409, f"You can keep up to {providers.MAX_PROFILES} providers. Delete one first.")
     taken = {p.id for p in store.profiles}
     profile_id = new_profile_id()
     while profile_id in taken:
@@ -158,6 +163,7 @@ def context_size(model) -> int | None:
 @profiles.post("/models", response_model=ModelsResult)
 async def list_models(body: ModelsQuery, user: CurrentUser):
     """Lists the provider's models; doubles as the key test. Works on unsaved profiles."""
+    await run_in_threadpool(providers.require_no_trial, user)
     base_url, key, needs_key = body.base_url, None, body.needs_key
     if body.key:
         key = body.key.get_secret_value().strip() or None
@@ -210,6 +216,7 @@ def get_web_status(user: CurrentUser):
 
 @web_settings.put("/key", response_model=WebStatus)
 def set_web_key(body: WebKey, user: CurrentUser):
+    providers.require_no_trial(user)
     store_key(profile_store.tavily_account(user), body.key.get_secret_value())
     return web_status(user)
 

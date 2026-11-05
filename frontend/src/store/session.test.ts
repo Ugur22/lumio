@@ -31,6 +31,23 @@ describe("session store", () => {
     expect(me).toHaveBeenCalledTimes(1);
   });
 
+  it("files an auth_error code on the login screen, and trial_used inside the app", () => {
+    useSession.getState().reportAuthError("disposable");
+    expect(useSession.getState()).toMatchObject({ notice: "Disposable email addresses cannot start a trial", flash: null });
+    resetSession();
+    useSession.getState().reportAuthError("trial_used");
+    expect(useSession.getState()).toMatchObject({ notice: null, flash: "This account already used its free trial. You can add your own provider." });
+    useSession.getState().dismissFlash();
+    expect(useSession.getState().flash).toBeNull();
+  });
+
+  it("drops a login-screen notice once /me finds a session", async () => {
+    useSession.getState().reportAuthError("denied");
+    vi.spyOn(api, "me").mockResolvedValue(alice);
+    await useSession.getState().load();
+    expect(useSession.getState().notice).toBeNull();
+  });
+
   it("expires only a signed-in session, with a notice", () => {
     useSession.getState().expire();
     expect(useSession.getState().status).toBe("pending");

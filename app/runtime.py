@@ -5,6 +5,7 @@ import os
 import chat_migration
 import e2e
 import images
+import models
 import profile_store
 import secret_store
 import storage
@@ -39,8 +40,35 @@ def refuse_half_configured_server(settings: Settings) -> None:
         )
 
 
+def refuse_bad_trial_config(settings: Settings) -> None:
+    """Exits when open sign-in is on but something it depends on is missing, rather than start with sign-in half working
+    (a trial with no key to spend, or an anchor hash with no pepper). Says what is missing, never a value."""
+    if not settings.open_signup:
+        return
+    problems = []
+    if not settings.deployed:
+        problems.append("DOLPHINLLM_PUBLIC_HOST (sign-in needs a server)")
+    if not settings.trial_api_key or not settings.trial_api_key.get_secret_value().strip():
+        problems.append("DOLPHINLLM_TRIAL_API_KEY")
+    if not settings.oauth_pepper or len(settings.oauth_pepper.get_secret_value()) < 16:
+        problems.append("DOLPHINLLM_OAUTH_PEPPER (at least 16 characters)")
+    for name in ("google", "github"):
+        have = [bool(getattr(settings, f"oauth_{name}_client_id")), bool(getattr(settings, f"oauth_{name}_client_secret"))]
+        if any(have) and not all(have):
+            problems.append(f"both DOLPHINLLM_OAUTH_{name.upper()}_CLIENT_ID and _CLIENT_SECRET (only one is set)")
+    if not settings.oauth_providers():
+        problems.append("a Google or GitHub OAuth client id and secret")
+    try:
+        models.clean_base_url(settings.trial_base_url)
+    except ValueError:
+        problems.append("a valid DOLPHINLLM_TRIAL_BASE_URL")
+    if problems:
+        raise SystemExit("DOLPHINLLM_OPEN_SIGNUP is on, but these are missing or invalid: " + "; ".join(problems) + ". Refusing to start; set them or turn open sign-in off.")
+
+
 settings = Settings()
 refuse_half_configured_server(settings)
+refuse_bad_trial_config(settings)
 if e2e.enabled():
     settings.data_dir = e2e.data_dir()
     settings.db_file = None  # never the real database
@@ -92,6 +120,9 @@ def import_legacy_chats(db: storage.Store, settings: Settings) -> None:
         log.warning("%d legacy chat files were skipped or differed after import; run python -m chat_migration import", len(report.skipped) + len(report.mismatched))
 
 
+_warned_not_admin = False
+
+
 def migrate_profiles_to_admin(db: storage.Store, settings: Settings) -> None:
     """Once, on a server: hands the global profiles file and keys from before accounts to the admin account.
 
@@ -104,6 +135,13 @@ def migrate_profiles_to_admin(db: storage.Store, settings: Settings) -> None:
     if account is None:
         return
     admin = UserView(id=account.id, username=account.username, is_admin=account.is_admin)
+    if not profile_store.is_admin_user(settings, admin):
+        # A stranger may hold this name from before the upgrade; the operator's keys are not theirs.
+        global _warned_not_admin
+        if not _warned_not_admin:
+            _warned_not_admin = True
+            log.warning("DOLPHINLLM_ADMIN_USER names an account that is not an admin; the global profiles were not migrated")
+        return
     try:
         moved = profile_store.migrate_global_to_user(settings, admin)
     except Exception as e:

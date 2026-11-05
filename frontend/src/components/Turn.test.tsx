@@ -132,3 +132,18 @@ describe("Turn illustration failures", () => {
     expect(renderToStaticMarkup(<Turn question="q" reply={reply} />)).not.toContain("generate an image");
   });
 });
+
+describe("Turn error", () => {
+  it("words a failure as Failed and as an alert", () => {
+    const out = renderToStaticMarkup(<Turn question="q" reply={{ kind: "error", message: "boom" }} />);
+    expect(out).toContain("Failed: boom");
+    expect(out).toContain('role="alert"');
+  });
+
+  it("shows a notice (the free trial) as calm guidance, not a failure", () => {
+    const out = renderToStaticMarkup(<Turn question="q" reply={{ kind: "error", message: "Free trials are full today, try tomorrow", notice: true }} />);
+    expect(out).toContain("Free trials are full today, try tomorrow");
+    expect(out).not.toContain("Failed");
+    expect(out).toContain('role="status"');
+  });
+});

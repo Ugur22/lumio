@@ -4,8 +4,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+import accounts
 import secret_store
-from app import routes_auth, routes_chats, routes_profiles, runtime
+from app import routes_auth, routes_chats, routes_oauth, routes_profiles, runtime
 from models import BASE_DIR
 
 try:
@@ -32,8 +33,16 @@ async def validation_error(request: Request, exc: RequestValidationError):
     return JSONResponse({"detail": errors}, status_code=422)
 
 
+@app.exception_handler(accounts.Busy)
+async def hashing_busy(request: Request, exc: accounts.Busy):
+    # The same answer whatever the username, so it says nothing about which accounts exist.
+    return JSONResponse({"detail": "Busy, try again shortly"}, status_code=503, headers={"Retry-After": "2"})
+
+
 app.include_router(routes_auth.router)
 app.include_router(routes_auth.token_router)
+app.include_router(routes_oauth.router)
+app.include_router(routes_oauth.trial_router)
 app.include_router(routes_chats.router)
 app.include_router(routes_profiles.profiles)
 app.include_router(routes_profiles.web_settings)

@@ -7,7 +7,8 @@ import type { IllustrationFailure, SourceRef } from "../types";
 export type Pending = { text: string; chatId: string | null; images: string[] } & (
   | { status: "thinking" }
   | { status: "streaming"; reply: string }
-  | { status: "error"; error: string }
+  // `notice` marks a message that is guidance rather than a fault (the free trial), so it is not worded "Failed".
+  | { status: "error"; error: string; notice?: boolean }
 );
 
 interface StreamState {
@@ -27,7 +28,7 @@ interface StreamState {
   start: (chatId: string | null, text: string, images?: string[]) => void;
   setReply: (reply: string) => void;
   setSources: (sources: SourceRef[], notes: string[], query?: string | null) => void;
-  fail: (error: string) => void;
+  fail: (error: string, notice?: boolean) => void;
   clear: () => void;
 }
 
@@ -65,9 +66,11 @@ export const useStream = create<StreamState>((set, get) => ({
         ? { pending: { ...s.pending, status: "streaming", reply } }
         : s,
     ),
-  fail: (error) =>
+  fail: (error, notice = false) =>
     set((s) =>
-      s.pending ? { pending: { text: s.pending.text, chatId: s.pending.chatId, images: s.pending.images, status: "error", error } } : s,
+      s.pending
+        ? { pending: { text: s.pending.text, chatId: s.pending.chatId, images: s.pending.images, status: "error", error, ...(notice && { notice }) } }
+        : s,
     ),
   clear: () => {
     revoke(get().pending);

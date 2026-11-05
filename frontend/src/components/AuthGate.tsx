@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 import { setUnauthorizedHandler } from "../api";
 import { useTheme } from "../hooks/useTheme";
+import { takeAuthError } from "../lib/oauth";
 import { resetClientState } from "../lib/sessionReset";
 import { useSession } from "../store/session";
 import { AuthScreen } from "./AuthScreen";
@@ -18,6 +19,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => useSession.getState().expire());
+    // Before load(), so the code is already filed when /me answers. StrictMode's second run finds the URL clean.
+    const authError = takeAuthError();
+    if (authError) useSession.getState().reportAuthError(authError);
     void useSession.getState().load();
     return () => setUnauthorizedHandler(null);
   }, []);

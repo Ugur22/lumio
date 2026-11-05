@@ -220,3 +220,33 @@ describe("session loss and sign-out", () => {
     expect(screen.queryByText("alice")).toBeNull();
   });
 });
+
+describe("AuthGate sign-in redirect", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("shows the auth_error message on the login screen and clears it from the URL", async () => {
+    window.history.replaceState(null, "", "/?auth_error=throttled");
+    mockFetch(() => json({ detail: "Not signed in" }, 401));
+    renderWithClient(
+      <AuthGate>
+        <Probe />
+      </AuthGate>,
+    );
+    expect(await screen.findByText("Too many sign-ups from your network, try later")).toBeTruthy();
+    expect(window.location.search).toBe("");
+  });
+
+  it("signs a trial_used person in and keeps the message for the app instead of an error screen", async () => {
+    window.history.replaceState(null, "", "/?auth_error=trial_used");
+    mockFetch(() => json(alice));
+    renderWithClient(
+      <AuthGate>
+        <Probe />
+      </AuthGate>,
+    );
+    expect(await screen.findByText("the app")).toBeTruthy();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(useSession.getState().flash).toMatch(/already used its free trial/);
+    expect(window.location.search).toBe("");
+  });
+});

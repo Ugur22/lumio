@@ -14,7 +14,9 @@ import {
 import { continueList, shiftList, type Edit } from "../lib/lists";
 import { ACCEPT_ATTR, prepareImage, rejectReason, type Attachment } from "../lib/images";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { bannerText, trialBanner, TRIAL_ENDED } from "../lib/trial";
 import { CloseIcon, GlobeIcon, PaperclipIcon, PlusIcon, SendIcon, SparklesIcon, StopIcon } from "./icons";
+import type { TrialStatus } from "../types";
 import { BottomSheet, Button, PressButton } from "./ui";
 
 export interface ComposerHandle {
@@ -33,6 +35,11 @@ interface Props {
   providerName: string | null;
   // Whether the active provider has an image model; the Illustrate toggle only exists then.
   canIllustrate?: boolean;
+  // The active provider is the free trial's: no images, web search or illustrations, and the count shows above the card.
+  managed?: boolean;
+  trial?: TrialStatus;
+  // Opens Providers; offered when the trial has ended.
+  onAddProvider?: () => void;
   onSend: (text: string, attachments: Attachment[], web: boolean, illustrate: boolean) => void;
   onStop: () => void;
 }
@@ -83,9 +90,36 @@ function SheetText({ title, hint }: { title: string; hint: string }) {
   );
 }
 
+function TrialBannerView({ banner, onAddProvider }: { banner: NonNullable<ReturnType<typeof trialBanner>>; onAddProvider?: () => void }) {
+  if (banner.kind === "ended") {
+    return (
+      <div role="status" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn-bg px-3 py-2 text-[13px] text-warn-bar">
+        <span className="min-w-0 flex-1">{TRIAL_ENDED}</span>
+        {onAddProvider && (
+          <Button variant="bare" onClick={onAddProvider} className="rounded px-2 py-1 font-medium underline">
+            Open Providers
+          </Button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="mb-1.5 flex">
+      <span
+        role="status"
+        className={`inline-flex h-6 items-center rounded-full border px-2.5 text-[12px] ${
+          banner.kind === "last" ? "border-warn-bar/40 bg-warn-bg text-warn-bar" : "border-border bg-surface text-muted"
+        }`}
+      >
+        {bannerText(banner)}
+      </span>
+    </div>
+  );
+}
+
 const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
-export function Composer({ ref, disabled, vision, providerName, canIllustrate = false, onSend, onStop }: Props) {
+export function Composer({ ref, disabled, vision, providerName, canIllustrate = false, managed = false, trial, onAddProvider, onSend, onStop }: Props) {
   const [value, setValue] = useState("");
   const [web, setWeb] = useState(false);
   const [illustrate, setIllustrate] = useState(false);
@@ -127,15 +161,22 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
       setValue(text);
       input.current?.focus();
     },
-    enableWeb: () => setWeb(true),
+    enableWeb: () => setWeb(!managed),
     openPicker,
   }));
 
   // Images picked on a vision model and then left behind by a provider switch can't be sent.
   const blocked = !vision && attachments.length > 0;
-  const ready = (value.trim() !== "" || attachments.length > 0) && !disabled && !blocked && preparing === 0;
+  const banner = managed ? trialBanner(trial) : null;
+  // Sending would only bounce off a 402, so the button says no before the request does.
+  const ended = banner?.kind === "ended";
+  // The toggles are hidden for the trial, so a leftover "on" from another provider must neither show nor be sent.
+  const webOn = web && !managed;
+  const ready = (value.trim() !== "" || attachments.length > 0) && !disabled && !blocked && !ended && preparing === 0;
   const inList = /^\s*([-*]|\d+\.) +\S/.test(value.slice(value.lastIndexOf("\n") + 1));
-  const unsupported = `${providerName ?? "This provider"} can't read images. Switch to a vision-capable provider, or turn on "Can read images" for it in Providers.`;
+  const unsupported = managed
+    ? "Images are not part of the free trial. Add your own provider to use them."
+    : `${providerName ?? "This provider"} can't read images. Switch to a vision-capable provider, or turn on "Can read images" for it in Providers.`;
 
   function openPicker() {
     if (vision) picker.current?.click();
@@ -179,13 +220,13 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
   function submit(e?: FormEvent) {
     e?.preventDefault();
     const text = value.trim();
-    if ((!text && attachments.length === 0) || disabled || blocked || preparing > 0) return;
+    if ((!text && attachments.length === 0) || disabled || blocked || ended || preparing > 0) return;
     const sending = attachments;
     setValue("");
     setAttachments([]);
     setNotice(null);
     // A leftover "on" from a provider without an image model must not reach the server (it answers 422).
-    onSend(text, sending, web, canIllustrate && illustrate);
+    onSend(text, sending, webOn, canIllustrate && !managed && illustrate);
   }
 
   function apply(e: KeyboardEvent<HTMLTextAreaElement>, edit: Edit | null) {
@@ -258,6 +299,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
       onDrop={onDrop}
       className="mx-auto w-full max-w-[760px] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] [:root[data-keyboard=open]_&]:pb-2 pt-2 min-[721px]:px-5 min-[721px]:pt-3"
     >
+      {banner && <TrialBannerView banner={banner} onAddProvider={onAddProvider} />}
       {(notice || blocked) && (
         <p role="status" className="mb-2 rounded-xl bg-warn-bg px-3 py-2 text-[13px] text-warn-bar">
           {blocked
@@ -270,14 +312,14 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
           phone
             ? "min-h-[52px] rounded-[26px] p-1.5" // no border/shadow transition here: it repaints every frame while the keyboard opens
             : "rounded-2xl p-2 transition-[border-color,box-shadow] duration-200"
-        } ${dragging ? "border-accent ring-2 ring-accent/40" : web ? "border-accent/50" : "border-border"}`}
+        } ${dragging ? "border-accent ring-2 ring-accent/40" : webOn ? "border-accent/50" : "border-border"}`}
       >
         {dragging && (
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[inherit] bg-surface/90 text-[14px] font-medium text-accent"
           >
-            {vision ? "Drop images to attach" : `${providerName ?? "This provider"} can't read images`}
+            {vision ? "Drop images to attach" : managed ? "Images are not part of the free trial" : `${providerName ?? "This provider"} can't read images`}
           </div>
         )}
         {(attachments.length > 0 || preparing > 0) && (
@@ -310,7 +352,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
           </ul>
         )}
         <div className={phone ? "flex items-end gap-1" : undefined}>
-          {phone && (
+          {phone && !managed && (
             <PressButton
               type="button"
               aria-label="Add to message"
@@ -322,12 +364,12 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
             </PressButton>
           )}
           <div className={phone ? "flex min-w-0 flex-1 flex-wrap items-center gap-1.5 px-1 py-[7px]" : undefined}>
-            {phone && web && (
+            {phone && webOn && (
               <button type="button" aria-label="Turn off web search" onClick={() => setWeb(false)} className={chip}>
                 Web on <CloseIcon width={12} height={12} />
               </button>
             )}
-            {phone && canIllustrate && illustrate && (
+            {phone && !managed && canIllustrate && illustrate && (
               <button type="button" aria-label="Turn off illustrate" onClick={() => setIllustrate(false)} className={chip}>
                 Illustrate on <CloseIcon width={12} height={12} />
               </button>
@@ -346,7 +388,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
               placeholder={
                 attachments.length > 0
                   ? "Ask something about the image…"
-                  : web
+                  : webOn
                     ? "Ask anything — Lumio will search the web first…"
                     : "Write a message…"
               }
@@ -360,6 +402,8 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
         {!phone && (
           <div className="mt-1 flex items-center justify-between gap-2">
             <div className="relative flex min-w-0 items-center gap-1">
+              {!managed && (
+              <>
               <div className="group/tip flex-none">
                 <PressButton
                   type="button"
@@ -422,6 +466,8 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                     : unsupported}
                 </Tip>
               </div>
+              </>
+              )}
             </div>
             {sendButton}
           </div>
@@ -439,7 +485,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
           }}
         />
       </div>
-      <BottomSheet open={phone && sheet} onClose={() => setSheet(false)} title="Add to message" eyebrow>
+      <BottomSheet open={phone && !managed && sheet} onClose={() => setSheet(false)} title="Add to message" eyebrow>
         <ul className="flex flex-col">
           <li>
             {/* aria-disabled, not disabled: it stays focusable so the reason is reachable. */}
@@ -475,8 +521,8 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
           )}
         </ul>
       </BottomSheet>
-      <p className={`mt-2 text-center text-xs [@media(pointer:coarse)]:hidden ${web ? "text-accent" : "text-muted"}`}>
-        {web
+      <p className={`mt-2 text-center text-xs [@media(pointer:coarse)]:hidden ${webOn ? "text-accent" : "text-muted"}`}>
+        {webOn
           ? "Web search on · your message is sent to Tavily"
           : inList
             ? "Enter adds an item · Enter on an empty item ends the list · Ctrl+Enter sends"

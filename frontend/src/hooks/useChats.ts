@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { profilesKey } from "./useProfiles";
+import { trialKey } from "./useTrial";
+import { trialFailure } from "../lib/trial";
 import type { Chat, ChatModelBody, ContextInfo, IllustrationFailure, ImageUpload, SourceRef } from "../types";
 
 export const chatsKey = ["chats"] as const;
@@ -75,7 +78,7 @@ export function useDeleteChat() {
 }
 
 // `context` comes from the `done` event; the stop path has none and refetches instead.
-export type SentChat = Chat & { context?: ContextInfo };
+export type SentChat = Chat & { context?: ContextInfo; trial?: { remaining: number } };
 
 interface SendVars {
   chatId: string | null;
@@ -138,12 +141,24 @@ export function useSendMessage() {
         throw err;
       }
     },
-    onSuccess: ({ context, ...chat }) => {
+    onSuccess: ({ context, trial, ...chat }) => {
+      // A reply the trial paid for moves the count; the last one also ends the trial, which changes what Providers allows.
+      if (trial) {
+        void qc.invalidateQueries({ queryKey: trialKey });
+        if (trial.remaining <= 0) void qc.invalidateQueries({ queryKey: profilesKey });
+      }
       qc.setQueryData(chatKey(chat.id), chat);
       if (context) qc.setQueryData(contextKey(chat.id), context);
       else void qc.invalidateQueries({ queryKey: contextKey(chat.id) });
       return qc.invalidateQueries({ queryKey: chatsKey });
     },
-    onError: () => qc.invalidateQueries({ queryKey: chatsKey }),
+    onError: (err) => {
+      // A 402 means the count we show is behind the server's.
+      if (trialFailure(err)?.kind === "ended") {
+        void qc.invalidateQueries({ queryKey: trialKey });
+        void qc.invalidateQueries({ queryKey: profilesKey });
+      }
+      return qc.invalidateQueries({ queryKey: chatsKey });
+    },
   });
 }

@@ -10,7 +10,16 @@ HOST = "lumio.example.com"
 ORIGIN = f"https://{HOST}"
 METHODS = {"get", "post", "put", "patch", "delete"}
 # The only routes a stranger may call: they create or end a session, so they cannot require one.
-OPEN = {("POST", "/api/auth/register"), ("POST", "/api/auth/login"), ("POST", "/api/auth/token"), ("POST", "/api/auth/logout")}
+OPEN = {
+    ("POST", "/api/auth/register"),
+    ("POST", "/api/auth/login"),
+    ("POST", "/api/auth/token"),
+    ("POST", "/api/auth/oauth/exchange"),  # trades the app's one-time code for a session
+    ("POST", "/api/auth/logout"),
+    # They start and finish a sign-in, so they cannot require one; each is a redirect (to an error when trials are off).
+    ("GET", "/api/auth/oauth/{provider}/start"),
+    ("GET", "/api/auth/oauth/{provider}/callback"),
+}
 
 
 def api_routes():
@@ -27,7 +36,7 @@ def stranger(monkeypatch):
 
 def fill(path):
     # 32 hex characters satisfies the chat id and the profile id patterns alike.
-    return path.replace("{chat_id}", "a" * 32).replace("{profile_id}", "a" * 8).replace("{image_id}", "a" * 32)
+    return path.replace("{chat_id}", "a" * 32).replace("{profile_id}", "a" * 8).replace("{image_id}", "a" * 32).replace("{provider}", "google")
 
 
 def test_the_sweep_sees_the_whole_api():
@@ -35,7 +44,7 @@ def test_the_sweep_sees_the_whole_api():
 
     assert len(routes) >= 25
     assert OPEN <= set(routes)  # a renamed open route must not silently leave the allow-list
-    for needle in ("/api/profiles", "/api/profiles/models", "/api/web/key", "/api/chats", "/api/auth/me", "/api/auth/password"):
+    for needle in ("/api/profiles", "/api/profiles/models", "/api/web/key", "/api/chats", "/api/auth/me", "/api/auth/password", "/api/trial"):
         assert any(p == needle for _, p in routes), needle
 
 

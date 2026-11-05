@@ -16,7 +16,7 @@ import { Button } from "./ui";
 export type Reply =
   | { kind: "text"; content: string; streaming?: boolean; illustrations?: Illustration[] }
   | { kind: "thinking" }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; notice?: boolean }
   | { kind: "none" };
 
 type AppearProps = ComponentPropsWithoutRef<"div"> & { live: boolean };
@@ -78,10 +78,14 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
         .with({ kind: "error" }, (r) => (
           <Appear
             live
-            role="alert"
-            className="mt-5 rounded-xl border border-warn-bar/40 bg-warn-bg px-4 py-3 text-warn-bar"
+            role={r.notice ? "status" : "alert"}
+            className={
+              r.notice
+                ? "mt-5 rounded-xl border border-border bg-note-bg px-4 py-3 text-text"
+                : "mt-5 rounded-xl border border-warn-bar/40 bg-warn-bg px-4 py-3 text-warn-bar"
+            }
           >
-            Failed: {r.message}
+            {r.notice ? r.message : `Failed: ${r.message}`}
           </Appear>
         ))
         .with({ kind: "none" }, () => null)

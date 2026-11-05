@@ -11,7 +11,7 @@ Presets fill in a base URL and a default model, both editable. Source: `frontend
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
 | OpenRouter | `https://openrouter.ai/api/v1` | `openai/gpt-4o-mini` |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| DeepSeek | `https://api.deepseek.com` | `deepseek-flash` |
 | xAI (Grok) | `https://api.x.ai/v1` | `grok-4` (image model `grok-imagine-image-2.0`) |
 | Together | `https://api.together.xyz/v1` | `meta-llama/Llama-3.3-70B-Instruct-Turbo` |
 | Anthropic (OpenAI-compatible) | `https://api.anthropic.com/v1` | `claude-sonnet-5-5` |
@@ -20,6 +20,10 @@ Presets fill in a base URL and a default model, both editable. Source: `frontend
 | Custom | any OpenAI-compatible endpoint | none |
 
 Pasting a key suggests a preset from its prefix; you always confirm.
+
+The DeepSeek row was checked against <https://api-docs.deepseek.com> on 2026-11-05: the OpenAI-format base URL is `https://api.deepseek.com` (the SDK appends `/chat/completions`; a `/v1` suffix is no longer the documented form) and the model name to use is `deepseek-flash`. The old `deepseek-chat` name is not what the docs list now. The preset in `frontend/src/lib/providers.ts` still carries the old values until the frontend change updates it.
+
+The free trial uses the same endpoint through a server-owned key; see [deploy/README.md](../deploy/README.md#free-trial-optional-off-by-default). The trial profile is not editable and its key is never shown.
 
 ## Requirements
 

@@ -202,6 +202,34 @@ lumio() { (cd /opt/lumio-compose && sudo docker compose exec app python -m "$@")
 - **Forgot a password:** `lumio accounts set-password <name>` signs that account out everywhere. There is no reset email.
 - **Remove access:** `lumio accounts disable <name>` disables the account and ends its sessions.
 
+## Free trial (optional, off by default)
+
+New people can sign in with Google or GitHub and get a few text-only replies (default 5) on a DeepSeek key that you own, then the trial ends and they add their own provider. Password sign-in is unchanged and stays invite-only. Nothing below is active until every piece is configured, and `DOLPHINLLM_OPEN_SIGNUP=false` (the default) switches it off again at any time, including for trials already running.
+
+1. **Google.** In Google Cloud Console, APIs & Services, Credentials: create an *OAuth client ID* of type *Web application*. Authorized redirect URI: `https://<host>/api/auth/oauth/google/callback`. Put the client id and secret in `DOLPHINLLM_OAUTH_GOOGLE_CLIENT_ID` and `DOLPHINLLM_OAUTH_GOOGLE_CLIENT_SECRET`. The consent screen only needs the `openid` and `email` scopes.
+2. **GitHub.** In GitHub, Settings, Developer settings, OAuth Apps: *New OAuth App*. Authorization callback URL: `https://<host>/api/auth/oauth/github/callback`. Put the client id and a generated client secret in `DOLPHINLLM_OAUTH_GITHUB_CLIENT_ID` and `DOLPHINLLM_OAUTH_GITHUB_CLIENT_SECRET`. The app asks for `read:user user:email`. GitHub accounts younger than 30 days are refused.
+3. **The trial key.** A DeepSeek key in `DOLPHINLLM_TRIAL_API_KEY`. It is separate from `DOLPHINLLM_API_KEY` (the admin's legacy key), lives only in the server's environment, and is never returned, logged or stored. Give it a spending limit at DeepSeek: the app caps trials per day (`DOLPHINLLM_TRIAL_DAILY_CALLS`, default 150, all users together) but that is a rate cap, not a budget.
+4. **The pepper.** `DOLPHINLLM_OAUTH_PEPPER`, at least 16 random characters (`openssl rand -base64 24`). It keys the hashes that stop a person getting a second trial after deleting their account (the provider id and the normalised email are stored only as HMACs, kept 18 months). Do not rotate it casually: a new pepper forgets every earlier trial. Back it up with the master key.
+5. **Redirect base.** The redirect URIs are built from `DOLPHINLLM_PUBLIC_BASE_URL`, or `https://<DOLPHINLLM_PUBLIC_HOST>` when that is unset.
+6. **Forwarded address.** Sign-ups are limited to 3 per address per 24 hours (an IPv6 address counts as its /64) and 100 per day overall. The address comes from uvicorn's proxy handling, so check that `FORWARDED_ALLOW_IPS` is Caddy's address (the compose file sets it): if it is wrong, every visitor shares one address and the limit locks everyone out after three sign-ups. Test with a request from a second network before announcing.
+7. Set `DOLPHINLLM_OPEN_SIGNUP=true`. The app refuses to start, naming what is missing, if sign-in is on without the public host, the trial key, a pepper of 16 characters or more, or at least one complete OAuth client.
+
+Other settings: `DOLPHINLLM_TRIAL_CALLS` (5), `DOLPHINLLM_TRIAL_BASE_URL` (`https://api.deepseek.com`), `DOLPHINLLM_TRIAL_MODEL` (`deepseek-flash`). Trial accounts are pinned to that model, 1500 output tokens, 4000-character messages, no web search, images, illustrations or summaries, and at most 50 chats; adding their own provider unlocks when the trial ends. An account that signs in with a provider has no password and cannot use the password form. Accounts and their anchors are not removed by any command here; deleting a user row removes its identity and trial but not the tombstones.
+
+### The native app (optional)
+
+The Expo app signs in through the same flow, with this server as the broker: there are no native Google or GitHub client ids, and the provider only ever redirects to `https://<host>/api/auth/oauth/<provider>/callback`. The app opens `/api/auth/oauth/<provider>/start?client=app&redirect=lumio://auth&challenge=<PKCE S256 challenge>` in a browser session. After the provider, the server redirects to `lumio://auth?code=<one-time code>` (or `?auth_error=<code>`, the same codes as the web) and the app trades the code and its PKCE verifier at `POST /api/auth/oauth/exchange` for a bearer token. Codes live 60 seconds and are stored only as a hash. A code is consumed by the first exchange attempt, so a wrong verifier burns it and the app has to sign in again. Nothing extra is needed for this beyond the trial setup above; the only accepted return address is `lumio://auth`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DOLPHINLLM_OAUTH_APP_DEV_REDIRECTS` | `false` | Also accepts `exp://` and `exps://` return addresses ending in `/--/auth`, which is where Expo Go lives |
+
+Testing from Expo Go against a live server: the `exp://` address changes with the network, so it cannot be listed ahead of time. Set `DOLPHINLLM_OAUTH_APP_DEV_REDIRECTS=true` temporarily, restart, test, then remove it and restart again. Keep it off in normal operation: it widens the set of addresses a sign-in code can be sent to.
+
+Known limit of the app sign-in: PKCE stops another app from stealing the real app's sign-in code, but not a look-alike app that registers `lumio://` and starts its own sign-in, which a victim would have to install and sign in through. Only app-bound return addresses close that: Android App Links (`assetlinks.json` with the release certificate fingerprint) and iOS Universal Links (needs an Apple developer team ID). Neither works from Expo Go, so this is accepted until a public build.
+
+The `admin` flag now matters for `DOLPHINLLM_ADMIN_USER`: the account must have been created with `--admin` to inherit the pre-accounts key. Names such as `admin`, `root`, `support`, `local`, `system` and the admin's own name cannot be registered through the invite form.
+
 ## Configuration and storage
 
 Settings are `Environment=` lines in `deploy/lumio.service` (after the cutover to Docker: the `environment:` block of `deploy/docker/docker-compose.yml`, with the same names; the admin name comes from `LUMIO_ADMIN_USER` in the server's settings file next to it, and the master key is mounted at `/run/secrets/secret.key`):
@@ -216,6 +244,7 @@ Settings are `Environment=` lines in `deploy/lumio.service` (after the cutover t
 | `DOLPHINLLM_SECRETS_FILE` | `/var/lib/lumio/secrets.json` | Encrypted provider and Tavily keys |
 | `DOLPHINLLM_SECRET_KEY_FILE` | `/etc/lumio/secret.key` | Master key(s) for the secrets file |
 | `DOLPHINLLM_LOG_FILE` | `/var/lib/lumio/logs/app.jsonl` | Metadata-only log |
+| `DOLPHINLLM_OPEN_SIGNUP`, `DOLPHINLLM_TRIAL_API_KEY`, `DOLPHINLLM_OAUTH_PEPPER`, `DOLPHINLLM_OAUTH_GOOGLE_CLIENT_ID` / `_SECRET`, `DOLPHINLLM_OAUTH_GITHUB_CLIENT_ID` / `_SECRET`, `DOLPHINLLM_PUBLIC_BASE_URL`, `DOLPHINLLM_OAUTH_APP_DEV_REDIRECTS` | see [Free trial](#free-trial-optional-off-by-default) | Optional free trial. Secrets belong in the server's settings file next to the compose file, not in git |
 
 Optional: `DOLPHINLLM_IMAGE_RETENTION_DAYS` (default 30), and `DOLPHINLLM_SECRET_KEY`, which takes precedence over the key file when set. The service is sandboxed with `ProtectSystem=strict`: it can write only `/var/lib/lumio` and read `/etc/lumio`. After editing the unit, run `sudo systemctl daemon-reload && sudo systemctl restart lumio`.
 
@@ -266,7 +295,7 @@ Save the new key in your password manager and back up `secrets.json` again. By t
 sudo -u lumio sqlite3 /var/lib/lumio/lumio.db 'PRAGMA user_version'
 ```
 
-An older build refuses to open a database with a newer version (on purpose). Deploying it then fails at startup instead of serving data it doesn't understand.
+An older build refuses to open a database with a newer version (on purpose). The free-trial release stamps schema 3, so rolling back to an earlier image fails at startup; see [UPGRADING.md](UPGRADING.md#free-trial-schema-3). Deploying it then fails at startup instead of serving data it doesn't understand.
 
 **Rollback across an incompatible database or authentication change.** Deploying old code onto the new data won't work, and shouldn't be forced. The accounts release stamped the database schema 2; the release before it has no per-user scoping and no sign-in, so without Caddy's `basic_auth` it would show every chat to anyone. To go back past it:
 
