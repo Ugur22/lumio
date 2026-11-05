@@ -28,7 +28,7 @@ import profile_store
 import server
 import storage
 from app import anchors, providers, routes_auth, routes_oauth, routes_profiles, runtime, story, streaming
-from models import ProfileView, Settings, UserView
+from models import Message, ProfileView, Settings, UserView
 
 HOST = "lumio.example.com"
 ORIGIN = f"https://{HOST}"
@@ -1274,3 +1274,143 @@ def test_parallel_chat_creation_cannot_pass_the_trial_cap(idp):
     [t.join() for t in threads]
 
     assert results.count(True) == cap and runtime.db.count_chats(owner=uid) == cap
+
+
+# --- thinking off, and empty replies --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stub(monkeypatch):
+    """The real SDK against the offline upstream stub, so the request body that would reach DeepSeek is what is asserted."""
+    from fake_upstream import RECEIVED
+    from openai import OpenAI
+
+    sdk = OpenAI(base_url="https://fake-upstream.test/v1", api_key="k" * 20, http_client=TestClient(upstream_app), max_retries=0)
+    monkeypatch.setattr(providers, "get_client", lambda profile, user: sdk)
+    RECEIVED.clear()
+    return RECEIVED
+
+
+def saved_messages(client, chat_id):
+    return client.get(f"/api/chats/{chat_id}").json()["messages"]
+
+
+def test_the_trial_request_disables_thinking_and_keeps_the_clamps(idp, stub):
+    client = trial_client(idp)
+    chat_id = new_chat(client)
+    client.patch(f"/api/chats/{chat_id}", json={"max_tokens": 9000, "temperature": 1.2})
+
+    assert send(client, chat_id).status_code == 200
+
+    body = stub[-1]
+    assert body["thinking"] == {"type": "disabled"}
+    assert body["max_tokens"] == providers.TRIAL_MAX_TOKENS
+    assert body["model"] == "deepseek-flash" and body["stream"] is True
+
+
+def test_a_rejected_stream_options_retry_keeps_thinking_disabled(idp, fake_client):
+    client = trial_client(idp)
+    attempts = []
+
+    class Rejected(OpenAIError):
+        status_code = 400
+
+    def create(model, messages, stream, **kw):
+        attempts.append(kw)
+        if "stream_options" in kw:
+            raise Rejected("unknown parameter")
+        return FakeStream(["ok"])
+
+    fake_client.chat.completions.create = create
+    assert send(client, new_chat(client)).status_code == 200
+
+    assert len(attempts) == 2
+    assert all(a["extra_body"] == {"thinking": {"type": "disabled"}} and a["max_tokens"] == providers.TRIAL_MAX_TOKENS for a in attempts)
+
+
+def test_a_provider_that_rejects_the_thinking_field_fails_once_and_refunds(idp, fake_client):
+    client = trial_client(idp)
+
+    class Rejected(OpenAIError):
+        status_code = 400
+
+    def create(model, messages, stream, **kw):
+        model_calls.append(kw)
+        raise Rejected("unknown field thinking")
+
+    model_calls = []
+    fake_client.chat.completions.create = create
+
+    res = send(client, new_chat(client))
+
+    assert res.status_code == 502 and len(model_calls) == 2  # no loop, and the field was never dropped
+    assert all("extra_body" in kw for kw in model_calls)
+    assert trial_row(client).used == 0 and not providers._no_stream_options
+
+
+def test_a_reasoning_only_stream_is_an_error_saves_nothing_and_refunds(idp, stub):
+    client = trial_client(idp)
+    chat_id = new_chat(client)
+
+    evs = events(send(client, chat_id, "think hard [[fake:reasoning]]"))
+
+    assert evs == [("error", {"detail": "The model returned no answer. Try again or rephrase."})]
+    assert saved_messages(client, chat_id) == []
+    assert trial_row(client).used == 0
+    assert client.get("/api/trial").json()["remaining"] == 5
+    assert send(client, chat_id, "again").status_code == 200  # the lease was released
+
+
+def test_a_stream_with_no_content_at_all_is_also_refunded(idp, model):
+    client = trial_client(idp)
+    chat_id = new_chat(client)
+    model.pieces = ["", "  \n"]
+
+    evs = events(send(client, chat_id))
+
+    assert evs[-1][0] == "error" and evs[-1][1]["detail"].startswith("The model returned no answer")
+    assert saved_messages(client, chat_id) == [] and trial_row(client).used == 0
+
+
+def test_a_normal_stream_costs_exactly_one_call(idp, stub):
+    client = trial_client(idp)
+    chat_id = new_chat(client)
+
+    evs = events(send(client, chat_id))
+
+    assert evs[-1][0] == "done" and evs[-1][1]["trial"]["remaining"] == 4
+    assert trial_row(client).used == 1 and len(saved_messages(client, chat_id)) == 2
+
+
+def test_text_then_a_stream_error_is_not_refunded_and_saves_nothing_blank(idp, model):
+    client = trial_client(idp)
+    model.pieces, model.stream_error = ["some text"], "connection lost"
+
+    evs = events(send(client, new_chat(client)))
+
+    assert [n for n, _ in evs] == ["delta", "error"] and "no answer" not in evs[-1][1]["detail"]
+    assert trial_row(client).used == 1
+
+
+def test_trial_history_skips_blank_assistant_turns_with_their_question(idp, model):
+    client = trial_client(idp)
+    uid = client.get("/api/auth/me").json()["id"]
+    chat = runtime.db.create_chat("trial", owner=uid)
+
+    for q, a in [("first", "answer one"), ("lost", "  \n"), ("third", "answer three")]:
+        lease = runtime.db.acquire(chat.id, owner=uid)
+        runtime.db.append_generated(lease, [Message(role="user", content=q), Message(role="assistant", content=a)], title="t")
+        lease.release()
+
+    assert send(client, chat.id, "now").status_code == 200
+
+    sent = model.calls[-1]["messages"]
+    assert [(m["role"], m["content"]) for m in sent[1:]] == [
+        ("user", "first"), ("assistant", "answer one"), ("user", "third"), ("assistant", "answer three"), ("user", "now"),
+    ]
+    assert model.calls[-1]["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_a_history_that_starts_with_a_blank_reply_still_starts_with_a_user_message():
+    history = [{"role": "assistant", "content": ""}, {"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
+    assert providers.drop_blank_replies(history) == history[1:]

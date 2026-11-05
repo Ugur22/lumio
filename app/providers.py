@@ -28,6 +28,8 @@ TRIAL_MAX_TOKENS = 1500
 TRIAL_MESSAGE_CHARS = 4000
 TRIAL_HISTORY_MESSAGES = 20
 TRIAL_PROMPT_CHARS = 60_000
+# DeepSeek thinks unless told not to, and hidden reasoning eats the clamped max_tokens, leaving an empty reply.
+TRIAL_EXTRA_BODY = {"thinking": {"type": "disabled"}}
 TRIAL_MAX_CHATS = 50
 MAX_PROFILES = 5
 
@@ -109,7 +111,7 @@ def trial_prompt(chat: Chat, body: NewMessage) -> tuple[str, list[dict]]:
     if len(body.content) > TRIAL_MESSAGE_CHARS:
         raise HTTPException(422, f"Messages are limited to {TRIAL_MESSAGE_CHARS} characters during the free trial.")
     system = story.system_for(chat, body.content, False)
-    history = story.history_for(chat, False)[-TRIAL_HISTORY_MESSAGES:]
+    history = drop_blank_replies(story.history_for(chat, False))[-TRIAL_HISTORY_MESSAGES:]
     while history and history[0]["role"] != "user":
         history.pop(0)
     # Oldest first out: a long chat keeps working, only its far past stops being sent.
@@ -118,6 +120,19 @@ def trial_prompt(chat: Chat, body: NewMessage) -> tuple[str, list[dict]]:
     if len(system) + len(body.content) > TRIAL_PROMPT_CHARS:
         raise HTTPException(422, "This chat's instructions and story notes are too long for the free trial.")
     return system, history
+
+
+def drop_blank_replies(history: list[dict]) -> list[dict]:
+    """Blank assistant turns stored by older chats are not sent upstream; the question they answered goes with them so
+    user and assistant keep alternating."""
+    out: list[dict] = []
+    for m in history:
+        if m["role"] == "assistant" and not str(m["content"]).strip():
+            if out and out[-1]["role"] == "user":
+                out.pop()
+            continue
+        out.append(m)
+    return out
 
 
 def trial_sampling(chat: Chat) -> dict:
@@ -287,6 +302,10 @@ def sampling_params(chat: Chat) -> dict:
 
 def open_stream(client: OpenAI, profile: Profile, messages: list[dict], sampling: dict | None = None):
     kwargs = {"model": profile.model, "messages": messages, "stream": True, **(sampling or {})}
+    if is_trial(profile):
+        # Operator-chosen provider, so a rejection of this field is a configuration error. Both attempts below keep it:
+        # dropping it would silently turn thinking back on, and the retry only ever sheds stream_options.
+        kwargs["extra_body"] = TRIAL_EXTRA_BODY
     if profile.base_url in _no_stream_options:
         return client.chat.completions.create(**kwargs)
     try:
