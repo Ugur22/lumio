@@ -6,3 +6,11 @@ e0a19452e9663d0e8724413359b5ef0a6da03bc9:tests/test_ssrf.py:generic-api-key:16
 e0a19452e9663d0e8724413359b5ef0a6da03bc9:tests/test_profile_isolation.py:generic-api-key:508
 e0a19452e9663d0e8724413359b5ef0a6da03bc9:tests/test_ownership.py:generic-api-key:63
 e0a19452e9663d0e8724413359b5ef0a6da03bc9:tests/conftest.py:generic-api-key:18
+
+# Fake keys used by the offline trial tests (the operator's trial key, a user's provider key and a Tavily key); none is a credential.
+ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:35
+ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:863
+ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:867
+ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:882
+ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:891
+ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:901
