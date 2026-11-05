@@ -93,3 +93,15 @@ def test_stub_never_needs_a_key():
     res = client.post("/v1/chat/completions", json={"messages": [{"role": "user", "content": "hi"}], "stream": True})
     assert res.status_code == 200 and res.text.rstrip().endswith("data: [DONE]")
     assert client.post("/v1/chat/completions", headers={"X-Fake-Scenario": "error"}, json={"messages": []}).status_code == 500
+
+
+def test_a_non_trial_request_carries_no_thinking_field_and_a_blank_reply_is_an_error(api, chat_id):
+    from fake_upstream import RECEIVED
+
+    RECEIVED.clear()
+    assert post(api, chat_id, "hi").status_code == 200
+    assert "thinking" not in RECEIVED[-1] and "extra_body" not in RECEIVED[-1]
+
+    evs = events(post(api, chat_id, "hmm [[fake:reasoning]]"))
+    assert evs == [("error", {"detail": "The model returned no answer. Try again or rephrase."})]
+    assert len(api.get(f"/api/chats/{chat_id}").json()["messages"]) == 2

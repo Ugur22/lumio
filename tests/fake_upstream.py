@@ -9,7 +9,8 @@ header; nothing from a request body or header is ever logged.
 
 Scenarios: plain (default), error (chat 500), illustrate (reply with an [[image: ...]] directive),
 image-error (directive whose image call returns 500), code (reply with a runnable JavaScript block that
-logs CODE_OUTPUT). The images endpoint always succeeds unless
+logs CODE_OUTPUT), reasoning (only reasoning_content deltas, then finish_reason "length": a thinking model that ran out
+of max_tokens). Request bodies of chat calls are kept in RECEIVED for tests to inspect. The images endpoint always succeeds unless
 the prompt contains FAILING_PROMPT or the header is `error`.
 """
 
@@ -31,6 +32,9 @@ IMAGE_ERROR_PIECES = [f"A barn.\n\n[[image: {FAILING_PROMPT} barn]]\n\n", "The e
 CODE_OUTPUT = "fake-code-output"
 CODE_PIECES = ["Run this:\n\n", f"```js\nconsole.log(\"{CODE_OUTPUT}\");\n```\n"]
 ERROR_BODY = {"error": {"message": "fake upstream failure", "type": "server_error"}}
+
+RECEIVED: list[dict] = []  # chat request bodies, newest last (in memory only, never logged)
+REASONING_PIECES = ["Let me think ", "about this."]
 
 _MARKER = re.compile(r"\[\[fake:([a-z-]+)\]\]")
 
@@ -57,11 +61,11 @@ def _chunk(delta: dict, finish: str | None = None) -> str:
     return f"data: {json.dumps(body)}\n\n"
 
 
-def _sse(pieces: list[str], usage: bool):
+def _sse(pieces: list[str], usage: bool, reasoning: bool = False):
     yield _chunk({"role": "assistant", "content": ""})
     for piece in pieces:
-        yield _chunk({"content": piece})
-    yield _chunk({}, "stop")
+        yield _chunk({"reasoning_content": piece} if reasoning else {"content": piece})
+    yield _chunk({}, "length" if reasoning else "stop")
     if usage:
         yield "data: " + json.dumps({"id": "chatcmpl-fake", "object": "chat.completion.chunk", "created": 0, "model": "fake", "choices": [], "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}}) + "\n\n"
     yield "data: [DONE]\n\n"
@@ -70,16 +74,18 @@ def _sse(pieces: list[str], usage: bool):
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     body = await request.json()
+    RECEIVED.append(body)
     users = [m for m in body.get("messages", []) if m.get("role") == "user"]
     scenario = _scenario(request, _text(users[-1].get("content")) if users else "")
     if scenario == "error":
         return JSONResponse(ERROR_BODY, status_code=500)
-    pieces = {"illustrate": ILLUSTRATE_PIECES, "image-error": IMAGE_ERROR_PIECES, "code": CODE_PIECES}.get(scenario, PLAIN_PIECES)
+    reasoning = scenario == "reasoning"
+    pieces = REASONING_PIECES if reasoning else {"illustrate": ILLUSTRATE_PIECES, "image-error": IMAGE_ERROR_PIECES, "code": CODE_PIECES}.get(scenario, PLAIN_PIECES)
     if not body.get("stream"):
         return {"id": "chatcmpl-fake", "object": "chat.completion", "created": 0, "model": "fake",
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": "".join(pieces)}, "finish_reason": "stop"}]}
     usage = bool((body.get("stream_options") or {}).get("include_usage"))
-    return StreamingResponse(_sse(pieces, usage), media_type="text/event-stream")
+    return StreamingResponse(_sse(pieces, usage, reasoning), media_type="text/event-stream")
 
 
 @app.post("/v1/images/generations")

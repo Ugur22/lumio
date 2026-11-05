@@ -16,6 +16,7 @@ from app.logs import log
 from app.story import context_info
 from models import Chat, ImageData, ImageRef, Message, Source, Usage
 
+EMPTY_REPLY = "The model returned no answer. Try again or rephrase."
 MAX_ILLUSTRATIONS = 3
 MAX_IMAGE_PROMPT_CHARS = 1_000
 # [[img:<id>]] is what a directive becomes once its image is stored.
@@ -137,11 +138,13 @@ async def stream_reply(
 ) -> AsyncIterator[str]:
     """Streams the reply, then appends it in one short transaction. `lease` is released on every exit path.
 
-    A `trial_call` is given back when the provider fails before any text reached the client, and never after, nor when the
-    client stops or disconnects. `key` is only used to keep it out of error text."""
+    A `trial_call` is given back when the provider fails before any text reached the client, or when the stream ends with
+    no text at all (reasoning alone does not count); never after text was delivered, nor when the client stops or disconnects. `key` is only used to keep it out of error text."""
     parts: list[str] = []
     received = False  # any delta, reasoning included: the provider has already spent tokens on it
     usage: Usage | None = None
+    reasoning = False
+    finish_reason = None
     finished = False
     saving = False  # the final save runs in a worker thread that outlives a cancelled request and then releases the lease
     chunks = iter(stream)
@@ -161,13 +164,25 @@ async def stream_reply(
                 usage = Usage(prompt_tokens=reported)
             delta = chunk.choices[0].delta if chunk.choices else None
             text = getattr(delta, "content", None)
-            if text or any(getattr(delta, f, None) for f in ("reasoning_content", "reasoning", "thinking")):
+            if chunk.choices and getattr(chunk.choices[0], "finish_reason", None):
+                finish_reason = chunk.choices[0].finish_reason
+            if any(getattr(delta, f, None) for f in ("reasoning_content", "reasoning", "thinking")):
+                reasoning = True
+            if text or reasoning:
                 received = True
             if text:
                 parts.append(text)
                 yield sse("delta", {"text": text})
-        # Saved only after success so a failed request leaves no dangling question.
         reply = "".join(parts)
+        if not reply.strip():
+            # Nothing to show, typically reasoning that used up max_tokens. Not saved, so no blank turn and no dangling question.
+            finished = True
+            log.warning("Empty reply for chat %s (finish_reason=%s, reasoning_seen=%s)", chat.id, finish_reason, reasoning)
+            if trial_call:
+                trial_call.refund()
+            yield sse("error", {"detail": EMPTY_REPLY})
+            return
+        # Saved only after success so a failed request leaves no dangling question.
         reply_images: list[ImageRef] = []
         failures: list[IllustrationFailure] = []
         if illustrate:
@@ -229,7 +244,7 @@ async def stream_reply(
         try:
             stream.close()
             # Reached unfinished when the client stops or disconnects: keep what it saw.
-            if not finished and parts:
+            if not finished and "".join(parts).strip():
                 try:
                     append_turn(chat, lease, content, strip_directives("".join(parts)), sources, uploads, query, usage, rev=rev)
                 except storage.ChatNotFound:
