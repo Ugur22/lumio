@@ -35,6 +35,12 @@ The free-trial release changes the following on first start:
 - Check `FORWARDED_ALLOW_IPS` before turning sign-up on: the per-address sign-up limit uses the address uvicorn resolves from the proxy.
 - **Security fix, act before deploying.** The account named by `DOLPHINLLM_ADMIN_USER` inherited the operator's legacy key by name alone. It now also needs the admin flag, and `admin`, `root`, `support`, `local`, `system` and the admin's name are refused at invite registration. If the admin account was created without `--admin`, the legacy key and profiles stop being inherited after this release; fix it before deploying by running `UPDATE users SET is_admin=1 WHERE username='<name>'` against the database (`sqlite3`, after a backup), or re-create the account with `--admin`.
 
+## Trial pools and trial invites (schema 4)
+
+- The database is stamped schema version 4: `trials.pool` (existing trials become `open`), `trial_usage` keyed by day and pool (today's count moves to `open`) and `invites.kind` (existing invites stay `account`). It runs by itself on first start. Builds from before it refuse the file, so take a [backup](README.md#backups-and-the-master-key) first; rolling back means restoring it.
+- New optional environment variable: `DOLPHINLLM_TRIAL_RESERVED_SHARE` (default `0.7`). Unset, 70% of `DOLPHINLLM_TRIAL_DAILY_CALLS` is reserved for invited users, so open sign-ups now have 45 of the default 150 calls a day; set it to `0` to keep the old behaviour of one pool for everyone (with no invited sign-ups). The compose file passes it through.
+- Open sign-ups are now limited to 1 per address per 24 hours (was 3). New sign-in error codes: `open_full`, `reserved_full` and `invite`. New command: `lumio accounts trial-invite`. Steps: [Free trial](README.md#free-trial-optional-off-by-default).
+
 ## Plaintext to encrypted secrets file
 
 A `secrets.json` from before encryption is re-encrypted at startup, after the new file is verified, when a master key is configured. Without a master key the app refuses to start. Create the key as in [first-time step 3](README.md#3-prepare-the-server). An older build cannot read the encrypted file, so roll back secrets together with the matching backup.

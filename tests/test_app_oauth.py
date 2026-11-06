@@ -455,9 +455,8 @@ def test_a_disabled_account_goes_back_to_the_app_as_disabled(idp):
 
 def test_a_throttled_signup_goes_back_to_the_app(idp, net):
     net.ip = "203.0.113.20"
-    for i in range(3):
-        _, cb, _ = app_sign_in(idp, code=f"c{i}", sub=f"s{i}", email=f"p{i}@example.com")
-        app_code(cb)
+    _, cb, _ = app_sign_in(idp, code="c0", sub="s0", email="p0@example.com")
+    app_code(cb)
 
     _, cb, _ = app_sign_in(idp, code="c9", sub="s9", email="p9@example.com")
 

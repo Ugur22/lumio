@@ -86,3 +86,28 @@ def _log_path() -> Path | None:
 
 if (_path := _log_path()) is not None:
     log.addHandler(make_file_handler(_path))
+
+
+_INVITE_PARAM = re.compile(r"([?&]invite=)[^&\s\"#]*", re.I)
+
+
+class InviteRedactor(logging.Filter):
+    """uvicorn's access line carries the whole request target, and a trial invite travels in the query string."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        def clean(value):
+            return _INVITE_PARAM.sub(r"\1REDACTED", value) if isinstance(value, str) else value
+
+        record.msg = clean(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(clean(a) for a in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {k: clean(v) for k, v in record.args.items()}
+        return True
+
+
+# On the logger, not a handler: uvicorn replaces the handlers at startup but leaves a logger's filters alone. Installed at
+# import, so it also holds when uvicorn is started from the command line.
+_access = logging.getLogger("uvicorn.access")
+if not any(isinstance(f, InviteRedactor) for f in _access.filters):
+    _access.addFilter(InviteRedactor())

@@ -2,6 +2,7 @@
 
     python -m accounts create-user alice [--admin]
     python -m accounts invite [--days N]
+    python -m accounts trial-invite [--days N]
     python -m accounts set-password alice
     python -m accounts disable alice
 
@@ -104,9 +105,9 @@ def create_user(db: storage.Store, username: str, password: str, *, admin: bool 
     return db.create_user(clean_username(username), hash_password(check_password(password)), is_admin=admin)
 
 
-def create_invite(db: storage.Store, days: float = storage.INVITE_DAYS) -> str:
+def create_invite(db: storage.Store, days: float = storage.INVITE_DAYS, kind: str = "account") -> str:
     code = secrets.token_urlsafe(16)
-    db.create_invite(sha256(code), days)
+    db.create_invite(sha256(code), days, kind=kind)
     return code
 
 
@@ -142,6 +143,8 @@ def main(argv: list[str] | None = None, db: storage.Store | None = None) -> int:
     p.add_argument("--admin", action="store_true")
     p = sub.add_parser("invite", help="print a single-use invite code")
     p.add_argument("--days", type=float, default=storage.INVITE_DAYS)
+    p = sub.add_parser("trial-invite", help="print a single-use invite for the reserved free-trial pool (Google/GitHub sign-in)")
+    p.add_argument("--days", type=float, default=storage.INVITE_DAYS)
     sub.add_parser("set-password", help="set a new password and sign the user out everywhere").add_argument("username")
     sub.add_parser("disable", help="disable an account and end its sessions").add_argument("username")
     args = parser.parse_args(argv)
@@ -151,10 +154,10 @@ def main(argv: list[str] | None = None, db: storage.Store | None = None) -> int:
         if args.command == "create-user":
             account = create_user(db, args.username, _ask_password(), admin=args.admin)
             print(f"Created {'admin ' if args.admin else ''}user {account.username}")
-        elif args.command == "invite":
+        elif args.command in ("invite", "trial-invite"):
             if args.days <= 0:
                 raise ValueError("--days must be positive")
-            print(create_invite(db, args.days))
+            print(create_invite(db, args.days, "trial" if args.command == "trial-invite" else "account"))
             print(f"Single use, valid for {args.days:g} days. It is not stored in readable form and cannot be shown again.", file=sys.stderr)
         elif args.command == "set-password":
             _find(db, args.username)

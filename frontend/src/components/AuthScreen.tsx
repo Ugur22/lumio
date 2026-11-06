@@ -1,5 +1,5 @@
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@headlessui/react";
-import { useRef, useState, type FormEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { api } from "../api";
 import { authErrorMessage, normalizeUsername, passwordHint, usernameHint } from "../lib/auth";
 import { useSession } from "../store/session";
@@ -66,15 +66,51 @@ const PROVIDERS: { id: OAuthProvider; label: string; Icon: typeof GoogleIcon }[]
 // Plain links: the server answers with a redirect to the provider, so the browser has to navigate, not fetch.
 // Below the tabs, so one copy serves both the sign-in and the create-account view.
 function OAuthButtons() {
+  const inviteHint = useSession((s) => s.inviteHint);
+  // The code lives only in this field's state; it reaches the URL of the click and nowhere else.
+  const [invite, setInvite] = useState("");
+  const [open, setOpen] = useState(inviteHint);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!inviteHint) return;
+    setOpen(true);
+    inputRef.current?.focus();
+  }, [inviteHint]);
+
   return (
     <section aria-label="Free trial" className="flex flex-col gap-3 border-t border-border pt-5">
       <div className="flex flex-col gap-2">
         {PROVIDERS.map(({ id, label, Icon }) => (
-          <a key={id} href={oauthStartUrl(id)} className={oauthLink}>
+          <a key={id} href={oauthStartUrl(id, invite)} className={oauthLink}>
             <Icon className="flex-none" />
             <span>{label}</span>
           </a>
         ))}
+      </div>
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls="trial-invite"
+          onClick={() => setOpen((o) => !o)}
+          className={cx("self-center rounded-md px-1 text-[13px] text-muted underline-offset-2 hover:text-text hover:underline", focusRing)}
+        >
+          Have an invite code?
+        </button>
+        <div id="trial-invite" hidden={!open}>
+          <TextField
+            ref={inputRef}
+            label="Trial invite code"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={256}
+            surface
+            value={invite}
+            onChange={(e) => setInvite(e.target.value)}
+          />
+        </div>
       </div>
       <p className="text-center text-[13px] text-muted">{TRIAL_PITCH}</p>
     </section>

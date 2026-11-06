@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     trial_model: str = "deepseek-flash"
     trial_calls: int = Field(default=5, ge=1)
     trial_daily_calls: int = Field(default=150, ge=1)  # all trials together, per UTC day
+    # The part of trial_daily_calls kept for users who sign up with a trial invite, so a flood of open sign-ups cannot use it up.
+    trial_reserved_share: float = Field(default=0.7, ge=0, le=1)
     oauth_google_client_id: str | None = None
     oauth_google_client_secret: SecretStr | None = None
     oauth_github_client_id: str | None = None
@@ -92,6 +94,27 @@ class Settings(BaseSettings):
         return bool(
             self.deployed and self.open_signup and self.trial_api_key and self.oauth_pepper and self.oauth_providers()
         )
+
+    @property
+    def reserved_calls(self) -> int:
+        return round(self.trial_daily_calls * self.trial_reserved_share)
+
+    @property
+    def open_calls(self) -> int:
+        return self.trial_daily_calls - self.reserved_calls
+
+    # Sign-ups are tied to each pool's call cap so a rush ends at sign-up, with a clear message, not as a 503 on the first
+    # message of an account that was just created. A pool smaller than one trial allows no sign-ups at all.
+    @property
+    def open_signup_limit(self) -> int:
+        return self.open_calls // self.trial_calls
+
+    @property
+    def reserved_signup_limit(self) -> int:
+        return self.reserved_calls // self.trial_calls
+
+    def pool_calls(self, pool: str) -> int:
+        return self.reserved_calls if pool == "reserved" else self.open_calls
 
     @property
     def origin(self) -> str:

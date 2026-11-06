@@ -1150,6 +1150,7 @@ export interface operations {
                 client?: string | null;
                 redirect?: string | null;
                 challenge?: string | null;
+                invite?: string | null;
             };
             header?: never;
             path: {
