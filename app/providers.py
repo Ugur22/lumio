@@ -12,6 +12,7 @@ from pydantic import ValidationError
 import profile_store
 import storage
 from app import runtime, story
+from app.logs import log
 from models import Chat, ImageData, NewMessage, Profile, ProfileStore, UserView
 
 _clients: dict[tuple[str, str], OpenAI] = {}
@@ -141,12 +142,30 @@ def trial_sampling(chat: Chat) -> dict:
     return sampling
 
 
+_full_logged: set[tuple[str, str]] = set()  # (pool, UTC day) already reported; per process, which is enough for a signal
+
+
+def _log_pool_full(e: storage.TrialFull) -> None:
+    """Once per pool per day: the first refusal is the news, the thousand after it are not."""
+    key = (e.pool, e.day)
+    if key in _full_logged:
+        return
+    _full_logged.difference_update({k for k in _full_logged if k[1] != e.day})
+    _full_logged.add(key)
+    log.warning(
+        "Trial pool %s is full for %s: %d of %d calls used", e.pool, e.day, e.cap, e.cap, extra={"pool": e.pool, "day": e.day, "calls": e.cap, "cap": e.cap}
+    )
+
+
 def reserve_trial(user: UserView) -> storage.TrialCall:
     try:
-        return runtime.db.reserve_trial_call(user.id, runtime.settings.trial_daily_calls)
+        return runtime.db.reserve_trial_call(
+            user.id, {pool: runtime.settings.pool_calls(pool) for pool in storage.POOLS}
+        )
     except storage.TrialExhausted:
         raise HTTPException(402, TRIAL_ENDED)
     except storage.TrialFull as e:
+        _log_pool_full(e)
         raise HTTPException(503, TRIAL_FULL, headers={"Retry-After": str(e.retry_after)})
 
 

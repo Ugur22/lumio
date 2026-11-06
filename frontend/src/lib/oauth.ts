@@ -1,7 +1,12 @@
 export type OAuthProvider = "google" | "github";
 
 // A full-page navigation: the server answers with a 302 to the provider, so this is a link, never a fetch.
-export const oauthStartUrl = (provider: OAuthProvider) => `/api/auth/oauth/${provider}/start`;
+// The invite is a one-time secret: trimmed, encoded, and only ever put in this navigation URL.
+export const oauthStartUrl = (provider: OAuthProvider, invite = "") => {
+  const code = invite.trim();
+  const base = `/api/auth/oauth/${provider}/start`;
+  return code ? `${base}?invite=${encodeURIComponent(code)}` : base;
+};
 
 // The codes the callback puts in /?auth_error=. Only these are ever shown; the URL's own text never reaches the page.
 const MESSAGES: Record<string, string> = {
@@ -13,6 +18,9 @@ const MESSAGES: Record<string, string> = {
   too_new: "That GitHub account is too new to start a trial",
   disposable: "Disposable email addresses cannot start a trial",
   throttled: "Too many sign-ups from your network, try later",
+  invite: "That invite code isn't valid. It may be used, expired or mistyped.",
+  open_full: "Free trials are full for today. If you have an invite code, enter it below.",
+  reserved_full: "Invited sign-ups are full for today. Your invite code is still valid, try again tomorrow.",
   disabled: "Free trials are not available right now.",
   trial_used: "This account already used its free trial. You can add your own provider.",
 };
@@ -21,6 +29,9 @@ export const FALLBACK_AUTH_ERROR = "Sign-in failed. Try again.";
 
 // trial_used still signs the person in, so it is a notice inside the app rather than a problem on the login screen.
 export const isSignedInNotice = (code: string) => code === "trial_used";
+
+// Errors the person can fix by entering an invite code.
+export const wantsInvite = (code: string) => code === "invite" || code === "open_full";
 
 export const authErrorText = (code: string): string =>
   Object.hasOwn(MESSAGES, code) ? (MESSAGES[code] as string) : FALLBACK_AUTH_ERROR;

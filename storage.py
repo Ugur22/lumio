@@ -26,12 +26,21 @@ log = logging.getLogger("dolphinllm")
 # 2: accounts (users, sessions, invites, login_attempts tables and chats.owner). The release before accounts understands 1
 # and refuses a newer file, so rolling back onto this database fails loudly instead of serving every user's chats unscoped.
 # 3: free trials (identities, trial_anchors, trials, trial_usage). Builds before it refuse a version-3 file for the same reason.
-SCHEMA_VERSION = 3
+# 4: trial pools (trials.pool, trial_usage per (day, pool), invites.kind). Builds before it would accept a trial invite for a
+# password registration and count every pool's calls as one, so they refuse a version-4 file too.
+SCHEMA_VERSION = 4
 DEFAULT_TITLE = "New chat"
 BUSY_SECONDS = 10.0
 # A generation lease that is not renewed for this long is treated as left behind by a crashed process.
 LEASE_TTL = 60.0
 LEASE_BEAT = 15.0
+
+_TRIAL_USAGE = """CREATE TABLE IF NOT EXISTS trial_usage (
+    day TEXT NOT NULL,
+    pool TEXT NOT NULL DEFAULT 'open',
+    calls INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, pool)
+)"""
 
 _SCHEMA = [
     """CREATE TABLE IF NOT EXISTS chats (
@@ -94,7 +103,8 @@ _SCHEMA = [
         created TEXT,
         expires TEXT,
         used_by TEXT,
-        used_at TEXT
+        used_at TEXT,
+        kind TEXT NOT NULL DEFAULT 'account'
     )""",
     "CREATE TABLE IF NOT EXISTS login_attempts (key TEXT, at REAL)",
     "CREATE INDEX IF NOT EXISTS login_attempts_key ON login_attempts(key, at)",
@@ -117,9 +127,10 @@ _SCHEMA = [
         user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         call_limit INTEGER NOT NULL,
         used INTEGER NOT NULL DEFAULT 0,
-        created TEXT NOT NULL
+        created TEXT NOT NULL,
+        pool TEXT NOT NULL DEFAULT 'open'
     )""",
-    "CREATE TABLE IF NOT EXISTS trial_usage (day TEXT PRIMARY KEY, calls INTEGER NOT NULL DEFAULT 0)",
+    _TRIAL_USAGE,
     # One-time codes the native app trades for a session. Only the code's hash is kept, never the code.
     """CREATE TABLE IF NOT EXISTS app_login_codes (
         code_hash TEXT PRIMARY KEY,
@@ -139,9 +150,11 @@ LOGIN_WINDOW = 15 * 60.0
 LOGIN_MAX_FAILURES = 5
 # New accounts are counted when they are created and never credited back, so success is what is limited.
 SIGNUP_WINDOW = 24 * 3600.0
-SIGNUP_PER_IP = 3
+SIGNUP_PER_IP = 1
 SIGNUP_PER_DAY = 100
-SIGNUP_ALL_KEY = "signup:all"
+SIGNUP_ALL_KEY = "signup:all"  # open sign-ups of the day
+SIGNUP_INVITED_KEY = "signup:invited"  # sign-ups with a trial invite
+POOLS = ("open", "reserved")
 ANCHOR_DAYS = 548  # about 18 months
 # Stored as an account's password_hash when it has no password: not an argon2 string, so nothing verifies against it.
 UNUSABLE_PASSWORD = "!"
@@ -200,12 +213,23 @@ class TrialExhausted(Exception):
     """No trial, or all of its calls are used."""
 
 
-class TrialFull(Exception):
-    """The trials together reached today's cap."""
+class SignupFull(SignupThrottled):
+    """Not a rate: the pool's sign-ups for today are all taken (the open ones, or the invited ones)."""
 
-    def __init__(self, retry_after: int):
+    def __init__(self, wait: int, pool: str):
+        super().__init__(wait)
+        self.pool = pool
+
+
+class TrialFull(Exception):
+    """One pool reached today's call cap."""
+
+    def __init__(self, retry_after: int, pool: str = "open", day: str = "", cap: int = 0):
         super().__init__(retry_after)
         self.retry_after = retry_after
+        self.pool = pool
+        self.day = day
+        self.cap = cap
 
 
 @dataclass(frozen=True)
@@ -225,9 +249,10 @@ class Trial:
 class TrialCall:
     """One reserved trial call. refund() gives it back at most once, however many paths ask."""
 
-    def __init__(self, store: "Store", user_id: str, day: str, remaining: int):
+    def __init__(self, store: "Store", user_id: str, day: str, remaining: int, pool: str = "open"):
         self.user_id = user_id
         self.day = day
+        self.pool = pool
         self.remaining = remaining
         self.refunded = False
         self._store = store
@@ -344,12 +369,30 @@ class Store:
                 conn.execute(statement)
             if "owner" not in {r["name"] for r in conn.execute("PRAGMA table_info(chats)")}:
                 conn.execute("ALTER TABLE chats ADD COLUMN owner TEXT")  # chats from before accounts stay NULL until claimed at startup
+            self._upgrade_pools(conn)
             for statement in _INDEXES:
                 conn.execute(statement)
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
             conn.execute("COMMIT")
         finally:
             conn.close()
+
+    @staticmethod
+    def _upgrade_pools(conn: sqlite3.Connection) -> None:
+        """Version 4. Everything that exists before it is the open pool: trials, today's usage and the invites (account kind)."""
+
+        def columns(table: str) -> set[str]:
+            return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+        if "kind" not in columns("invites"):
+            conn.execute("ALTER TABLE invites ADD COLUMN kind TEXT NOT NULL DEFAULT 'account'")
+        if "pool" not in columns("trials"):
+            conn.execute("ALTER TABLE trials ADD COLUMN pool TEXT NOT NULL DEFAULT 'open'")
+        if "pool" not in columns("trial_usage"):  # the key changes, so the table is rebuilt
+            conn.execute("ALTER TABLE trial_usage RENAME TO trial_usage_v3")
+            conn.execute(_TRIAL_USAGE)
+            conn.execute("INSERT INTO trial_usage (day, pool, calls) SELECT day, 'open', calls FROM trial_usage_v3")
+            conn.execute("DROP TABLE trial_usage_v3")
 
     # --- reading ----------------------------------------------------------------------------
 
@@ -723,7 +766,7 @@ class Store:
         with self._tx() as conn:
             if invite_hash is not None:
                 used = conn.execute(
-                    "UPDATE invites SET used_by=?, used_at=? WHERE code_hash=? AND used_by IS NULL AND expires>?",
+                    "UPDATE invites SET used_by=?, used_at=? WHERE code_hash=? AND kind='account' AND used_by IS NULL AND expires>?",
                     (user_id, _ts(now), invite_hash, _ts(now)),
                 )
                 if used.rowcount == 0:
@@ -755,12 +798,24 @@ class Store:
             conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
             return changed
 
-    def create_invite(self, code_hash: str, days: float = INVITE_DAYS, now: datetime | None = None) -> None:
+    def create_invite(self, code_hash: str, days: float = INVITE_DAYS, now: datetime | None = None, kind: str = "account") -> None:
+        """kind 'account' is for password registration, 'trial' for the OAuth sign-up that draws on the reserved trial pool."""
         now = now or datetime.now(timezone.utc)
         with self._tx() as conn:
             conn.execute(
-                "INSERT INTO invites (code_hash, created, expires) VALUES (?,?,?)",
-                (code_hash, _ts(now), _ts(now + timedelta(days=days))),
+                "INSERT INTO invites (code_hash, created, expires, kind) VALUES (?,?,?,?)",
+                (code_hash, _ts(now), _ts(now + timedelta(days=days)), kind),
+            )
+
+    def invite_valid(self, code_hash: str, kind: str, now: datetime | None = None) -> bool:
+        """Whether the invite could be redeemed right now. Does not redeem it."""
+        now = now or datetime.now(timezone.utc)
+        with self._read() as conn:
+            return (
+                conn.execute(
+                    "SELECT 1 FROM invites WHERE code_hash=? AND kind=? AND used_by IS NULL AND expires>?", (code_hash, kind, _ts(now))
+                ).fetchone()
+                is not None
             )
 
     def create_session(self, token_hash: str, user_id: str, now: datetime | None = None) -> None:
@@ -902,22 +957,42 @@ class Store:
         ip_key: str,
         ip_limit: int | None = None,
         day_limit: int | None = None,
+        invite_hash: str | None = None,
         now: datetime | None = None,
     ) -> tuple[Account, bool]:
         """Creates a passwordless account for a sign-in that is new, and returns it with whether it got a trial.
 
         `anchors` are (kind, hmac) pairs. The trial is granted only if none of them is already a tombstone. The throttle
         check and its record, the account, its identity, the tombstones and the trial all commit together or not at all.
-        Raises SignupThrottled and IdentityExists."""
+
+        Without an invite this is an open sign-up: one per address per day, and `day_limit` of them per day, and the trial
+        draws on the open pool. With a trial invite there is no per-address limit, `day_limit` is the invited sign-ups of
+        the day, the trial draws on the reserved pool, and the invite is redeemed here in the same transaction. A person who
+        already had a trial gets the account without one and keeps the invite.
+        Raises SignupThrottled, SignupFull, InvalidInvite and IdentityExists."""
         now = now or datetime.now(timezone.utc)
         stamp = now.timestamp()
         user_id = uuid.uuid4().hex
+        invited = invite_hash is not None
+        pool = "reserved" if invited else "open"
+        all_key = SIGNUP_INVITED_KEY if invited else SIGNUP_ALL_KEY
         with self._tx() as conn:
             self._purge_attempts(conn, stamp)
-            for key, limit in ((ip_key, ip_limit or SIGNUP_PER_IP), (SIGNUP_ALL_KEY, day_limit or SIGNUP_PER_DAY)):
-                if wait := self._login_wait(conn, [key], stamp, limit, SIGNUP_WINDOW):
-                    raise SignupThrottled(wait)
-            conn.executemany("INSERT INTO login_attempts (key, at) VALUES (?,?)", [(ip_key, stamp), (SIGNUP_ALL_KEY, stamp)])
+            # Today's sign-ups first: when the pool is full that is what the person should be told, whatever their address.
+            limit = SIGNUP_PER_DAY if day_limit is None else day_limit
+            if limit <= 0:  # a pool too small for one trial (its share is 0, or the daily cap is tiny)
+                raise SignupFull(int(SIGNUP_WINDOW), pool)
+            if wait := self._login_wait(conn, [all_key], stamp, limit, SIGNUP_WINDOW):
+                raise SignupFull(wait, pool)
+            if not invited and (wait := self._login_wait(conn, [ip_key], stamp, ip_limit or SIGNUP_PER_IP, SIGNUP_WINDOW)):
+                raise SignupThrottled(wait)
+            if invited and not conn.execute(
+                "SELECT 1 FROM invites WHERE code_hash=? AND kind='trial' AND used_by IS NULL AND expires>?", (invite_hash, _ts(now))
+            ).fetchone():
+                raise InvalidInvite
+            conn.executemany(
+                "INSERT INTO login_attempts (key, at) VALUES (?,?)", [(all_key, stamp)] if invited else [(ip_key, stamp), (all_key, stamp)]
+            )
 
             conn.execute("DELETE FROM trial_anchors WHERE expires_at<=?", (_ts(now),))
             hashes = [h for _, h in anchors]
@@ -940,14 +1015,21 @@ class Store:
             try:
                 conn.execute("INSERT INTO identities (user_id, provider, subject_hmac) VALUES (?,?,?)", (user_id, provider, subject_hmac))
             except sqlite3.IntegrityError:
-                raise IdentityExists from None
+                raise IdentityExists from None  # the rollback also keeps the invite
             expires = _ts(now + timedelta(days=ANCHOR_DAYS))
             conn.executemany(
                 "INSERT OR IGNORE INTO trial_anchors (anchor_hmac, kind, first_at, expires_at) VALUES (?,?,?,?)",
                 [(h, kind, _ts(now), expires) for kind, h in anchors],
             )
             if grant:
-                conn.execute("INSERT INTO trials (user_id, call_limit, used, created) VALUES (?,?,0,?)", (user_id, trial_calls, _ts(now)))
+                if invited and not conn.execute(
+                    "UPDATE invites SET used_by=?, used_at=? WHERE code_hash=? AND kind='trial' AND used_by IS NULL AND expires>?",
+                    (user_id, _ts(now), invite_hash, _ts(now)),
+                ).rowcount:
+                    raise InvalidInvite
+                conn.execute(
+                    "INSERT INTO trials (user_id, call_limit, used, created, pool) VALUES (?,?,0,?,?)", (user_id, trial_calls, _ts(now), pool)
+                )
         return Account(user_id, username, UNUSABLE_PASSWORD, False, False), grant
 
     def get_trial(self, user_id: str) -> Trial | None:
@@ -955,22 +1037,26 @@ class Store:
             row = conn.execute("SELECT call_limit, used FROM trials WHERE user_id=?", (user_id,)).fetchone()
         return None if row is None else Trial(row["call_limit"], row["used"])
 
-    def reserve_trial_call(self, user_id: str, daily_cap: int, now: datetime | None = None) -> TrialCall:
-        """Takes one call from the user's trial and from today's global cap in one transaction, so parallel sends cannot
-        overshoot either. Raises TrialExhausted or TrialFull and then takes nothing."""
+    def reserve_trial_call(self, user_id: str, daily_cap: int | dict[str, int], now: datetime | None = None) -> TrialCall:
+        """Takes one call from the user's trial and from today's cap of the user's own pool in one transaction, so parallel
+        sends cannot overshoot either. `daily_cap` is the cap per pool, or one number for whichever pool the user is in.
+        Raises TrialExhausted or TrialFull and then takes nothing."""
         now = now or datetime.now(timezone.utc)
         day = now.astimezone(timezone.utc).date().isoformat()
         with self._tx() as conn:
             took = conn.execute("UPDATE trials SET used=used+1 WHERE user_id=? AND used<call_limit", (user_id,))
             if took.rowcount == 0:
                 raise TrialExhausted(user_id)
-            conn.execute("INSERT OR IGNORE INTO trial_usage (day, calls) VALUES (?,0)", (day,))
-            if conn.execute("UPDATE trial_usage SET calls=calls+1 WHERE day=? AND calls<?", (day, daily_cap)).rowcount == 0:
+            row = conn.execute("SELECT pool FROM trials WHERE user_id=?", (user_id,)).fetchone()
+            pool = row["pool"]
+            cap = daily_cap[pool] if isinstance(daily_cap, dict) else daily_cap
+            conn.execute("INSERT OR IGNORE INTO trial_usage (day, pool, calls) VALUES (?,?,0)", (day, pool))
+            if conn.execute("UPDATE trial_usage SET calls=calls+1 WHERE day=? AND pool=? AND calls<?", (day, pool, cap)).rowcount == 0:
                 midnight = datetime.combine(now.astimezone(timezone.utc).date() + timedelta(days=1), datetime.min.time(), timezone.utc)
-                raise TrialFull(max(1, int((midnight - now).total_seconds())))
+                raise TrialFull(max(1, int((midnight - now).total_seconds())), pool, day, cap)
             conn.execute("DELETE FROM trial_usage WHERE day<?", (day,))
             row = conn.execute("SELECT call_limit - used AS left FROM trials WHERE user_id=?", (user_id,)).fetchone()
-        return TrialCall(self, user_id, day, row["left"])
+        return TrialCall(self, user_id, day, row["left"], pool)
 
     def refund_trial_call(self, call: TrialCall) -> None:
         with call._lock:
@@ -978,7 +1064,7 @@ class Store:
                 return
             with self._tx() as conn:
                 conn.execute("UPDATE trials SET used=used-1 WHERE user_id=? AND used>0", (call.user_id,))
-                conn.execute("UPDATE trial_usage SET calls=calls-1 WHERE day=? AND calls>0", (call.day,))
+                conn.execute("UPDATE trial_usage SET calls=calls-1 WHERE day=? AND pool=? AND calls>0", (call.day, call.pool))
             call.refunded = True
             call.remaining += 1
 

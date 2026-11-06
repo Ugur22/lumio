@@ -10,6 +10,7 @@ import ipaddress
 import json
 import re
 import secrets
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,7 @@ from fastapi.responses import JSONResponse
 from fastapi import Path as PathParam
 from fastapi.responses import RedirectResponse
 
+import accounts
 import storage
 from app import anchors, auth, routes_auth, runtime
 from app.logs import log
@@ -38,6 +40,10 @@ MAX_CODE = 2048
 MAX_STATE = 512
 APP_CODE_SECONDS = 60
 APP_REDIRECT = "lumio://auth"
+MAX_INVITE = 256
+_INVITE_HASH = re.compile(r"[0-9a-f]{64}")
+CLUSTER_SIZE = 3  # open sign-ups from one network within CLUSTER_SECONDS are worth a log line
+CLUSTER_SECONDS = 600
 MAX_BODY = 200_000  # a provider's identity reply is a few hundred bytes
 
 ProviderName = Annotated[str, PathParam(pattern=r"^(google|github)$")]
@@ -270,11 +276,53 @@ def signup_ip_key(ip: str) -> str:
     return f"signup:ip:{addr}"
 
 
+_cluster_lock = threading.Lock()
+_cluster_seen: dict[str, list[float]] = {}
+_cluster_alerted: dict[str, float] = {}
+
+
+def signup_network(ip_key: str) -> str | None:
+    """The /24 (IPv4) or /48 (IPv6) a signup_ip_key falls in, for spotting one customer spread over many addresses."""
+    try:
+        net = ipaddress.ip_network(ip_key.removeprefix("signup:ip:"), strict=False)
+    except ValueError:
+        return None
+    return str(net.supernet(new_prefix=24 if net.version == 4 else 48))
+
+
+def note_open_signup(ip_key: str, now: float | None = None) -> None:
+    """Warns once per window when CLUSTER_SIZE open sign-ups arrive from one network. In memory and per process: a
+    signal for the operator, not a limit."""
+    network = signup_network(ip_key)
+    if network is None:
+        return
+    now = time.time() if now is None else now
+    with _cluster_lock:
+        seen = [t for t in _cluster_seen.get(network, []) if t > now - CLUSTER_SECONDS] + [now]
+        _cluster_seen[network] = seen
+        for key in [k for k, t in _cluster_alerted.items() if t <= now - CLUSTER_SECONDS]:
+            del _cluster_alerted[key]
+        if len(seen) < CLUSTER_SIZE or network in _cluster_alerted:
+            return
+        _cluster_alerted[network] = now
+    log.warning(
+        "Open sign-ups clustered on one network: %d from %s within %d minutes",
+        len(seen), network, CLUSTER_SECONDS // 60,
+        extra={"network": network, "count": len(seen), "window_seconds": CLUSTER_SECONDS},
+    )
+
+
 # --- routes -------------------------------------------------------------------------------------------------
 
 
 @router.get("/{provider}/start", response_model=None, response_class=RedirectResponse, status_code=302)
-def start(provider: ProviderName, client: str | None = None, redirect: str | None = None, challenge: str | None = None):
+def start(
+    provider: ProviderName,
+    client: str | None = None,
+    redirect: str | None = None,
+    challenge: str | None = None,
+    invite: str | None = None,
+):
     app_state: dict = {}
     if client is not None:
         # Nothing is redirected to until both are known good: a bad request is an error page, never a bounce to a stranger's URL.
@@ -284,6 +332,12 @@ def start(provider: ProviderName, client: str | None = None, redirect: str | Non
         app_state = {"r": target, "c": pkce}
     if not _configured(provider):
         return RedirectResponse(f"{app_state['r']}?auth_error=unavailable" if app_state else "/?auth_error=unavailable", status_code=302)
+    # Only the invite's hash goes into the cookie, and nothing about it into a URL or a log line.
+    invite_hash = None
+    if invite is not None and invite.strip():
+        invite_hash = accounts.sha256(invite.strip())
+        if len(invite) > MAX_INVITE or not runtime.db.invite_valid(invite_hash, "trial"):
+            return RedirectResponse(f"{app_state['r']}?auth_error=invite" if app_state else "/?auth_error=invite", status_code=302)
     state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     query = {
@@ -300,7 +354,7 @@ def start(provider: ProviderName, client: str | None = None, redirect: str | Non
     response = RedirectResponse(f"{ENDPOINTS[provider]['authorize']}?{urlencode(query)}", status_code=302)
     response.set_cookie(
         COOKIE,
-        pack_state({"p": provider, "s": state, "v": verifier, "exp": time.time() + STATE_SECONDS, **app_state}),
+        pack_state({"p": provider, "s": state, "v": verifier, "exp": time.time() + STATE_SECONDS, **app_state, **({"i": invite_hash} if invite_hash else {})}),
         max_age=STATE_SECONDS,
         httponly=True,
         samesite="lax",  # the provider sends the browser back with a top-level GET, which Strict would not carry the cookie on
@@ -385,17 +439,31 @@ def _identify(
             raise AuthError("unverified")
         if anchors.is_disposable(email):
             raise AuthError("disposable")
+        invite_hash = saved.get("i") if saved else None
+        invite_hash = invite_hash if isinstance(invite_hash, str) and _INVITE_HASH.fullmatch(invite_hash) else None
+        ip_key = signup_ip_key(routes_auth.client_ip(request))
+        if invite_hash is None:
+            note_open_signup(ip_key)
+        settings = runtime.settings
         try:
             account, granted = runtime.db.enrol_oauth_user(
                 provider,
                 subject,
                 [(f"oauth:{provider}", subject), ("email", anchors.anchor(_pepper(), "email", email))],
                 trial_calls=runtime.settings.trial_calls,
-                ip_key=signup_ip_key(routes_auth.client_ip(request)),
+                day_limit=settings.reserved_signup_limit if invite_hash else settings.open_signup_limit,
+                ip_key=ip_key,
+                invite_hash=invite_hash,
             )
+        except storage.SignupFull as e:
+            log.warning("Sign-up refused: pool full", extra={"pool": e.pool, "wait": e.wait})
+            raise AuthError("open_full" if e.pool == "open" else "reserved_full") from None
         except storage.SignupThrottled as e:
             log.warning("Sign-up refused: throttled", extra={"ip": routes_auth.client_ip(request), "wait": e.wait})
             raise AuthError("throttled") from None
+        except storage.InvalidInvite:
+            log.warning("Sign-up refused: invalid invite", extra={"ip": routes_auth.client_ip(request)})
+            raise AuthError("invite") from None
         except storage.IdentityExists:
             account = runtime.db.find_identity(provider, subject)  # a parallel request linked it first
             if account is None:

@@ -14,6 +14,7 @@ describe("authErrorText", () => {
     ["unverified", "Your email must be verified"],
     ["disposable", "Disposable email addresses cannot start a trial"],
     ["throttled", "Too many sign-ups from your network, try later"],
+    ["reserved_full", "Invited sign-ups are full for today. Your invite code is still valid, try again tomorrow."],
     ["trial_used", "This account already used its free trial. You can add your own provider."],
   ])("words %s", (code, text) => {
     expect(authErrorText(code)).toBe(text);
