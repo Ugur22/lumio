@@ -33,6 +33,11 @@ export type SummaryBody = Schema<"SummaryUpdate">;
 export type ContextParts = Schema<"ContextParts">;
 export type ContextInfo = Schema<"ContextInfo">;
 
+// The SSE `reasoning` event: one per reasoning delta, shown live and never saved. Providers that hide their reasoning send none.
+export interface ReasoningEvent {
+  text: string;
+}
+
 // The chat as sent in the SSE `done` event.
 // `trial` is only present on replies the free trial paid for.
 export type DoneChat = Chat & { usage: Schema<"Usage"> | null; context: ContextInfo; trial?: { remaining: number } };

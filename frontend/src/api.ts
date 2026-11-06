@@ -15,6 +15,7 @@ import type {
   NewProfileBody,
   PasswordChange,
   ProfileList,
+  ReasoningEvent,
   RegisterBody,
   UserView,
   SourceRef,
@@ -94,6 +95,7 @@ interface StreamOptions {
   illustrate: boolean;
   signal: AbortSignal;
   onDelta: (text: string) => void;
+  onReasoning?: (text: string) => void;
   onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
   onIllustrationFailed: (failure: IllustrationFailure) => void;
 }
@@ -101,7 +103,7 @@ interface StreamOptions {
 // Resolves with the saved chat once the server sends `done`. Aborting rejects with an
 // AbortError; the server then saves whatever text it had already streamed.
 async function streamMessage(id: string, content: string, opts: StreamOptions): Promise<DoneChat> {
-  const { images, web, illustrate, signal, onDelta, onSources, onIllustrationFailed } = opts;
+  const { images, web, illustrate, signal, onDelta, onReasoning, onSources, onIllustrationFailed } = opts;
   const res = await fetch(`/api/chats/${id}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -116,6 +118,10 @@ async function streamMessage(id: string, content: string, opts: StreamOptions): 
   const feed = createSseParser(({ event, data }) => {
     const payload = JSON.parse(data) as Record<string, unknown>;
     if (event === "delta") onDelta(payload.text as string);
+    else if (event === "reasoning") {
+      const { text } = payload as Partial<ReasoningEvent>;
+      if (typeof text === "string") onReasoning?.(text);
+    }
     else if (event === "sources") onSources(
         (payload.sources as SourceRef[] | undefined) ?? [],
         (payload.notes as string[] | undefined) ?? [],

@@ -1,21 +1,23 @@
-import { animated, useSpring, useTrail } from "@react-spring/web";
+import { animated, useSpring } from "@react-spring/web";
 import { useState, type ComponentPropsWithoutRef } from "react";
 import { match } from "ts-pattern";
-import { useMediaQuery } from "../hooks/useMediaQuery";
 import { APP_NAME } from "../lib/brand";
 import { copyText } from "../lib/illustrations";
 import { hostOf } from "../lib/providers";
 import type { Illustration } from "../lib/illustrations";
+import type { Thought } from "../lib/thinking";
 import type { IllustrationFailure, SourceRef } from "../types";
 import { CheckIcon, CopyIcon, LumioMark } from "./icons";
 import { AttachedImage } from "./AttachedImage";
 import { IllustrationNotes } from "./IllustrationNotes";
 import { ReplyBody } from "./ReplyBody";
+import { ThinkingStatus, ThoughtToggle } from "./ThinkingStatus";
 import { Button } from "./ui";
 
 export type Reply =
-  | { kind: "text"; content: string; streaming?: boolean; illustrations?: Illustration[] }
-  | { kind: "thinking" }
+  // `thought` is the reasoning streamed live for this turn; it is never saved, so a reloaded chat has none.
+  | { kind: "text"; content: string; streaming?: boolean; illustrations?: Illustration[]; thought?: Thought | null }
+  | { kind: "thinking"; startedAt: number; reasoning: string }
   | { kind: "error"; message: string; notice?: boolean }
   | { kind: "none" };
 
@@ -59,20 +61,22 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
           {question}
         </Appear>
       )}
-      <SourceChips sources={sources} notes={notes} query={query} />
+      {/* While thinking, the status line shows the query and the domains itself. */}
+      {reply.kind !== "thinking" && <SourceChips sources={sources} notes={notes} query={query} />}
       {match(reply)
         .with({ kind: "text" }, (r) => (
           <Appear live={live} className="mt-5">
             <Who />
+            {r.thought && <ThoughtToggle thought={r.thought} />}
             <ReplyBody content={r.content} illustrations={r.illustrations} streaming={r.streaming} />
             {!r.streaming && <IllustrationNotes failures={failures} />}
             {!r.streaming && <CopyButton text={copyText(r.content)} />}
           </Appear>
         ))
-        .with({ kind: "thinking" }, () => (
+        .with({ kind: "thinking" }, (r) => (
           <div className="mt-5">
             <Who />
-            <ThinkingDots />
+            <ThinkingStatus startedAt={r.startedAt} reasoning={r.reasoning} query={query} sources={sources} />
           </div>
         ))
         .with({ kind: "error" }, (r) => (
@@ -182,29 +186,5 @@ function CopyButton({ text }: { text: string }) {
     >
       {state === "copied" ? <CheckIcon width={16} height={16} /> : <CopyIcon width={16} height={16} />}
     </Button>
-  );
-}
-
-function ThinkingDots() {
-  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
-  const dots = useTrail(3, {
-    from: { y: 0, opacity: 0.35 },
-    to: [
-      { y: -5, opacity: 1 },
-      { y: 0, opacity: 0.35 },
-    ],
-    loop: true,
-    config: { tension: 300, friction: 14 },
-  });
-
-  // A looping spring would spin when springs are skipped, so reduced motion gets plain text.
-  if (reduceMotion) return <div className="italic text-muted">Thinking…</div>;
-
-  return (
-    <div role="status" aria-label="Thinking" className="flex h-6 items-center gap-1.5">
-      {dots.map((style, i) => (
-        <animated.span key={i} style={style} className="size-2 rounded-full bg-accent" />
-      ))}
-    </div>
   );
 }

@@ -1,11 +1,15 @@
+import asyncio
 import json
+from types import SimpleNamespace
 
+import pytest
 from conftest import FakeStream, REPLY_PIECES
 from openai import OpenAIError
 from test_api import new_chat
 from test_illustrate import STORY, events, generator, post, reply_with, setup_profile
 
 import web
+from app import runtime, streaming
 from models import Chat, ContextInfo, ImageRef, Source, Usage
 
 
@@ -99,3 +103,88 @@ def test_error_event_carries_a_string_detail(api, fake_client):
 
     assert name == "error"
     assert set(payload) == {"detail"} and isinstance(payload["detail"], str)
+
+
+# --- reasoning ---
+# Ephemeral: forwarded as `{ text }` while it streams, never part of the stored reply or of `done`.
+
+REASONING_FIELDS = ("reasoning_content", "reasoning", "thinking")
+
+
+class ThinkingStream(FakeStream):
+    """Each piece is a dict of delta fields, so a test can send `content`, any reasoning field, or odd values."""
+
+    def __iter__(self):
+        for fields in self.pieces:
+            delta = SimpleNamespace(**{"content": None, **fields})
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
+
+
+def think(fake_client, *chunks):
+    fake_client.chat.completions.create = lambda **_: ThinkingStream(chunks)
+
+
+@pytest.mark.parametrize("field", REASONING_FIELDS)
+def test_reasoning_events_are_forwarded_in_order_with_only_text(api, fake_client, field):
+    think(fake_client, {field: "Let me "}, {field: "think."}, {"content": "Hi "}, {"content": "there"})
+
+    evs = stream(api)
+
+    assert [(n, d) for n, d in evs if n in ("reasoning", "delta")] == [
+        ("reasoning", {"text": "Let me "}),
+        ("reasoning", {"text": "think."}),
+        ("delta", {"text": "Hi "}),
+        ("delta", {"text": "there"}),
+    ]
+
+
+def test_a_chunk_with_reasoning_and_content_emits_reasoning_first(api, fake_client):
+    think(fake_client, {"reasoning": "hmm", "content": "Hi"})
+
+    assert [e for e in stream(api) if e[0] != "done"] == [("reasoning", {"text": "hmm"}), ("delta", {"text": "Hi"})]
+
+
+def test_reasoning_is_not_saved_and_not_in_done(api, fake_client):
+    think(fake_client, {"reasoning_content": "secret musings"}, {"content": "The answer."})
+
+    evs = stream(api)
+
+    assert "secret musings" not in json.dumps(dict(evs)["done"])
+    cid = dict(evs)["done"]["id"]
+    stored = api.get(f"/api/chats/{cid}").json()
+    assert "secret musings" not in json.dumps(stored)
+    assert [m["content"] for m in stored["messages"]][-1] == "The answer."
+
+
+@pytest.mark.parametrize("junk", [None, "", 5, True, ["x"], {"a": 1}])
+def test_non_string_or_empty_reasoning_is_ignored(api, fake_client, junk):
+    think(fake_client, {"reasoning_content": junk}, {"content": "Hi"})
+
+    names = [n for n, _ in stream(api)]
+
+    assert "reasoning" not in names and names.count("delta") == 1
+
+
+def test_the_first_non_empty_string_field_wins(api, fake_client):
+    think(fake_client, {"reasoning_content": "", "reasoning": 3, "thinking": "third"}, {"content": "Hi"})
+
+    assert [d for n, d in stream(api) if n == "reasoning"] == [{"text": "third"}]
+
+
+@pytest.mark.parametrize("field", REASONING_FIELDS)
+def test_a_reasoning_only_stream_is_still_an_empty_reply_and_refunds(field):
+    chat = runtime.db.create_chat(None, owner="local")
+    lease = runtime.db.acquire(chat.id, owner="local")
+    refunds = []
+    call = SimpleNamespace(refund=lambda: refunds.append(1))
+
+    async def run():
+        source = ThinkingStream([{field: "hmm"}, {field: " more"}])
+        return [e async for e in streaming.stream_reply(chat, "q", source, [], [], lease=lease, trial_call=call)]
+
+    blocks = asyncio.run(run())
+
+    assert [b.split("\n", 1)[0] for b in blocks] == ["event: reasoning", "event: reasoning", "event: error"]
+    assert json.loads(blocks[-1].split("\n", 1)[1].removeprefix("data: ")) == {"detail": streaming.EMPTY_REPLY}
+    assert refunds == [1]
+    assert runtime.db.get_chat(chat.id, owner="local").messages == []

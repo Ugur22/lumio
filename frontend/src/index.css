@@ -82,7 +82,33 @@ button,
   background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 @layer components {
+  /* The live end of a streaming reply. A pseudo-element on the last block keeps it out of the Markdown/sanitize
+     pipeline, so the stored text and the rendered tree stay exactly what they were. Blocks that cannot hold an
+     inline caret (code, tables, styled boxes) go without until text follows them. */
+  [data-caret] > :last-child:not(pre, ul, ol, table, div)::after,
+  [data-caret] > :is(ul, ol):last-child > li:last-child::after {
+    content: "";
+    display: inline-block;
+    width: 2px;
+    height: 1.05em;
+    margin-left: 2px;
+    vertical-align: -0.17em;
+    background: var(--accent);
+  }
+  /* Reduced motion keeps a steady caret. */
+  @media (prefers-reduced-motion: no-preference) {
+    [data-caret] > :last-child:not(pre, ul, ol, table, div)::after,
+    [data-caret] > :is(ul, ol):last-child > li:last-child::after {
+      animation: caret-blink 1s steps(1) infinite;
+    }
+  }
   .dialogue {
     color: var(--dialogue);
   }
