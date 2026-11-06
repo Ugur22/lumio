@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createSmoother } from "../lib/smoother";
 import { useStream } from "../store/stream";
 import type { Attachment } from "../lib/images";
 import { trialFailure, type TrialFailure } from "../lib/trial";
@@ -16,29 +17,52 @@ export function useStreamingSend({ onTrialRefused }: Options = {}) {
   const { mutate, isPending } = useSendMessage();
   const abort = useRef<AbortController | null>(null);
   const streamed = useRef("");
+  const reasoned = useRef("");
   const frame = useRef(0);
 
-  const endStream = useCallback(() => {
+  // Text is released on a fixed beat instead of as it arrives; each release is one store update, so markdown
+  // is parsed at most once per beat.
+  const [smoother] = useState(() =>
+    createSmoother((chunk) => {
+      streamed.current += chunk;
+      useStream.getState().setReply(streamed.current);
+    }),
+  );
+
+  // Reasoning is not smoothed, but it can arrive faster than frames, so it is applied once per frame.
+  const flushReasoning = useCallback(() => {
     cancelAnimationFrame(frame.current);
     frame.current = 0;
-    abort.current = null;
+    if (!reasoned.current) return;
+    const text = reasoned.current;
+    reasoned.current = "";
+    useStream.getState().addReasoning(text);
   }, []);
 
-  // Deltas arrive faster than frames; one store update per frame keeps markdown parsing cheap.
-  const onDelta = useCallback((text: string) => {
-    streamed.current += text;
-    if (frame.current) return;
-    frame.current = requestAnimationFrame(() => {
-      frame.current = 0;
-      useStream.getState().setReply(streamed.current);
-    });
-  }, []);
+  const onReasoning = useCallback(
+    (text: string) => {
+      reasoned.current += text;
+      if (!frame.current) frame.current = requestAnimationFrame(flushReasoning);
+    },
+    [flushReasoning],
+  );
+
+  // Whatever is still buffered goes out at once, so what is shown matches what the server saves.
+  const endStream = useCallback(() => {
+    smoother.flush();
+    flushReasoning();
+    abort.current = null;
+  }, [smoother, flushReasoning]);
+
+  const onDelta = useCallback((text: string) => smoother.push(text), [smoother]);
 
   const send = useCallback(
     (chatId: string | null, content: string, attachments: Attachment[], web: boolean, illustrate: boolean, onSaved: (chat: Chat) => void, model?: ChatModelBody) => {
       const controller = new AbortController();
       abort.current = controller;
       streamed.current = "";
+      reasoned.current = "";
+      smoother.cancel();
       useStream.getState().start(
         chatId,
         content,
@@ -54,6 +78,7 @@ export function useStreamingSend({ onTrialRefused }: Options = {}) {
           model,
           signal: controller.signal,
           onDelta,
+          onReasoning,
           onSources: useStream.getState().setSources,
           onIllustrationFailed: useStream.getState().addFailure,
         },
@@ -61,6 +86,7 @@ export function useStreamingSend({ onTrialRefused }: Options = {}) {
           onSuccess: (saved) => {
             endStream();
             useStream.getState().settleFailures(saved.id);
+            useStream.getState().settleReasoning(saved.id);
             useStream.getState().clear();
             onSaved(saved);
           },
@@ -77,19 +103,24 @@ export function useStreamingSend({ onTrialRefused }: Options = {}) {
         },
       );
     },
-    [mutate, onDelta, endStream],
+    [mutate, onDelta, onReasoning, endStream, smoother],
   );
 
-  const stop = useCallback(() => abort.current?.abort(), []);
+  // Stop shows the rest of the buffered text before aborting; the server saves exactly what it had streamed.
+  const stop = useCallback(() => {
+    smoother.flush();
+    abort.current?.abort();
+  }, [smoother]);
 
   // Leaving the app (sign-out, a lost session) ends a stream in flight instead of letting it write into a store
   // that now belongs to the next screen.
   useEffect(
     () => () => {
       abort.current?.abort();
+      smoother.cancel();
       cancelAnimationFrame(frame.current);
     },
-    [],
+    [smoother],
   );
 
   return { send, stop, isPending };

@@ -1357,7 +1357,8 @@ def test_a_reasoning_only_stream_is_an_error_saves_nothing_and_refunds(idp, stub
 
     evs = events(send(client, chat_id, "think hard [[fake:reasoning]]"))
 
-    assert evs == [("error", {"detail": "The model returned no answer. Try again or rephrase."})]
+    assert [n for n, _ in evs] == ["reasoning", "reasoning", "error"]
+    assert evs[-1] == ("error", {"detail": "The model returned no answer. Try again or rephrase."})
     assert saved_messages(client, chat_id) == []
     assert trial_row(client).used == 0
     assert client.get("/api/trial").json()["remaining"] == 5

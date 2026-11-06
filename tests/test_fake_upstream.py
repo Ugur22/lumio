@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from fake_upstream import CODE_OUTPUT, FAILING_PROMPT, PLAIN_PIECES, app as upstream
+from fake_upstream import CODE_OUTPUT, FAILING_PROMPT, PLAIN_PIECES, REASONING_PIECES, app as upstream
 from fastapi.testclient import TestClient
 from openai import OpenAI
 from app import providers
@@ -103,5 +103,5 @@ def test_a_non_trial_request_carries_no_thinking_field_and_a_blank_reply_is_an_e
     assert "thinking" not in RECEIVED[-1] and "extra_body" not in RECEIVED[-1]
 
     evs = events(post(api, chat_id, "hmm [[fake:reasoning]]"))
-    assert evs == [("error", {"detail": "The model returned no answer. Try again or rephrase."})]
+    assert evs == [("reasoning", {"text": t}) for t in REASONING_PIECES] + [("error", {"detail": "The model returned no answer. Try again or rephrase."})]
     assert len(api.get(f"/api/chats/{chat_id}").json()["messages"]) == 2

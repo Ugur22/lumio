@@ -101,6 +101,7 @@ export function App() {
 
   const select = (id: string | null) => {
     useStream.getState().clearFailures();
+    useStream.getState().clearReasoning();
     if (id !== currentId) setPendingModel(null);
     setCurrentId(id);
     setMenuOpen(false);

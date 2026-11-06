@@ -2,6 +2,7 @@ import { animated, useSpring, useTrail } from "@react-spring/web";
 import { useEffect, useRef, type Ref } from "react";
 import { match } from "ts-pattern";
 import { imageUrl } from "../api";
+import { thoughtOf } from "../lib/thinking";
 import { useStream } from "../store/stream";
 import type { IllustrationFailure, Message, SourceRef } from "../types";
 import { BookIcon, GlobeIcon, ImageIcon, LumioMark, PencilIcon } from "./icons";
@@ -29,6 +30,10 @@ export function MessageList({ messages, chatId }: Props) {
   const liveQuery = useStream((s) => s.query);
   const failures = useStream((s) => s.failures);
   const failuresChatId = useStream((s) => s.failuresChatId);
+  const reasoning = useStream((s) => s.reasoning);
+  const reasoningChatId = useStream((s) => s.reasoningChatId);
+  const startedAt = useStream((s) => s.startedAt);
+  const textAt = useStream((s) => s.textAt);
   // A reply still streaming for another chat must not show up here.
   const pending = stored && stored.chatId === chatId ? stored : null;
 
@@ -73,8 +78,8 @@ export function MessageList({ messages, chatId }: Props) {
       images: pending.images,
       reply: match(pending)
         .returnType<Reply>()
-        .with({ status: "thinking" }, () => ({ kind: "thinking" }))
-        .with({ status: "streaming" }, (p) => ({ kind: "text", content: p.reply, streaming: true }))
+        .with({ status: "thinking" }, () => ({ kind: "thinking", startedAt: startedAt ?? Date.now(), reasoning }))
+        .with({ status: "streaming" }, (p) => ({ kind: "text", content: p.reply, streaming: true, thought: thoughtOf(reasoning, startedAt, textAt) }))
         .with({ status: "error" }, (p) => ({ kind: "error", message: p.error, notice: p.notice }))
         .exhaustive(),
       sources: liveSources,
@@ -86,6 +91,11 @@ export function MessageList({ messages, chatId }: Props) {
     // The turn just sent is now saved; the notes stay on its reply until the next send or chat switch.
     const last = turns[turns.length - 1];
     if (last && last.reply.kind === "text") last.failures = failures;
+  }
+  // The reasoning of the turn just sent stays folded on its reply until the next send or chat switch; it was never saved.
+  if (!pending && chatId && reasoningChatId === chatId) {
+    const last = turns[turns.length - 1];
+    if (last && last.reply.kind === "text") last.reply = { ...last.reply, thought: thoughtOf(reasoning, startedAt, textAt) };
   }
 
   return (

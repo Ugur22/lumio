@@ -9,5 +9,6 @@ export function resetClientState(qc: QueryClient) {
   qc.clear();
   useStream.getState().clear();
   useStream.getState().clearFailures();
+  useStream.getState().clearReasoning();
   clearUserStorage();
 }

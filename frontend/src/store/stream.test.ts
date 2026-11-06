@@ -110,3 +110,63 @@ describe("illustration failures", () => {
     expect(get().failures).toEqual([]);
   });
 });
+
+describe("reasoning", () => {
+  beforeEach(() => {
+    get().clear();
+    get().clearReasoning();
+  });
+
+  it("accumulates while the turn is in flight and starts empty on each send", () => {
+    get().start("c1", "hi");
+    get().addReasoning("The user ");
+    get().addReasoning("wants a scene.");
+    expect(get().reasoning).toBe("The user wants a scene.");
+    get().start("c1", "again");
+    expect(get().reasoning).toBe("");
+    expect(get().textAt).toBeNull();
+  });
+
+  it("ignores reasoning without a turn in flight or after a failure", () => {
+    get().addReasoning("late");
+    expect(get().reasoning).toBe("");
+    get().start("c1", "hi");
+    get().fail("boom");
+    get().addReasoning("late");
+    expect(get().reasoning).toBe("");
+  });
+
+  it("times the first text once, from the start of the send", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    get().start("c1", "hi");
+    expect(get().startedAt).toBe(1000);
+    vi.setSystemTime(4000);
+    get().setReply("");
+    expect(get().textAt).toBeNull();
+    get().setReply("H");
+    vi.setSystemTime(9000);
+    get().setReply("Hello");
+    expect(get().textAt).toBe(4000);
+    vi.useRealTimers();
+  });
+
+  it("outlives clear for the saved turn and goes on a chat change", () => {
+    get().start(null, "hi");
+    get().addReasoning("thinking");
+    get().setReply("Hi");
+    get().settleReasoning("new-chat");
+    get().clear();
+    expect(get().reasoning).toBe("thinking");
+    expect(get().reasoningChatId).toBe("new-chat");
+    get().clearReasoning();
+    expect(get()).toMatchObject({ reasoning: "", reasoningChatId: null, startedAt: null, textAt: null });
+  });
+
+  it("is kept when the chat changes while the turn is still in flight", () => {
+    get().start("c1", "hi");
+    get().addReasoning("thinking");
+    get().clearReasoning();
+    expect(get().reasoning).toBe("thinking");
+  });
+});

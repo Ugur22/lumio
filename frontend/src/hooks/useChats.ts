@@ -89,6 +89,7 @@ interface SendVars {
   model?: ChatModelBody;
   signal: AbortSignal;
   onDelta: (text: string) => void;
+  onReasoning: (text: string) => void;
   onSources: (sources: SourceRef[], notes: string[], query: string | null) => void;
   onIllustrationFailed: (failure: IllustrationFailure) => void;
 }
@@ -107,7 +108,7 @@ async function savedAfterStop(id: string, knownCount: number): Promise<Chat> {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation<SentChat, Error, SendVars>({
-    mutationFn: async ({ chatId, content, images, web, illustrate, model, signal, onDelta, onSources, onIllustrationFailed }) => {
+    mutationFn: async ({ chatId, content, images, web, illustrate, model, signal, onDelta, onReasoning, onSources, onIllustrationFailed }) => {
       const id = chatId ?? (await api.createChat()).id;
       // Chats are created before the first message, so the pick is stored with its own call.
       if (chatId === null && model) {
@@ -127,6 +128,7 @@ export function useSendMessage() {
           illustrate,
           signal,
           onSources,
+          onReasoning,
           onIllustrationFailed,
           onDelta: (text) => {
             received = true;

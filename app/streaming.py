@@ -170,6 +170,13 @@ async def stream_reply(
                 reasoning = True
             if text or reasoning:
                 received = True
+            # Ephemeral: shown live by the client, never added to `parts` or saved.
+            thought = next(
+                (v for f in ("reasoning_content", "reasoning", "thinking") if isinstance(v := getattr(delta, f, None), str) and v),
+                None,
+            )
+            if thought:
+                yield sse("reasoning", {"text": thought})
             if text:
                 parts.append(text)
                 yield sse("delta", {"text": text})

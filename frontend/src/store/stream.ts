@@ -22,6 +22,16 @@ interface StreamState {
   // until the chat is known.
   failures: IllustrationFailure[];
   failuresChatId: string | null;
+  // Reasoning is shown live and never saved. Like failures it outlives `clear` for the turn just sent, tied to the
+  // chat, and goes away on the next send or when the chat changes.
+  reasoning: string;
+  reasoningChatId: string | null;
+  // When the send started and when the first reply text was shown (ms since the epoch); they give "Thought for Ns".
+  startedAt: number | null;
+  textAt: number | null;
+  addReasoning: (text: string) => void;
+  settleReasoning: (chatId: string) => void;
+  clearReasoning: () => void;
   addFailure: (failure: IllustrationFailure) => void;
   settleFailures: (chatId: string) => void;
   clearFailures: () => void;
@@ -44,6 +54,14 @@ export const useStream = create<StreamState>((set, get) => ({
   query: null,
   failures: [],
   failuresChatId: null,
+  reasoning: "",
+  reasoningChatId: null,
+  startedAt: null,
+  textAt: null,
+  addReasoning: (text) => set((s) => (s.pending && s.pending.status !== "error" ? { reasoning: s.reasoning + text } : s)),
+  settleReasoning: (chatId) => set((s) => (s.reasoning ? { reasoningChatId: chatId } : s)),
+  // A turn still in flight keeps its reasoning when the reader looks at another chat; the next send resets it.
+  clearReasoning: () => set((s) => (s.pending ? s : { reasoning: "", reasoningChatId: null, startedAt: null, textAt: null })),
   addFailure: (failure) => set((s) => (s.pending ? { failures: [...s.failures, failure] } : s)),
   settleFailures: (chatId) => set((s) => (s.failures.length ? { failuresChatId: chatId } : s)),
   clearFailures: () => set({ failures: [], failuresChatId: null }),
@@ -56,6 +74,10 @@ export const useStream = create<StreamState>((set, get) => ({
       query: null,
       failures: [],
       failuresChatId: chatId,
+      reasoning: "",
+      reasoningChatId: chatId,
+      startedAt: Date.now(),
+      textAt: null,
     });
   },
   setSources: (sources, notes, query = null) => set((s) => (s.pending ? { sources, notes, query } : s)),
@@ -63,7 +85,7 @@ export const useStream = create<StreamState>((set, get) => ({
   setReply: (reply) =>
     set((s) =>
       s.pending && s.pending.status !== "error"
-        ? { pending: { ...s.pending, status: "streaming", reply } }
+        ? { pending: { ...s.pending, status: "streaming", reply }, textAt: s.textAt ?? (reply ? Date.now() : null) }
         : s,
     ),
   fail: (error, notice = false) =>

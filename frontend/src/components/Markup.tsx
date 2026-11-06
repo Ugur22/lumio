@@ -172,7 +172,7 @@ export function Markup({ text, streaming = false }: { text: string; streaming?: 
   const { source, drawing } = prepare(text, streaming);
   return (
     <StreamingContext.Provider value={streaming}>
-      <div className="prose max-w-[62ch] prose-p:my-[0.8em] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
+      <div data-caret={streaming ? "" : undefined} className="prose max-w-[62ch] prose-p:my-[0.8em] [&>:first-child]:mt-0 [&>:last-child]:mb-0">
         <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
           {source}
         </ReactMarkdown>
