@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from conftest import ORIGIN, FakeStream
 from test_generation import WAIT, image_files, leases, stored
-from test_illustrate import PNG, generator, new_chat, setup_profile
+from test_illustrate import PNG, PNG_BYTES, generator, new_chat, setup_profile
 
 import server
 import storage
@@ -620,3 +620,118 @@ def test_cancel_after_text_ends_the_stream_with_done_for_the_partial_reply(api, 
     _, body = asyncio.run(run())
 
     assert names(body)[-1] == "done" and stored(cid) == ["hi", "a"]
+
+
+# --- fetching a picture before its turn is saved ---
+
+
+def live_image(body):
+    (image,) = [d for _, n, d in parse(body) if n == "image"]
+    return image
+
+
+def mid_job_image(cid, gate, fetch):
+    """Runs a reply held at its second piece, and returns fetch(image) as run once the `image` event has arrived."""
+    out = {}
+
+    async def run():
+        _, seen = await asgi("POST", f"/api/chats/{cid}/messages", {"content": "x", "illustrate": True}, stop=after_image)
+        image = live_image(seen)
+        assert "event: done" not in seen and stored(cid) == []
+        out["result"] = await asyncio.to_thread(fetch, image)
+        gate.set()
+        await job_ended(cid)
+        out["image"] = image
+
+    asyncio.run(run())
+    return out
+
+
+def test_the_owner_can_fetch_a_picture_before_the_turn_is_saved(api, fake_client):
+    setup_profile(api)
+    generator(fake_client)
+    gate = threading.Event()
+    serve(fake_client, [IMAGE_TEXT, "Then."], {1: gate})
+    cid = new_chat(api)
+
+    out = mid_job_image(cid, gate, lambda image: api.get(f"/api/chats/{cid}/images/{image['id']}"))
+
+    res = out["result"]
+    assert res.status_code == 200 and res.headers["content-type"] == "image/png" and res.content == PNG_BYTES
+    assert res.headers["cache-control"].startswith("private")
+    # once saved, the ordinary path serves the same picture
+    again = api.get(f"/api/chats/{cid}/images/{out['image']['id']}")
+    assert again.status_code == 200 and again.content == PNG_BYTES
+
+
+def test_an_unknown_or_near_miss_id_is_still_404_mid_job(api, fake_client):
+    setup_profile(api)
+    generator(fake_client)
+    gate = threading.Event()
+    serve(fake_client, [IMAGE_TEXT, "Then."], {1: gate})
+    cid = new_chat(api)
+
+    def fetch(image):
+        flipped = ("0" if image["id"][0] != "0" else "1") + image["id"][1:]
+        return [api.get(f"/api/chats/{cid}/images/{i}").status_code for i in ("f" * 32, flipped)]
+
+    assert mid_job_image(cid, gate, fetch)["result"] == [404, 404]
+
+
+def test_a_job_of_another_owner_does_not_serve_its_picture(api, fake_client):
+    setup_profile(api)
+    generator(fake_client)
+    gate = threading.Event()
+    serve(fake_client, [IMAGE_TEXT, "Then."], {1: gate})
+    cid = new_chat(api)
+
+    def fetch(image):
+        missing = api.get(f"/api/chats/{cid}/images/{'f' * 32}")
+        job = jobs.find(cid, "local")
+        job.owner = "someone-else"  # the chat is still the caller's, but the running job is not
+        try:
+            foreign = api.get(f"/api/chats/{cid}/images/{image['id']}")
+        finally:
+            job.owner = "local"
+        return missing, foreign
+
+    missing, foreign = mid_job_image(cid, gate, fetch)["result"]
+    assert foreign.status_code == 404 and foreign.json() == missing.json()
+
+
+def test_a_picture_of_a_failed_turn_is_not_served(api, fake_client, monkeypatch):
+    setup_profile(api)
+    generator(fake_client)
+    serve(fake_client, [IMAGE_TEXT, "Then."])
+
+    def locked(*_a, **_k):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(storage.Store, "append_generated", locked)
+    cid = new_chat(api)
+
+    _, body = asyncio.run(send_text(cid, illustrate=True))
+
+    image = live_image(body)
+    assert image_files(cid) == []
+    assert api.get(f"/api/chats/{cid}/images/{image['id']}").status_code == 404
+
+
+def test_a_picture_of_a_cancelled_turn_is_not_served(api, fake_client):
+    setup_profile(api)
+    generator(fake_client)
+    gate = threading.Event()
+    serve(fake_client, [IMAGE_TEXT, "more"], {1: gate})
+    cid = new_chat(api)
+
+    async def run():
+        _, seen = await asgi("POST", f"/api/chats/{cid}/messages", {"content": "x", "illustrate": True}, stop=after_image)
+        await asgi("POST", f"/api/chats/{cid}/messages/cancel")
+        await job_ended(cid)
+        gate.set()
+        return live_image(seen)
+
+    image = asyncio.run(run())
+
+    assert api.get(f"/api/chats/{cid}").json()["messages"][1]["images"] == []
+    assert api.get(f"/api/chats/{cid}/images/{image['id']}").status_code == 404

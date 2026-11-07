@@ -97,11 +97,17 @@ def get_image(chat_id: ChatId, image_id: ImageId, user: CurrentUser):
         ref = runtime.db.find_image(chat_id, image_id, owner=user.id)
     except storage.ChatNotFound:
         raise chat_gone()
-    if ref is None:
-        raise HTTPException(404, "Image not found")
-    path = images.image_path(runtime.settings, chat_id, ref)
-    if not path.exists():
-        raise HTTPException(410, "This image has expired")
+    if ref is not None:
+        path = images.image_path(runtime.settings, chat_id, ref)
+        if not path.exists():
+            raise HTTPException(410, "This image has expired")
+    else:
+        # Announced by a reply that is still being written (or not yet saved): `find_image` only knows saved messages.
+        job = jobs.find(chat_id, user.id)
+        ref = job.image(image_id) if job else None
+        path = images.image_path(runtime.settings, chat_id, ref) if ref else None
+        if path is None or not path.exists():  # a failed or stopped turn has deleted its files
+            raise HTTPException(404, "Image not found")
     return FileResponse(path, media_type=ref.media_type, headers={"Cache-Control": "private, max-age=3600"})
 
 
