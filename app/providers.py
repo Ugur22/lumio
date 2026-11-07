@@ -112,7 +112,7 @@ def trial_prompt(chat: Chat, body: NewMessage) -> tuple[str, list[dict]]:
     if len(body.content) > TRIAL_MESSAGE_CHARS:
         raise HTTPException(422, f"Messages are limited to {TRIAL_MESSAGE_CHARS} characters during the free trial.")
     system = story.system_for(chat, body.content, False)
-    history = drop_blank_replies(story.history_for(chat, False))[-TRIAL_HISTORY_MESSAGES:]
+    history = drop_blank_replies(story.history_for(chat, False, False))[-TRIAL_HISTORY_MESSAGES:]
     while history and history[0]["role"] != "user":
         history.pop(0)
     # Oldest first out: a long chat keeps working, only its far past stops being sent.

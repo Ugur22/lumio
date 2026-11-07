@@ -277,7 +277,9 @@ def prepare_reply(chat_id: str, body: NewMessage, user: UserView, report: stream
             if tavily_key and body.content.strip():
                 query = web.rewrite_query(client, profile.model, story.recent_for(chat), body.content)
             sources, notes = web.gather(body.content, body.web, tavily_key, query)
-            history = story.history_for(chat, profile.vision)
+            history = story.history_for(chat, profile.vision, illustrate)
+            if not illustrate:
+                history = providers.drop_blank_replies(history)  # a reply that was only a picture is blank now
             uploaded = [f"data:{i.media_type};base64,{i.data}" for i in body.images]
             message = story.content_for(web.with_context(body.content, sources, notes), uploaded, profile.vision)
             history.append({"role": "user", "content": message})

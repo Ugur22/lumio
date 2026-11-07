@@ -14,14 +14,50 @@ import images
 import storage
 from app import providers, runtime
 from app.logs import log
-from app.story import context_info
+from app.story import DIRECTIVE, UNCLOSED, context_info
 from models import Chat, ImageData, ImageRef, Message, Source, Usage
 
 EMPTY_REPLY = "The model returned no answer. Try again or rephrase."
 MAX_ILLUSTRATIONS = 3
 MAX_IMAGE_PROMPT_CHARS = 1_000
-# [[img:<id>]] is what a directive becomes once its image is stored.
-_DIRECTIVE = re.compile(r"\[\[image:\s*([^\]\n]+?)\s*\]\]")
+MAX_PER_REPLY = f"at most {MAX_ILLUSTRATIONS} pictures per reply"
+# [[img:<id>]] is what a directive becomes once its image is stored. The grammar (app/story.py) is the clients' own, so
+# what they show as "Illustrating..." is what is generated; a narrower one would leave their skeleton with no picture.
+_DIRECTIVE = DIRECTIVE
+_UNCLOSED = UNCLOSED
+_OPENER = "[[image:"
+
+
+class DirectiveFilter:
+    """Keeps [[image: ...]] directives out of the text streamed when no pictures are being made, so a client never
+    shows a skeleton for one. Holds back only what could still turn into a directive: a partial `[[image:` at the end of a
+    chunk, or an opened directive until its `]]`."""
+
+    def __init__(self) -> None:
+        self.held = ""
+
+    def feed(self, text: str) -> str:
+        buf, out = self.held + text, []
+        while True:
+            at = buf.find(_OPENER)
+            if at < 0:
+                break
+            end = buf.find("]]", at + len(_OPENER))
+            if end < 0:
+                out.append(buf[:at])
+                self.held = buf[at:]  # opened, not closed yet
+                return "".join(out)
+            out.append(buf[:at])
+            buf = buf[end + 2 :]
+        keep = next((n for n in range(min(len(_OPENER) - 1, len(buf)), 0, -1) if _OPENER.startswith(buf[-n:])), 0)
+        out.append(buf[: len(buf) - keep])
+        self.held = buf[len(buf) - keep :]
+        return "".join(out)
+
+    def finish(self) -> str:
+        """The held tail at the end of the reply: a cut-off directive goes (as strip_directives drops it from the saved text), a stray `[` stays."""
+        held, self.held = self.held, ""
+        return "" if held.startswith(_OPENER) else held
 
 
 def make_title(content: str, limit: int = 50) -> str:
@@ -40,8 +76,15 @@ def tidy(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
+def clean_prompt(raw: str) -> str:
+    return " ".join(raw.split())
+
+
 def strip_directives(text: str) -> str:
-    return tidy(_DIRECTIVE.sub("", text)) if _DIRECTIVE.search(text) else text
+    """Removes every directive, closed or not: raw `[[image: ...]]` is never shown as text."""
+    if "[[image:" not in text:
+        return text
+    return tidy(_UNCLOSED.sub("", _DIRECTIVE.sub("", text)))
 
 
 class IllustrationFailure(BaseModel):
@@ -148,7 +191,13 @@ async def stream_reply(
     ready: list[str] = []  # frames written by image tasks, flushed by this generator
     stored: list[ImageRef] = []
     scanned = 0
+    hidden = DirectiveFilter()  # used only when illustrate is off
     fetch: asyncio.Future | None = None
+
+    def dropped(prompt: str, why: str) -> None:
+        log.warning("Illustration dropped (%s) for prompt %r", why, prompt[:200])
+        failure = IllustrationFailure(prompt=prompt[:200], status=None, detail=why)
+        ready.append(sse("illustration_failed", failure.model_dump()))
 
     async def make_image(prompt: str) -> ImageRef | None:
         client, model, image_key = illustrate
@@ -170,10 +219,13 @@ async def stream_reply(
         nonlocal scanned
         for match in _DIRECTIVE.finditer("".join(parts), scanned):
             scanned = match.end()
-            if len(slots) >= MAX_ILLUSTRATIONS:
-                slots.append((match.start(), match.end(), None))  # over the cap: removed, not a failure
+            prompt = clean_prompt(match.group(1))
+            if not prompt or len(slots) >= MAX_ILLUSTRATIONS:
+                # Removed on purpose, so the client is told instead of left with a skeleton that never fills.
+                dropped(prompt, "the picture description was empty" if not prompt else MAX_PER_REPLY)
+                slots.append((match.start(), match.end(), None))
                 continue
-            task = asyncio.ensure_future(make_image(match.group(1)[:MAX_IMAGE_PROMPT_CHARS]))
+            task = asyncio.ensure_future(make_image(prompt[:MAX_IMAGE_PROMPT_CHARS]))
             tasks.append(task)
             slots.append((match.start(), match.end(), task))
 
@@ -237,7 +289,11 @@ async def stream_reply(
                 parts.append(text)
                 if illustrate and "]" in text:
                     start_images()
-                yield sse("delta", {"text": text})
+                shown = text if illustrate else hidden.feed(text)
+                if shown:
+                    yield sse("delta", {"text": shown})
+        if tail := hidden.finish():
+            yield sse("delta", {"text": tail})
         raw = "".join(parts)
         if not raw.strip():
             # Nothing to show, typically reasoning that used up max_tokens. Not saved, so no blank turn and no dangling question.
@@ -264,9 +320,18 @@ async def stream_reply(
                 reply_images += [ref] if ref else []
                 last = end
             out.append(raw[last:])
-            reply = tidy("".join(out)) if slots else raw
+            reply = "".join(out)
+            for left in _UNCLOSED.findall(reply):
+                dropped(left.removeprefix("[[image:").strip(), "the picture description was never closed")
         else:
-            reply = strip_directives(raw)
+            reply = raw
+            for match in _DIRECTIVE.finditer(raw):
+                dropped(clean_prompt(match.group(1)), "illustrations were off for this message")
+        reply = strip_directives(reply)
+        if slots:
+            reply = tidy(reply)
+        for frame in flush():
+            yield frame
         finished = True  # whatever happens next, the partial-save fallback below must not run twice
 
         def save_and_release() -> Chat:
@@ -308,6 +373,8 @@ async def stream_reply(
             if not finished:
                 last = sse("error", {"detail": "The reply was stopped before anything was written."})
                 if "".join(parts).strip():
+                    if "[[image:" in "".join(parts):
+                        log.warning("Illustrations dropped from a stopped reply in chat %s", chat.id)
                     try:
                         saved = append_turn(chat, lease, content, strip_directives("".join(parts)), sources, uploads, query, usage, rev=rev)
                         last = done_frame(saved)

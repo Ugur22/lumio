@@ -58,7 +58,20 @@ ILLUSTRATE_NOTE = (
     "instead of describing it."
 )
 
+NO_IMAGES_NOTE = (
+    "No pictures are made for this reply: do not write [[image: ...]] lines or any other picture marker, "
+    "even though earlier chapters may have had them. Write the prose only."
+)
+
 _IMG_REF = re.compile(r"\[\[img:([0-9a-f]{32})\]\]")
+# The same grammar as the web and mobile clients: up to the first `]]`, newlines and a single `]` allowed.
+DIRECTIVE = re.compile(r"\[\[image:([\s\S]*?)\]\]")
+# What is left once the closed directives are gone: one the model never closed (a cut-off reply).
+UNCLOSED = re.compile(r"\[\[image:[^\n]*")
+
+
+def has_picture_markers(chat: Chat) -> bool:
+    return any(m.role == "assistant" and (m.images or "[[img:" in m.content or "[[image:" in m.content) for m in chat.messages)
 
 
 # Lore is matched against this many recent messages plus the text being sent.
@@ -135,10 +148,14 @@ def system_for(chat: Chat, new_input: str = "", illustrate: bool = False) -> str
     parts = system_parts(chat, new_input, illustrate)
     if illustrate:
         parts["system"] += " " + ILLUSTRATE_NOTE
+    elif has_picture_markers(chat):
+        # The history this chat sends shows no markers when illustrating is off, but say it outright: a model that
+        # wrote them in earlier chapters keeps the habit otherwise.
+        parts["system"] += " " + NO_IMAGES_NOTE
     return "\n\n".join(filter(None, parts.values()))
 
 
-def history_for(chat: Chat, vision: bool = False) -> list[dict]:
+def history_for(chat: Chat, vision: bool = False, illustrate: bool = True) -> list[dict]:
     budget = HISTORY_WEB_CHARS
     history = []
     # Messages the summary stands in for stay stored but are not sent.
@@ -148,7 +165,11 @@ def history_for(chat: Chat, vision: bool = False) -> list[dict]:
             # Generated pictures are not re-sent; the model sees the directive it wrote, so it
             # keeps using that form rather than inventing its own text for an image.
             prompts = {ref.id: ref.prompt for ref in m.images}
-            content = _IMG_REF.sub(lambda g: f"[[image: {prompts[g.group(1)]}]]" if prompts.get(g.group(1)) else "", content)
+            if illustrate:
+                content = _IMG_REF.sub(lambda g: f"[[image: {prompts[g.group(1)]}]]" if prompts.get(g.group(1)) else "", content)
+            else:
+                # Not illustrating: a model shown directives in its own earlier turns writes more of them.
+                content = re.sub(r"\n{3,}", "\n\n", UNCLOSED.sub("", DIRECTIVE.sub("", _IMG_REF.sub("", content)))).strip()
             history.append({"role": m.role, "content": content})
             continue
         if m.sources:
