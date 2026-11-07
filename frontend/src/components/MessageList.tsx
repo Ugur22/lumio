@@ -79,7 +79,7 @@ export function MessageList({ messages, chatId }: Props) {
       reply: match(pending)
         .returnType<Reply>()
         .with({ status: "thinking" }, () => ({ kind: "thinking", startedAt: startedAt ?? Date.now(), reasoning }))
-        .with({ status: "streaming" }, (p) => ({ kind: "text", content: p.reply, streaming: true, thought: thoughtOf(reasoning, startedAt, textAt) }))
+        .with({ status: "streaming" }, (p) => ({ kind: "text", content: p.reply, streaming: true, illustrate: p.illustrate, thought: thoughtOf(reasoning, startedAt, textAt) }))
         .with({ status: "error" }, (p) => ({ kind: "error", message: p.error, notice: p.notice }))
         .exhaustive(),
       sources: liveSources,

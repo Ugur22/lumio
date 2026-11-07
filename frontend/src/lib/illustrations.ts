@@ -25,7 +25,9 @@ function withoutPartialTail(text: string): string {
 }
 
 // Only ids in `known` (that message's own images) become pictures, so reply text can't point at other files.
-export function splitReply(content: string, known: Illustration[], streaming: boolean): Segment[] {
+// `illustrate` is whether the turn was sent with Illustrate on; when off, directives the model echoes from earlier
+// chapters are dropped silently, since the server strips them at `done` and no picture will follow.
+export function splitReply(content: string, known: Illustration[], streaming: boolean, illustrate = true): Segment[] {
   const byId = new Map(known.map((i) => [i.id, i]));
   const source = streaming ? withoutPartialTail(content) : content;
   const out: Segment[] = [];
@@ -40,7 +42,7 @@ export function splitReply(content: string, known: Illustration[], streaming: bo
     const id = m[1];
     if (id === undefined) {
       // A directive still in the text: the picture is on its way while streaming, stale otherwise.
-      if (streaming) out.push({ kind: "pending" });
+      if (streaming && illustrate) out.push({ kind: "pending" });
       continue;
     }
     const illustration = byId.get(id);

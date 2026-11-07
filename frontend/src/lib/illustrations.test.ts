@@ -25,6 +25,15 @@ describe("splitReply", () => {
     expect(out.map((s) => s.kind)).toEqual(["text", "pending", "text"]);
   });
 
+  it("drops directives silently while streaming with Illustrate off, keeping real pictures", () => {
+    const out = splitReply(`Intro.\n\n[[image: a lighthouse]]\n\n[[img:${ID}]]\n\nMore`, [pic], true, false);
+    expect(out.map((s) => s.kind)).toEqual(["text", "image", "text"]);
+  });
+
+  it.each(["[", "[[", "[[image:", "[[image: a light"])("hides the partial tail %j while streaming with Illustrate off", (tail) => {
+    expect(splitReply(`Intro.${tail}`, [], true, false)).toEqual([{ kind: "text", text: "Intro." }]);
+  });
+
   it("drops a stale directive once streaming is over", () => {
     const out = splitReply("Intro.\n[[image: a lighthouse]]\nMore", [], false);
     expect(out.map((s) => s.kind)).toEqual(["text", "text"]);

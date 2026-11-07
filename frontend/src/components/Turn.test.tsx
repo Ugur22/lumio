@@ -71,6 +71,15 @@ describe("Turn illustrations", () => {
       />,
     );
 
+  it("shows no Illustrating skeleton for a directive when the turn was sent with Illustrate off", () => {
+    const out = renderToStaticMarkup(
+      <Turn question="q" reply={{ kind: "text", content: "One.\n\n[[image: a lighthouse]]\n\nTwo.[[ima", streaming: true, illustrate: false }} />,
+    );
+    expect(out).not.toContain("Illustrating");
+    expect(out).not.toContain("lighthouse");
+    expect(out).not.toContain("[[");
+  });
+
   it("renders a stored image with its prompt as caption", () => {
     const out = render(`One.\n\n[[img:${id}]]\n\nTwo.`);
     expect(out).toContain(`src="/api/chats/c/images/${id}"`);
