@@ -1,20 +1,22 @@
 """Chat routes: CRUD, images, story/behavior/model/summary settings, context size, and sending a message."""
 
+import asyncio
+import re
 import weakref
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi import Path as PathParam
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from openai import OpenAIError
-from starlette.background import BackgroundTask
 
 import images
 import profile_store
 import secret_store
 import storage
 import web
-from app import auth, providers, runtime, story, streaming
+from app import auth, jobs, providers, runtime, story, streaming
 from models import (
     MAX_SUMMARY_CHARS,
     BehaviorUpdate,
@@ -182,8 +184,58 @@ def get_context(chat_id: ChatId, user: CurrentUser):
     return story.context_info(chat, providers.profile_window(chat, user))
 
 
+def sse_headers(job: jobs.Job) -> dict[str, str]:
+    return {"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Job-Id": job.id}
+
+
 @router.post("/api/chats/{chat_id}/messages")
-def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
+async def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
+    """Starts the reply as a job and streams its events. The job outlives this request: see app/jobs.py."""
+
+    async def begin() -> jobs.Job:
+        report = streaming.StopReport()
+        reply = await run_in_threadpool(prepare_reply, chat_id, body, user, report)
+        # No await between here and the job owning the lease and the trial call.
+        return jobs.start(chat_id, user.id, reply, report)
+
+    # Shielded: if the client goes away while the reply is being prepared, begin() still finishes and the job runs on,
+    # instead of leaving a held lease and a spent trial call behind with nobody to release them.
+    job = await asyncio.shield(asyncio.ensure_future(begin()))
+    return StreamingResponse(job.follow(-1), media_type="text/event-stream", headers=sse_headers(job))
+
+
+@router.get("/api/chats/{chat_id}/messages/stream", response_model=None)
+def resume_stream(
+    chat_id: ChatId,
+    user: CurrentUser,
+    after: Annotated[int | None, Query(ge=-1)] = None,
+    job: Annotated[str | None, Query(max_length=64)] = None,
+    last_event_id: Annotated[str | None, Header()] = None,
+):
+    """Replays the events after `Last-Event-ID` (or `?after=`) and follows the reply live.
+
+    204 when no reply is buffered, or when `?job=` names a reply that is no longer the chat's current one (the cursor is stale)."""
+    load_chat(chat_id, user)
+    current = jobs.find(chat_id, user.id)
+    if current is None or (job is not None and job != current.id):
+        return Response(status_code=204)
+    if last_event_id is not None:
+        if not re.fullmatch(r"-?[0-9]{1,12}", last_event_id.strip()):
+            raise HTTPException(422, "Last-Event-ID must be an event number")
+        after = max(int(last_event_id), -1)
+    return StreamingResponse(current.follow(after if after is not None else -1), media_type="text/event-stream", headers=sse_headers(current))
+
+
+@router.post("/api/chats/{chat_id}/messages/cancel", status_code=204)
+def cancel_reply(chat_id: ChatId, user: CurrentUser):
+    """The only way to stop a reply: the text so far is saved. Does nothing when no reply is running."""
+    load_chat(chat_id, user)
+    if job := jobs.find(chat_id, user.id):
+        job.cancel()
+
+
+def prepare_reply(chat_id: str, body: NewMessage, user: UserView, report: streaming.StopReport | None = None):
+    """Everything up to the first byte of the model's answer. Returns the reply's frame generator, which owns the lease and the trial call from here on."""
     # Taken before the chat is read, so the history sent is the one the previous reply left behind.
     try:
         lease = runtime.db.acquire(chat_id, owner=user.id)
@@ -254,13 +306,8 @@ def send_message(chat_id: ChatId, body: NewMessage, user: CurrentUser):
         rev=rev,
         trial_call=call,
         key=key,
+        report=report,
     )
-    # A generator that never starts (client gone before the first byte) never reaches its own finally, and the
-    # lease thread would keep renewing; release is idempotent, so these are only backstops.
+    # Backstop for a generator that is dropped without ever starting (its own finally never runs); release is idempotent.
     weakref.finalize(reply, lease.release)
-    return StreamingResponse(
-        reply,
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        background=BackgroundTask(lease.release),
-    )
+    return reply

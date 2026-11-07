@@ -4,6 +4,7 @@ import os
 import time
 
 import pytest
+from conftest import sse_blocks
 from pydantic import ValidationError
 
 import images
@@ -29,7 +30,7 @@ def post(api, cid, **body):
 
 
 def done(res):
-    block = [b for b in res.text.strip().split("\n\n") if b.startswith("event: done")][0]
+    block = [b for b in sse_blocks(res.text) if b.startswith("event: done")][0]
     return json.loads(block.split("data: ", 1)[1])
 
 

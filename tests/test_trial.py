@@ -30,6 +30,7 @@ import server
 import storage
 from app import anchors, providers, routes_auth, routes_oauth, routes_profiles, runtime, story, streaming
 from models import Message, ProfileView, Settings, UserView
+from conftest import sse_blocks
 
 HOST = "lumio.example.com"
 ORIGIN = f"https://{HOST}"
@@ -185,7 +186,7 @@ def trial_client(idp, name="alice", **kw):
 
 def events(res):
     out = []
-    for block in res.text.strip().split("\n\n"):
+    for block in sse_blocks(res.text):
         name, data = block.split("\n", 1)
         out.append((name.removeprefix("event: "), json.loads(data.removeprefix("data: "))))
     return out

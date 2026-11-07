@@ -1,5 +1,6 @@
 """Streaming a reply to the client as server-sent events, illustrating it, and saving the finished turn."""
 
+import asyncio
 import json
 import re
 import sqlite3
@@ -49,43 +50,6 @@ class IllustrationFailure(BaseModel):
     detail: str
 
 
-async def illustrate_reply(
-    chat_id: str, text: str, client: OpenAI, model: str, key: str | None
-) -> tuple[str, list[ImageRef], list[IllustrationFailure]]:
-    """Turns [[image: ...]] directives into stored images and [[img:<id>]] markers.
-
-    A directive that fails (provider error, bad data) or exceeds the cap is removed and the text kept;
-    real failures are returned so the caller can report them (directives over the cap are not failures).
-    """
-    refs: list[ImageRef] = []
-    failures: list[IllustrationFailure] = []
-    wanted = 0
-
-    async def replace(match: re.Match) -> str:
-        nonlocal wanted
-        wanted += 1
-        if wanted > MAX_ILLUSTRATIONS:
-            return ""
-        prompt = match.group(1)[:MAX_IMAGE_PROMPT_CHARS]
-        try:
-            data = await run_in_threadpool(providers.generate_image, client, model, prompt)
-        except (OpenAIError, ValueError, ValidationError, IndexError, AttributeError) as e:
-            log.warning("Illustration failed (%s) for prompt %r", providers.describe_provider_error(e, key), prompt[:200])
-            status, detail = providers.provider_error_parts(e, key, 2000)
-            failures.append(IllustrationFailure(prompt=prompt[:200], status=status, detail=providers.readable_reason(detail)[:200]))
-            return ""
-        ref = images.save_images(runtime.settings, chat_id, [data])[0].model_copy(update={"prompt": prompt})
-        refs.append(ref)
-        return f"[[img:{ref.id}]]"
-
-    out, last = [], 0
-    for match in _DIRECTIVE.finditer(text):
-        out += [text[last : match.start()], await replace(match)]
-        last = match.end()
-    out.append(text[last:])
-    return (tidy("".join(out)) if last else text), refs, failures
-
-
 def append_turn(
     chat: Chat,
     lease: storage.Lease,
@@ -120,6 +84,31 @@ def append_turn(
         raise
 
 
+class StopReport:
+    """Where a cancelled stream_reply leaves its last frame (done if the partial reply was saved, else error), so the
+    job can close its readers with a terminal event instead of a silent end."""
+
+    def __init__(self) -> None:
+        self.frame: str | None = None
+        self.event = asyncio.Event()
+
+    def set(self, frame: str) -> None:
+        if self.frame is None:
+            self.frame = frame
+            self.event.set()
+
+
+def save_failure(e: BaseException) -> str:
+    """The `error` frame for a save that did not happen."""
+    if isinstance(e, storage.ChatNotFound):
+        return sse("error", {"detail": "This chat was deleted while the reply was being written"})
+    if isinstance(e, storage.LeaseLost):
+        log.warning("Reply not saved: its generation lease expired or was taken over")
+        return sse("error", {"detail": "This reply was not saved because another request took over this chat. Try again."})
+    log.error("Could not save the reply", exc_info=e)
+    return sse("error", {"detail": "The reply could not be saved. Try again."})
+
+
 async def stream_reply(
     chat: Chat,
     content: str,
@@ -135,28 +124,93 @@ async def stream_reply(
     rev: int | None = None,
     trial_call: storage.TrialCall | None = None,
     key: str | None = None,
+    report: StopReport | None = None,
 ) -> AsyncIterator[str]:
-    """Streams the reply, then appends it in one short transaction. `lease` is released on every exit path.
+    """Yields the reply as SSE frames, then appends it in one short transaction. `lease` is released on every exit path.
 
-    A `trial_call` is given back when the provider fails before any text reached the client, or when the stream ends with
-    no text at all (reasoning alone does not count); never after text was delivered, nor when the client stops or disconnects. `key` is only used to keep it out of error text."""
+    Driven by a job (app/jobs.py), whose cancel() reaches the stop path below. Each [[image: ...]] directive starts
+    generating as soon as it closes in the text, in parallel with the rest of the reply, and its `image` event goes out
+    as soon as the file is stored. Images of a turn that is not saved are deleted.
+
+    A `trial_call` is given back when the provider fails before any text reached the client, or when the stream ends or is
+    stopped before anything arrived; never once the provider has started answering. `key` only keeps it out of error text."""
     parts: list[str] = []
     received = False  # any delta, reasoning included: the provider has already spent tokens on it
     usage: Usage | None = None
     reasoning = False
     finish_reason = None
     finished = False
-    saving = False  # the final save runs in a worker thread that outlives a cancelled request and then releases the lease
-    chunks = iter(stream)
+    saving = False  # the final save runs in a worker thread that outlives a cancelled job and then releases the lease
+    committed = False
+    chunks = None
+    slots: list[tuple[int, int, asyncio.Task | None]] = []  # (start, end, image task) of each directive, in text order
+    tasks: list[asyncio.Task] = []
+    ready: list[str] = []  # frames written by image tasks, flushed by this generator
+    stored: list[ImageRef] = []
+    scanned = 0
+    fetch: asyncio.Future | None = None
+
+    async def make_image(prompt: str) -> ImageRef | None:
+        client, model, image_key = illustrate
+        try:
+            data = await run_in_threadpool(providers.generate_image, client, model, prompt)
+        except (OpenAIError, ValueError, ValidationError, IndexError, AttributeError) as e:
+            log.warning("Illustration failed (%s) for prompt %r", providers.describe_provider_error(e, image_key), prompt[:200])
+            status, detail = providers.provider_error_parts(e, image_key, 2000)
+            failure = IllustrationFailure(prompt=prompt[:200], status=status, detail=providers.readable_reason(detail)[:200])
+            ready.append(sse("illustration_failed", failure.model_dump()))
+            return None
+        ref = images.save_images(runtime.settings, chat.id, [data])[0].model_copy(update={"prompt": prompt})
+        stored.append(ref)
+        ready.append(sse("image", {"id": ref.id, "media_type": ref.media_type, "prompt": ref.prompt}))
+        return ref
+
+    def start_images() -> None:
+        # Only closed directives match, so one split across chunks starts once its `]]` arrives.
+        nonlocal scanned
+        for match in _DIRECTIVE.finditer("".join(parts), scanned):
+            scanned = match.end()
+            if len(slots) >= MAX_ILLUSTRATIONS:
+                slots.append((match.start(), match.end(), None))  # over the cap: removed, not a failure
+                continue
+            task = asyncio.ensure_future(make_image(match.group(1)[:MAX_IMAGE_PROMPT_CHARS]))
+            tasks.append(task)
+            slots.append((match.start(), match.end(), task))
+
+    save_task: asyncio.Future | None = None
+
+    def done_frame(saved: Chat) -> str:
+        # Extra keys are additive: the chat fields stay where the existing frontend reads them.
+        return sse(
+            "done",
+            saved.model_dump(mode="json")
+            | {
+                "usage": usage.model_dump() if usage else None,
+                "context": context_info(saved, window).model_dump(),
+            }
+            | ({"trial": {"remaining": trial_call.remaining}} if trial_call else {}),
+        )
+
+    def flush() -> list[str]:
+        out = list(ready)
+        ready.clear()
+        return out
+
     try:
+        chunks = iter(stream)  # inside the try: a stream that cannot start must still release the lease
         if sources or notes or query:
             yield sse(
                 "sources",
                 {"sources": [{"url": s.url, "title": s.title} for s in sources], "notes": notes, "query": query},
             )
         while True:
-            # The OpenAI stream is blocking, so each read runs off the event loop.
-            chunk = await run_in_threadpool(next, chunks, None)
+            # The OpenAI stream is blocking, so each read runs off the event loop; images that finish meanwhile go out at once.
+            fetch = asyncio.ensure_future(run_in_threadpool(next, chunks, None))
+            while not fetch.done():
+                for frame in flush():
+                    yield frame
+                await asyncio.wait({fetch, *(t for t in tasks if not t.done())}, return_when=asyncio.FIRST_COMPLETED)
+            chunk = fetch.result()
             if chunk is None:
                 break
             reported = getattr(getattr(chunk, "usage", None), "prompt_tokens", None)
@@ -175,13 +229,17 @@ async def stream_reply(
                 (v for f in ("reasoning_content", "reasoning", "thinking") if isinstance(v := getattr(delta, f, None), str) and v),
                 None,
             )
+            for frame in flush():
+                yield frame
             if thought:
                 yield sse("reasoning", {"text": thought})
             if text:
                 parts.append(text)
+                if illustrate and "]" in text:
+                    start_images()
                 yield sse("delta", {"text": text})
-        reply = "".join(parts)
-        if not reply.strip():
+        raw = "".join(parts)
+        if not raw.strip():
             # Nothing to show, typically reasoning that used up max_tokens. Not saved, so no blank turn and no dangling question.
             finished = True
             log.warning("Empty reply for chat %s (finish_reason=%s, reasoning_seen=%s)", chat.id, finish_reason, reasoning)
@@ -190,12 +248,25 @@ async def stream_reply(
             yield sse("error", {"detail": EMPTY_REPLY})
             return
         # Saved only after success so a failed request leaves no dangling question.
+        while True:
+            for frame in flush():
+                yield frame
+            running = [t for t in tasks if not t.done()]
+            if not running:
+                break
+            await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
         reply_images: list[ImageRef] = []
-        failures: list[IllustrationFailure] = []
         if illustrate:
-            reply, reply_images, failures = await illustrate_reply(chat.id, reply, *illustrate)
+            out, last = [], 0
+            for start, end, task in slots:
+                ref = task.result() if task else None
+                out += [raw[last:start], f"[[img:{ref.id}]]" if ref else ""]
+                reply_images += [ref] if ref else []
+                last = end
+            out.append(raw[last:])
+            reply = tidy("".join(out)) if slots else raw
         else:
-            reply = strip_directives(reply)
+            reply = strip_directives(raw)
         finished = True  # whatever happens next, the partial-save fallback below must not run twice
 
         def save_and_release() -> Chat:
@@ -206,58 +277,58 @@ async def stream_reply(
                 lease.release()
 
         saving = True
+        # Shielded: a cancel during the save must not orphan the worker thread's outcome, which the job still reports.
+        save_task = asyncio.ensure_future(run_in_threadpool(save_and_release))
         try:
-            saved = await run_in_threadpool(save_and_release)
-        except storage.ChatNotFound:
-            images.delete_images(runtime.settings, chat.id, reply_images)
-            yield sse("error", {"detail": "This chat was deleted while the reply was being written"})
+            saved = await asyncio.shield(save_task)
+        except (storage.ChatNotFound, storage.LeaseLost, sqlite3.Error) as e:
+            yield save_failure(e)
             return
-        except storage.LeaseLost:
-            log.warning("Reply for chat %s not saved: its generation lease expired or was taken over", chat.id)
-            images.delete_images(runtime.settings, chat.id, reply_images)
-            yield sse("error", {"detail": "This reply was not saved because another request took over this chat. Try again."})
-            return
-        except sqlite3.Error:
-            log.exception("Could not save the reply")
-            images.delete_images(runtime.settings, chat.id, reply_images)
-            yield sse("error", {"detail": "The reply could not be saved. Try again."})
-            return
-        for ref in reply_images:
-            yield sse("image", {"id": ref.id, "media_type": ref.media_type, "prompt": ref.prompt})
-        for failure in failures:
-            yield sse("illustration_failed", failure.model_dump())
-        # Extra keys are additive: the chat fields stay where the existing frontend reads them.
-        yield sse(
-            "done",
-            saved.model_dump(mode="json")
-            | {
-                "usage": usage.model_dump() if usage else None,
-                "context": context_info(saved, window).model_dump(),
-            }
-            | ({"trial": {"remaining": trial_call.remaining}} if trial_call else {}),
-        )
+        committed = True
+        yield done_frame(saved)
     except OpenAIError as e:
         finished = True
         if trial_call and not received:
             trial_call.refund()
         yield sse("error", {"detail": providers.client_error(e, key)})
-    except Exception:
-        # Not a provider error and not a cancellation: nothing was delivered yet, so the call is not the user's to lose.
+    except BaseException:
+        # A bug, or the job was cancelled (Stop): the partial save is in the finally. Given back only when nothing had arrived.
         if trial_call and not received:
             trial_call.refund()
         raise
     finally:
         # Plain synchronous calls only: this block also runs on cancellation, where an await would be cut short.
         try:
+            if fetch is not None:
+                fetch.cancel()
+            for task in tasks:
+                task.cancel()
             stream.close()
-            # Reached unfinished when the client stops or disconnects: keep what it saw.
-            if not finished and "".join(parts).strip():
-                try:
-                    append_turn(chat, lease, content, strip_directives("".join(parts)), sources, uploads, query, usage, rev=rev)
-                except storage.ChatNotFound:
-                    pass  # deleted while generating: the partial reply goes with it
-                except storage.LeaseLost:
-                    log.warning("Partial reply for chat %s not saved: its generation lease expired or was taken over", chat.id)
+            # Reached unfinished when the job is cancelled: keep what was written, without directives or images.
+            if not finished:
+                last = sse("error", {"detail": "The reply was stopped before anything was written."})
+                if "".join(parts).strip():
+                    try:
+                        saved = append_turn(chat, lease, content, strip_directives("".join(parts)), sources, uploads, query, usage, rev=rev)
+                        last = done_frame(saved)
+                    except (storage.ChatNotFound, storage.LeaseLost) as e:
+                        last = save_failure(e)  # deleted or taken over meanwhile: the partial reply goes with it
+                if report:
+                    report.set(last)
+            elif saving and not committed and report and save_task is not None:
+                # Cancelled while the save thread runs: it finishes on its own, and its outcome closes the stream.
+                def settle(t: asyncio.Future) -> None:
+                    report.set(save_failure(t.exception()) if t.exception() else done_frame(t.result()))
+
+                if save_task.done():
+                    settle(save_task)
+                else:
+                    save_task.add_done_callback(settle)
         finally:
+            # Once the save thread runs, append_turn removes the files itself if it fails.
+            if not saving and not committed:
+                images.delete_images(runtime.settings, chat.id, stored)
             if not saving:
                 lease.release()
+
+

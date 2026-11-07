@@ -9,6 +9,7 @@ import web
 from models import Source
 from openai import OpenAIError
 from app import story
+from conftest import sse_blocks
 
 PUBLIC = "93.184.216.34"
 ARTICLE = (
@@ -297,7 +298,7 @@ def send_web(api, cid, content):
     assert res.status_code == 200
     return [
         (block.split("\n")[0].removeprefix("event: "), json.loads(block.split("\n")[1].removeprefix("data: ")))
-        for block in res.text.strip().split("\n\n")
+        for block in sse_blocks(res.text)
     ]
 
 

@@ -14,6 +14,7 @@ FastAPI (server.py → app/ routes, models.py)
 
 - **Frontend** (`frontend/`): React 19, TypeScript, Tailwind, TanStack Query and Zustand. Markdown goes through a sanitizing pipeline, and code blocks run in a sandboxed iframe. API types in `frontend/src/api.gen.ts` are generated from the backend (`make types`).
 - **Backend**: `server.py` assembles the FastAPI app from `app/` (chat, profile and auth routes, prompt building in `story.py`, streaming in `streaming.py`, provider access in `providers.py`). It streams replies to the browser as SSE and serves `frontend/dist` when it exists.
+- **Reply jobs** (`app/jobs.py`): a reply runs as a server-side task, not as part of the HTTP request, so a dropped connection (a phone app going to the background) does not stop it. Every SSE event has an `id:`; the job keeps its events in memory until it ends and for 10 minutes after. `GET /api/chats/{id}/messages/stream` (with `Last-Event-ID` or `?after=`) replays and follows them, answering `204` when nothing is buffered; `POST .../messages/cancel` is the only thing that stops a reply. Illustrations start as soon as their `[[image: ...]]` directive closes, and the saved turn (text and images) is written when the job ends. Jobs live in one process and are lost on restart.
 - **Persistence**: SQLite in WAL mode. A reply takes a short per-chat lease, so a second send to a busy chat gets `409`.
 - **Providers**: the backend calls the provider's base URL directly. The browser never talks to a provider and never sees a key.
 

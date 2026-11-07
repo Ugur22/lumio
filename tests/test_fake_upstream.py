@@ -7,6 +7,7 @@ from fake_upstream import CODE_OUTPUT, FAILING_PROMPT, PLAIN_PIECES, REASONING_P
 from fastapi.testclient import TestClient
 from openai import OpenAI
 from app import providers
+from conftest import sse_blocks
 
 
 BASE = "https://fake-upstream.test/v1"
@@ -34,7 +35,7 @@ def post(api, cid, content, **extra):
 
 def events(res):
     out = []
-    for block in res.text.strip().split("\n\n"):
+    for block in sse_blocks(res.text):
         name, data = block.split("\n", 1)
         out.append((name.removeprefix("event: "), json.loads(data.removeprefix("data: "))))
     return out
