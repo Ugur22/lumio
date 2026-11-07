@@ -1,5 +1,6 @@
 import { splitReply, type Illustration } from "../lib/illustrations";
 import { AttachedImage } from "./AttachedImage";
+import { SparklesIcon } from "./icons";
 import { Markup } from "./Markup";
 
 interface Props {
@@ -24,13 +25,21 @@ export function ReplyBody({ content, illustrations = [], streaming = false }: Pr
         }
         if (seg.kind === "pending") {
           return (
-            <div
-              key={i}
-              role="status"
-              className="my-4 flex h-24 max-w-[62ch] items-center justify-center rounded-2xl border border-dashed border-border bg-bubble text-sm text-muted motion-safe:animate-pulse"
-            >
-              Illustrating…
-            </div>
+            <figure key={i} className="my-4 max-w-[62ch]">
+              {/* Same box as AttachedImage's img cap (h-48, sm:h-56, square) so the swap does not shift the page. */}
+              <div
+                role="status"
+                aria-label="Illustrating"
+                className="relative flex size-48 max-w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-border bg-bubble text-sm text-muted sm:size-56"
+              >
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 hidden bg-[linear-gradient(100deg,transparent_30%,color-mix(in_srgb,var(--accent)_14%,transparent)_50%,transparent_70%)] motion-safe:block motion-safe:animate-shimmer"
+                />
+                <SparklesIcon aria-hidden="true" className="motion-safe:animate-sketch-pulse" />
+                <span aria-hidden="true">Illustrating…</span>
+              </div>
+            </figure>
           );
         }
         n += 1;
