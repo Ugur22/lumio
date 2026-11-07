@@ -86,6 +86,8 @@ CHAT_ROUTES = [
     ("GET", "/api/chats/{c}/context", None),
     ("GET", "/api/chats/{c}/images/{i}", None),
     ("POST", "/api/chats/{c}/messages", {"content": "stolen question"}),
+    ("GET", "/api/chats/{c}/messages/stream", None),
+    ("POST", "/api/chats/{c}/messages/cancel", None),
 ]
 
 

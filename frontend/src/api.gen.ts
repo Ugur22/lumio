@@ -263,8 +263,53 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send Message */
+        /**
+         * Send Message
+         * @description Starts the reply as a job and streams its events. The job outlives this request: see app/jobs.py.
+         */
         post: operations["send_message_api_chats__chat_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/messages/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Reply
+         * @description The only way to stop a reply: the text so far is saved. Does nothing when no reply is running.
+         */
+        post: operations["cancel_reply_api_chats__chat_id__messages_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/messages/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resume Stream
+         * @description Replays the events after `Last-Event-ID` (or `?after=`) and follows the reply live.
+         *
+         *     204 when no reply is buffered, or when `?job=` names a reply that is no longer the chat's current one (the cursor is stale).
+         */
+        get: operations["resume_stream_api_chats__chat_id__messages_stream_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1522,6 +1567,71 @@ export interface operations {
                 "application/json": components["schemas"]["NewMessage"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_reply_api_chats__chat_id__messages_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_stream_api_chats__chat_id__messages_stream_get: {
+        parameters: {
+            query?: {
+                after?: number | null;
+                job?: string | null;
+            };
+            header?: {
+                "last-event-id"?: string | null;
+            };
+            path: {
+                chat_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

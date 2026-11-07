@@ -107,6 +107,11 @@ def remove_tmp_dir():
 REPLY_PIECES = ["Hi *waves* ", "[[key]]x[[/key]]"]
 
 
+def sse_blocks(text: str) -> list[str]:
+    """The `event:`/`data:` pairs of an SSE body, each without its `id:` line."""
+    return ["\n".join(l for l in block.split("\n") if not l.startswith("id: ")) for block in text.strip().split("\n\n")]
+
+
 class FakeStream:
     """Stands in for the OpenAI stream: yields chunks, then optionally fails."""
 

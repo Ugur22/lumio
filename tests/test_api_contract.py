@@ -6,6 +6,7 @@ import server
 NOT_JSON = {
     ("GET", "/api/chats/{chat_id}/images/{image_id}"),
     ("POST", "/api/chats/{chat_id}/messages"),
+    ("GET", "/api/chats/{chat_id}/messages/stream"),
 }
 
 

@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 from openai import OpenAIError
 
 import server
-import images
 import storage
 from app import auth, runtime, streaming, routes_chats
 from models import ImageData, NewMessage
+from conftest import sse_blocks
 
 WAIT = 10
 
@@ -82,7 +82,7 @@ def leases():
 
 
 def event_names(res):
-    return [block.split("\n")[0].removeprefix("event: ") for block in res.text.strip().split("\n\n")]
+    return [block.split("\n")[0].removeprefix("event: ") for block in sse_blocks(res.text)]
 
 
 # --- simultaneous sends -------------------------------------------------------------------------
@@ -203,10 +203,10 @@ def test_cancelling_the_task_keeps_the_partial_reply_and_releases_the_lease(api)
 def test_a_response_that_never_starts_does_not_keep_the_chat_locked(api, calls):
     cid = new_chat(api)
 
-    response = routes_chats.send_message(cid, NewMessage(content="hi"), auth.LOCAL_USER)
+    reply = routes_chats.prepare_reply(cid, NewMessage(content="hi"), auth.LOCAL_USER)
     assert leases() == 1
 
-    del response  # the client left before the first byte: the generator's own finally never runs
+    del reply  # dropped before the job ever started it: the generator's own finally never runs
     gc.collect()
 
     assert leases() == 0
@@ -276,7 +276,7 @@ def test_settings_changed_mid_reply_survive_and_the_stale_usage_is_dropped(api, 
     assert (chat["bible"], chat["system_prompt"], chat["temperature"], chat["title"]) == ("new canon", "be brief", 0.3, "Renamed")
     assert [m["role"] for m in chat["messages"]] == ["user", "assistant"]
     assert chat["last_usage"] is None
-    done = json.loads(out["res"].text.strip().split("\n\n")[-1].split("\n")[1].removeprefix("data: "))
+    done = json.loads(sse_blocks(out["res"].text)[-1].split("\n")[1].removeprefix("data: "))
     assert done["bible"] == "new canon"
 
 
@@ -333,16 +333,11 @@ def test_a_stale_completed_reply_is_rejected_and_the_replacement_saves(api, monk
     cid = new_chat(api)
     stale = runtime.db.acquire(cid, owner="local")
     chat = routes_chats.load_chat(cid, auth.LOCAL_USER)
-    made = []
-
-    async def illustrated(chat_id, text, *_):
-        made.extend(images.save_images(runtime.settings, chat_id, [PNG]))
-        return text, made, []
-
-    monkeypatch.setattr(streaming, "illustrate_reply", illustrated)
+    monkeypatch.setattr(streaming.providers, "generate_image", lambda *_: PNG)
 
     async def run():
-        gen = streaming.stream_reply(chat, "stale", FakeStream(REPLY_PIECES), [], [], [PNG], illustrate=(None, "m", None), lease=stale)
+        pieces = [REPLY_PIECES[0], "[[image: a barn]]", REPLY_PIECES[1]]
+        gen = streaming.stream_reply(chat, "stale", FakeStream(pieces), [], [], [PNG], illustrate=(None, "m", None), lease=stale)
         await anext(gen)
         expire(cid)
         fresh = runtime.db.acquire(cid, owner="local")

@@ -7,6 +7,7 @@ from openai import OpenAIError
 
 import server
 from app import auth, runtime, story, streaming, routes_chats
+from conftest import sse_blocks
 
 
 def new_chat(api):
@@ -18,7 +19,7 @@ def send(api, cid, content):
     res = api.post(f"/api/chats/{cid}/messages", json={"content": content})
     assert res.status_code == 200
     events = []
-    for block in res.text.strip().split("\n\n"):
+    for block in sse_blocks(res.text):
         name, data = block.split("\n")
         events.append((name.removeprefix("event: "), json.loads(data.removeprefix("data: "))))
     return events

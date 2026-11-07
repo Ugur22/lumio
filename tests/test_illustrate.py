@@ -7,6 +7,7 @@ from models import LOCAL_USER, EditProfile, NewProfile, Profile
 from conftest import FakeStream
 import profile_store
 from app import runtime, providers, story
+from conftest import sse_blocks
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nfake"
 PNG = base64.b64encode(PNG_BYTES).decode()
@@ -33,7 +34,7 @@ def post(api, cid, **body):
 
 def events(res):
     out = []
-    for block in res.text.strip().split("\n\n"):
+    for block in sse_blocks(res.text):
         name, data = block.split("\n", 1)
         out.append((name.removeprefix("event: "), json.loads(data.removeprefix("data: "))))
     return out
