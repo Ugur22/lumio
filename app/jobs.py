@@ -6,12 +6,14 @@ Jobs live in this process only: a restart drops them.
 """
 
 import asyncio
+import json
 import time
 import uuid
 from collections.abc import AsyncIterator
 
 from app.logs import log
 from app.streaming import StopReport, sse
+from models import ImageRef
 
 REPLAY_TTL = 600.0  # seconds a finished job's events stay available for a late resume
 MAX_REASONING_BYTES = 256 * 1024  # reasoning is ephemeral UI text: past this it is no longer sent or kept, so the buffer stays small
@@ -38,6 +40,19 @@ class Job:
 
     def expired(self) -> bool:
         return self.finished_at is not None and time.monotonic() - self.finished_at > REPLAY_TTL
+
+    def image(self, image_id: str) -> ImageRef | None:
+        """The picture this reply announced with an `image` event under exactly this id, saved in the chat or not yet.
+
+        Read from the event buffer, so it needs no state of its own. It only says the id belongs to this job: whether the
+        file still exists (a failed or cancelled turn deletes it) is for the caller to check."""
+        for frame in self.frames:
+            _, event, data = frame.split("\n", 2)
+            if event == "event: image":
+                ref = json.loads(data.removeprefix("data: ").strip())
+                if ref.get("id") == image_id:
+                    return ImageRef(**ref)
+        return None
 
     def _notify(self) -> None:
         # Swapped rather than cleared, so a reader that is between two awaits can never miss a wake-up.
