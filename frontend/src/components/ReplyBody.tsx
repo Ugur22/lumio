@@ -7,10 +7,12 @@ interface Props {
   content: string;
   illustrations?: Illustration[];
   streaming?: boolean;
+  // Whether the turn in flight was sent with Illustrate on; only matters while streaming.
+  illustrate?: boolean;
 }
 
-export function ReplyBody({ content, illustrations = [], streaming = false }: Props) {
-  const segments = splitReply(content, illustrations, streaming);
+export function ReplyBody({ content, illustrations = [], streaming = false, illustrate = true }: Props) {
+  const segments = splitReply(content, illustrations, streaming, illustrate);
   // Plain replies keep the exact single-Markup tree they always had.
   if (segments.length === 1 && segments[0]?.kind === "text") return <Markup text={segments[0].text} streaming={streaming} />;
 

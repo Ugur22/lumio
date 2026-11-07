@@ -4,7 +4,7 @@ import type { IllustrationFailure, SourceRef } from "../types";
 // A discriminated union, so consumers can match it exhaustively. "Succeeded" is `pending: null`:
 // the saved chat then supplies the reply.
 // `images` are object URLs for the thumbnails; the store owns them from `start` and revokes them on clear.
-export type Pending = { text: string; chatId: string | null; images: string[] } & (
+export type Pending = { text: string; chatId: string | null; images: string[]; illustrate: boolean } & (
   | { status: "thinking" }
   | { status: "streaming"; reply: string }
   // `notice` marks a message that is guidance rather than a fault (the free trial), so it is not worded "Failed".
@@ -35,7 +35,7 @@ interface StreamState {
   addFailure: (failure: IllustrationFailure) => void;
   settleFailures: (chatId: string) => void;
   clearFailures: () => void;
-  start: (chatId: string | null, text: string, images?: string[]) => void;
+  start: (chatId: string | null, text: string, images?: string[], illustrate?: boolean) => void;
   setReply: (reply: string) => void;
   setSources: (sources: SourceRef[], notes: string[], query?: string | null) => void;
   fail: (error: string, notice?: boolean) => void;
@@ -65,10 +65,10 @@ export const useStream = create<StreamState>((set, get) => ({
   addFailure: (failure) => set((s) => (s.pending ? { failures: [...s.failures, failure] } : s)),
   settleFailures: (chatId) => set((s) => (s.failures.length ? { failuresChatId: chatId } : s)),
   clearFailures: () => set({ failures: [], failuresChatId: null }),
-  start: (chatId, text, images = []) => {
+  start: (chatId, text, images = [], illustrate = true) => {
     revoke(get().pending);
     set({
-      pending: { text, chatId, images, status: "thinking" },
+      pending: { text, chatId, images, illustrate, status: "thinking" },
       sources: [],
       notes: [],
       query: null,
@@ -91,7 +91,7 @@ export const useStream = create<StreamState>((set, get) => ({
   fail: (error, notice = false) =>
     set((s) =>
       s.pending
-        ? { pending: { text: s.pending.text, chatId: s.pending.chatId, images: s.pending.images, status: "error", error, ...(notice && { notice }) } }
+        ? { pending: { text: s.pending.text, chatId: s.pending.chatId, images: s.pending.images, illustrate: s.pending.illustrate, status: "error", error, ...(notice && { notice }) } }
         : s,
     ),
   clear: () => {

@@ -16,7 +16,7 @@ import { Button } from "./ui";
 
 export type Reply =
   // `thought` is the reasoning streamed live for this turn; it is never saved, so a reloaded chat has none.
-  | { kind: "text"; content: string; streaming?: boolean; illustrations?: Illustration[]; thought?: Thought | null }
+  | { kind: "text"; content: string; streaming?: boolean; illustrate?: boolean; illustrations?: Illustration[]; thought?: Thought | null }
   | { kind: "thinking"; startedAt: number; reasoning: string }
   | { kind: "error"; message: string; notice?: boolean }
   | { kind: "none" };
@@ -68,7 +68,7 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
           <Appear live={live} className="mt-5">
             <Who />
             {r.thought && <ThoughtToggle thought={r.thought} />}
-            <ReplyBody content={r.content} illustrations={r.illustrations} streaming={r.streaming} />
+            <ReplyBody content={r.content} illustrations={r.illustrations} streaming={r.streaming} illustrate={r.illustrate} />
             {!r.streaming && <IllustrationNotes failures={failures} />}
             {!r.streaming && <CopyButton text={copyText(r.content)} />}
           </Appear>

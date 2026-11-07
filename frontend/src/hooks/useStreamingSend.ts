@@ -67,6 +67,7 @@ export function useStreamingSend({ onTrialRefused }: Options = {}) {
         chatId,
         content,
         attachments.map((a) => a.preview),
+        illustrate,
       );
       mutate(
         {

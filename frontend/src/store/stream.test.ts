@@ -8,7 +8,16 @@ describe("stream store", () => {
 
   it("starts as thinking for the given chat", () => {
     get().start("c1", "hi");
-    expect(get().pending).toEqual({ text: "hi", chatId: "c1", images: [], status: "thinking" });
+    expect(get().pending).toEqual({ text: "hi", chatId: "c1", images: [], illustrate: true, status: "thinking" });
+  });
+
+  it("records whether the turn was sent with Illustrate on", () => {
+    get().start("c1", "hi", [], false);
+    expect(get().pending?.illustrate).toBe(false);
+    get().setReply("Hel");
+    expect(get().pending?.illustrate).toBe(false);
+    get().fail("boom");
+    expect(get().pending?.illustrate).toBe(false);
   });
 
   it("keeps the thumbnails through the turn and revokes them when it is cleared", () => {
@@ -26,14 +35,14 @@ describe("stream store", () => {
     get().start(null, "hi");
     get().setReply("Hel");
     get().setReply("Hello");
-    expect(get().pending).toEqual({ text: "hi", chatId: null, images: [], status: "streaming", reply: "Hello" });
+    expect(get().pending).toEqual({ text: "hi", chatId: null, images: [], illustrate: true, status: "streaming", reply: "Hello" });
   });
 
   it("keeps the question and chat when the stream fails, and drops the partial reply", () => {
     get().start("c1", "hi");
     get().setReply("Hel");
     get().fail("boom");
-    expect(get().pending).toEqual({ text: "hi", chatId: "c1", images: [], status: "error", error: "boom" });
+    expect(get().pending).toEqual({ text: "hi", chatId: "c1", images: [], illustrate: true, status: "error", error: "boom" });
   });
 
   it("stays failed when a late reply frame arrives", () => {
