@@ -64,10 +64,54 @@ NO_IMAGES_NOTE = (
 )
 
 _IMG_REF = re.compile(r"\[\[img:([0-9a-f]{32})\]\]")
-# The same grammar as the web and mobile clients: up to the first `]]`, newlines and a single `]` allowed.
-DIRECTIVE = re.compile(r"\[\[image:([\s\S]*?)\]\]")
-# What is left once the closed directives are gone: one the model never closed (a cut-off reply).
-UNCLOSED = re.compile(r"\[\[image:[^\n]*")
+OPENER = "[[image:"
+MAX_DIRECTIVE_CHARS = 1500
+
+
+def tidy(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def scan_directives(text: str, pos: int = 0, final: bool = True) -> tuple[list[tuple[int, int, str | None]], int | None]:
+    """Finds picture directives as (start, end, prompt) in text order; prompt is None for one that never closed.
+
+    A directive is `[[image:` up to the first `]]`, with newlines and a single `]` allowed, but only when that closing comes
+    within MAX_DIRECTIVE_CHARS and before any blank line or second opener. Anything else is unclosed and is cut at the
+    end of its line (or at a second opener, or at the length cap), so the prose after it is kept. The web and mobile
+    clients' regex is broader (it runs to any later `]]`); that is fine, because the text the server saves is what they end
+    up showing. Each opener looks at most MAX_DIRECTIVE_CHARS ahead, so a hostile reply cannot make this quadratic.
+
+    With final=False an opener whose fate is not known yet (no closing, blank line or second opener, and the cap not reached) is
+    left out and its index returned as the second value, to be scanned again once more text has arrived."""
+    events: list[tuple[int, int, str | None]] = []
+    while (start := text.find(OPENER, pos)) >= 0:
+        lo, hard = start + len(OPENER), start + MAX_DIRECTIVE_CHARS
+        close = text.find("]]", lo, hard)
+        stop = close if close >= 0 else hard
+        blank, second = text.find("\n\n", lo, stop), text.find(OPENER, lo, stop)
+        if close >= 0 and blank < 0 and second < 0:
+            events.append((start, close + 2, " ".join(text[lo:close].split())))
+            pos = close + 2
+            continue
+        if close < 0 and blank < 0 and second < 0 and len(text) < hard and not final:
+            return events, start
+        eol = text.find("\n", start)
+        cut = min(len(text) if eol < 0 else eol, hard, second if second >= 0 else hard)
+        events.append((start, cut, None))
+        pos = cut
+    return events, None
+
+
+def strip_directives(text: str) -> str:
+    """Removes every directive, closed or not: raw `[[image: ...]]` is never shown as text."""
+    if OPENER not in text:
+        return text
+    events, _ = scan_directives(text)
+    out, last = [], 0
+    for start, end, _prompt in events:
+        out.append(text[last:start])
+        last = end
+    return tidy("".join(out) + text[last:])
 
 
 def has_picture_markers(chat: Chat) -> bool:
@@ -169,7 +213,7 @@ def history_for(chat: Chat, vision: bool = False, illustrate: bool = True) -> li
                 content = _IMG_REF.sub(lambda g: f"[[image: {prompts[g.group(1)]}]]" if prompts.get(g.group(1)) else "", content)
             else:
                 # Not illustrating: a model shown directives in its own earlier turns writes more of them.
-                content = re.sub(r"\n{3,}", "\n\n", UNCLOSED.sub("", DIRECTIVE.sub("", _IMG_REF.sub("", content)))).strip()
+                content = tidy(strip_directives(_IMG_REF.sub("", content))).strip()
             history.append({"role": m.role, "content": content})
             continue
         if m.sources:

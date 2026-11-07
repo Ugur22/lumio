@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import re
 import sqlite3
 from collections.abc import AsyncIterator
 
@@ -14,50 +13,53 @@ import images
 import storage
 from app import providers, runtime
 from app.logs import log
-from app.story import DIRECTIVE, UNCLOSED, context_info
+from app.story import OPENER, context_info, scan_directives, strip_directives, tidy
 from models import Chat, ImageData, ImageRef, Message, Source, Usage
 
 EMPTY_REPLY = "The model returned no answer. Try again or rephrase."
 MAX_ILLUSTRATIONS = 3
 MAX_IMAGE_PROMPT_CHARS = 1_000
 MAX_PER_REPLY = f"at most {MAX_ILLUSTRATIONS} pictures per reply"
-# [[img:<id>]] is what a directive becomes once its image is stored. The grammar (app/story.py) is the clients' own, so
-# what they show as "Illustrating..." is what is generated; a narrower one would leave their skeleton with no picture.
-_DIRECTIVE = DIRECTIVE
-_UNCLOSED = UNCLOSED
-_OPENER = "[[image:"
+_PARTIAL = tuple(OPENER[:n] for n in range(len(OPENER) - 1, 0, -1))
 
 
 class DirectiveFilter:
     """Keeps [[image: ...]] directives out of the text streamed when no pictures are being made, so a client never
-    shows a skeleton for one. Holds back only what could still turn into a directive: a partial `[[image:` at the end of a
-    chunk, or an opened directive until its `]]`."""
+    shows a skeleton for one. It uses the same scan as the saved text (app/story.py), so what is streamed equals what is
+    saved apart from tidy(). Holds back only what could still turn into a directive: a partial `[[image:` at the end of a
+    chunk, or an opened directive until it closes or is known never to (blank line, second opener, length cap)."""
 
     def __init__(self) -> None:
         self.held = ""
 
     def feed(self, text: str) -> str:
-        buf, out = self.held + text, []
-        while True:
-            at = buf.find(_OPENER)
-            if at < 0:
-                break
-            end = buf.find("]]", at + len(_OPENER))
-            if end < 0:
-                out.append(buf[:at])
-                self.held = buf[at:]  # opened, not closed yet
-                return "".join(out)
-            out.append(buf[:at])
-            buf = buf[end + 2 :]
-        keep = next((n for n in range(min(len(_OPENER) - 1, len(buf)), 0, -1) if _OPENER.startswith(buf[-n:])), 0)
-        out.append(buf[: len(buf) - keep])
-        self.held = buf[len(buf) - keep :]
+        buf = self.held + text
+        events, pending = scan_directives(buf, final=False)
+        out, last = [], 0
+        for start, end, _prompt in events:
+            out.append(buf[last:start])
+            last = end
+        if pending is not None:
+            out.append(buf[last:pending])
+            self.held = buf[pending:]
+            return "".join(out)
+        rest = buf[last:]
+        keep = next((len(p) for p in _PARTIAL if rest.endswith(p)), 0)
+        out.append(rest[: len(rest) - keep])
+        self.held = rest[len(rest) - keep :]
         return "".join(out)
 
     def finish(self) -> str:
-        """The held tail at the end of the reply: a cut-off directive goes (as strip_directives drops it from the saved text), a stray `[` stays."""
+        """The held tail at the end of the reply: a cut-off directive goes as strip_directives drops it from the saved text; a stray `[` stays."""
         held, self.held = self.held, ""
-        return "" if held.startswith(_OPENER) else held
+        if not held.startswith(OPENER):
+            return held
+        events, _ = scan_directives(held)
+        out, last = [], 0
+        for start, end, _prompt in events:
+            out.append(held[last:start])
+            last = end
+        return "".join(out) + held[last:]
 
 
 def make_title(content: str, limit: int = 50) -> str:
@@ -70,21 +72,6 @@ def make_title(content: str, limit: int = 50) -> str:
 
 def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
-
-
-def tidy(text: str) -> str:
-    return re.sub(r"\n{3,}", "\n\n", text)
-
-
-def clean_prompt(raw: str) -> str:
-    return " ".join(raw.split())
-
-
-def strip_directives(text: str) -> str:
-    """Removes every directive, closed or not: raw `[[image: ...]]` is never shown as text."""
-    if "[[image:" not in text:
-        return text
-    return tidy(_UNCLOSED.sub("", _DIRECTIVE.sub("", text)))
 
 
 class IllustrationFailure(BaseModel):
@@ -214,20 +201,24 @@ async def stream_reply(
         ready.append(sse("image", {"id": ref.id, "media_type": ref.media_type, "prompt": ref.prompt}))
         return ref
 
-    def start_images() -> None:
-        # Only closed directives match, so one split across chunks starts once its `]]` arrives.
+    def start_images(final: bool = False) -> None:
+        # A directive split across chunks starts once its `]]` arrives; one still open is looked at again with the next chunk.
         nonlocal scanned
-        for match in _DIRECTIVE.finditer("".join(parts), scanned):
-            scanned = match.end()
-            prompt = clean_prompt(match.group(1))
-            if not prompt or len(slots) >= MAX_ILLUSTRATIONS:
+        text = "".join(parts)
+        events, pending = scan_directives(text, scanned, final)
+        scanned = pending if pending is not None else (events[-1][1] if events else scanned)
+        for start, end, prompt in events:
+            if prompt is None:
+                dropped(text[start + len(OPENER) : end].strip(), "the picture description was never closed")
+            elif not prompt or len(tasks) >= MAX_ILLUSTRATIONS:
                 # Removed on purpose, so the client is told instead of left with a skeleton that never fills.
                 dropped(prompt, "the picture description was empty" if not prompt else MAX_PER_REPLY)
-                slots.append((match.start(), match.end(), None))
+            else:
+                task = asyncio.ensure_future(make_image(prompt[:MAX_IMAGE_PROMPT_CHARS]))
+                tasks.append(task)
+                slots.append((start, end, task))
                 continue
-            task = asyncio.ensure_future(make_image(prompt[:MAX_IMAGE_PROMPT_CHARS]))
-            tasks.append(task)
-            slots.append((match.start(), match.end(), task))
+            slots.append((start, end, None))
 
     save_task: asyncio.Future | None = None
 
@@ -287,7 +278,7 @@ async def stream_reply(
                 yield sse("reasoning", {"text": thought})
             if text:
                 parts.append(text)
-                if illustrate and "]" in text:
+                if illustrate:
                     start_images()
                 shown = text if illustrate else hidden.feed(text)
                 if shown:
@@ -303,6 +294,8 @@ async def stream_reply(
                 trial_call.refund()
             yield sse("error", {"detail": EMPTY_REPLY})
             return
+        if illustrate:
+            start_images(final=True)  # an opener still waiting for its `]]` will not get one
         # Saved only after success so a failed request leaves no dangling question.
         while True:
             for frame in flush():
@@ -320,16 +313,12 @@ async def stream_reply(
                 reply_images += [ref] if ref else []
                 last = end
             out.append(raw[last:])
-            reply = "".join(out)
-            for left in _UNCLOSED.findall(reply):
-                dropped(left.removeprefix("[[image:").strip(), "the picture description was never closed")
+            reply = tidy("".join(out)) if slots else raw
         else:
-            reply = raw
-            for match in _DIRECTIVE.finditer(raw):
-                dropped(clean_prompt(match.group(1)), "illustrations were off for this message")
-        reply = strip_directives(reply)
-        if slots:
-            reply = tidy(reply)
+            reply = strip_directives(raw)
+            if reply != raw:
+                # The user chose no pictures, so this is for the log only, not a frame per directive.
+                log.warning("Removed picture directives from a reply in chat %s: illustrations were off for this message", chat.id)
         for frame in flush():
             yield frame
         finished = True  # whatever happens next, the partial-save fallback below must not run twice
