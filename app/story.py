@@ -58,7 +58,64 @@ ILLUSTRATE_NOTE = (
     "instead of describing it."
 )
 
+NO_IMAGES_NOTE = (
+    "No pictures are made for this reply: do not write [[image: ...]] lines or any other picture marker, "
+    "even though earlier chapters may have had them. Write the prose only."
+)
+
 _IMG_REF = re.compile(r"\[\[img:([0-9a-f]{32})\]\]")
+OPENER = "[[image:"
+MAX_DIRECTIVE_CHARS = 1500
+
+
+def tidy(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def scan_directives(text: str, pos: int = 0, final: bool = True) -> tuple[list[tuple[int, int, str | None]], int | None]:
+    """Finds picture directives as (start, end, prompt) in text order; prompt is None for one that never closed.
+
+    A directive is `[[image:` up to the first `]]`, with newlines and a single `]` allowed, but only when that closing comes
+    within MAX_DIRECTIVE_CHARS and before any blank line or second opener. Anything else is unclosed and is cut at the
+    end of its line (or at a second opener, or at the length cap), so the prose after it is kept. The web and mobile
+    clients' regex is broader (it runs to any later `]]`); that is fine, because the text the server saves is what they end
+    up showing. Each opener looks at most MAX_DIRECTIVE_CHARS ahead, so a hostile reply cannot make this quadratic.
+
+    With final=False an opener whose fate is not known yet (no closing, blank line or second opener, and the cap not reached) is
+    left out and its index returned as the second value, to be scanned again once more text has arrived."""
+    events: list[tuple[int, int, str | None]] = []
+    while (start := text.find(OPENER, pos)) >= 0:
+        lo, hard = start + len(OPENER), start + MAX_DIRECTIVE_CHARS
+        close = text.find("]]", lo, hard)
+        stop = close if close >= 0 else hard
+        blank, second = text.find("\n\n", lo, stop), text.find(OPENER, lo, stop)
+        if close >= 0 and blank < 0 and second < 0:
+            events.append((start, close + 2, " ".join(text[lo:close].split())))
+            pos = close + 2
+            continue
+        if close < 0 and blank < 0 and second < 0 and len(text) < hard and not final:
+            return events, start
+        eol = text.find("\n", start)
+        cut = min(len(text) if eol < 0 else eol, hard, second if second >= 0 else hard)
+        events.append((start, cut, None))
+        pos = cut
+    return events, None
+
+
+def strip_directives(text: str) -> str:
+    """Removes every directive, closed or not: raw `[[image: ...]]` is never shown as text."""
+    if OPENER not in text:
+        return text
+    events, _ = scan_directives(text)
+    out, last = [], 0
+    for start, end, _prompt in events:
+        out.append(text[last:start])
+        last = end
+    return tidy("".join(out) + text[last:])
+
+
+def has_picture_markers(chat: Chat) -> bool:
+    return any(m.role == "assistant" and (m.images or "[[img:" in m.content or "[[image:" in m.content) for m in chat.messages)
 
 
 # Lore is matched against this many recent messages plus the text being sent.
@@ -135,10 +192,14 @@ def system_for(chat: Chat, new_input: str = "", illustrate: bool = False) -> str
     parts = system_parts(chat, new_input, illustrate)
     if illustrate:
         parts["system"] += " " + ILLUSTRATE_NOTE
+    elif has_picture_markers(chat):
+        # The history this chat sends shows no markers when illustrating is off, but say it outright: a model that
+        # wrote them in earlier chapters keeps the habit otherwise.
+        parts["system"] += " " + NO_IMAGES_NOTE
     return "\n\n".join(filter(None, parts.values()))
 
 
-def history_for(chat: Chat, vision: bool = False) -> list[dict]:
+def history_for(chat: Chat, vision: bool = False, illustrate: bool = True) -> list[dict]:
     budget = HISTORY_WEB_CHARS
     history = []
     # Messages the summary stands in for stay stored but are not sent.
@@ -148,7 +209,11 @@ def history_for(chat: Chat, vision: bool = False) -> list[dict]:
             # Generated pictures are not re-sent; the model sees the directive it wrote, so it
             # keeps using that form rather than inventing its own text for an image.
             prompts = {ref.id: ref.prompt for ref in m.images}
-            content = _IMG_REF.sub(lambda g: f"[[image: {prompts[g.group(1)]}]]" if prompts.get(g.group(1)) else "", content)
+            if illustrate:
+                content = _IMG_REF.sub(lambda g: f"[[image: {prompts[g.group(1)]}]]" if prompts.get(g.group(1)) else "", content)
+            else:
+                # Not illustrating: a model shown directives in its own earlier turns writes more of them.
+                content = tidy(strip_directives(_IMG_REF.sub("", content))).strip()
             history.append({"role": m.role, "content": content})
             continue
         if m.sources:

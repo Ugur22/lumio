@@ -291,6 +291,28 @@ def test_cancel_saves_the_partial_reply_without_directives_or_images(api, fake_c
     assert job.finished_at is not None
 
 
+def test_cancel_never_saves_a_half_written_or_odd_directive_as_text(api, fake_client, caplog):
+    setup_profile(api)
+    generator(fake_client)
+    gate = threading.Event()
+    serve(fake_client, ["Once.\n\n[[image: a sign [exit],\ndusk]]\n\nThen [[image: a bar", "n"], {1: gate})
+    cid = new_chat(api)
+
+    async def run():
+        await asgi("POST", f"/api/chats/{cid}/messages", {"content": "x", "illustrate": True}, stop=after_image)
+        assert (await asgi("POST", f"/api/chats/{cid}/messages/cancel"))[0] == 204
+        job = await job_ended(cid)
+        gate.set()
+        return job
+
+    with caplog.at_level("WARNING", logger="dolphinllm"):
+        asyncio.run(run())
+
+    reply = api.get(f"/api/chats/{cid}").json()["messages"][1]
+    assert "[[image" not in reply["content"] and reply["content"].startswith("Once.") and reply["images"] == []
+    assert "Illustrations dropped from a stopped reply" in caplog.text
+
+
 def test_cancel_is_idempotent_and_does_nothing_when_nothing_runs(api, calls):
     cid = new_chat(api)
 

@@ -1,12 +1,14 @@
 import base64
 import json
 
+import pytest
 from openai import OpenAIError
 
 from models import LOCAL_USER, EditProfile, NewProfile, Profile
 from conftest import FakeStream
 import profile_store
 from app import runtime, providers, story
+from app.story import strip_directives as story_strip, tidy as story_tidy
 from conftest import sse_blocks
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nfake"
@@ -205,7 +207,7 @@ def test_history_sends_user_images_only_and_replays_illustration_directives(api,
     generator(fake_client)
     cid = new_chat(api)
     post(api, cid, content="one", images=[USER_IMG], illustrate=True)
-    post(api, cid, content="two")
+    post(api, cid, content="two", illustrate=True)
 
     history = seen[1]
     assert [p["type"] for p in history[1]["content"]] == ["text", "image_url"]
@@ -271,16 +273,239 @@ def test_successful_illustrations_emit_no_failure(api, fake_client):
     assert "illustration_failed" not in [n for n, _ in events(post(api, new_chat(api), content="x", illustrate=True))]
 
 
-def test_capped_extras_emit_no_failure(api, fake_client):
-    setup_profile(api)
-    reply_with(fake_client, "\n\n".join(f"P{i}\n\n[[image: scene {i}]]" for i in range(5)))
-    generator(fake_client)
-    assert "illustration_failed" not in [n for n, _ in events(post(api, new_chat(api), content="x", illustrate=True))]
-
-
 def test_readable_reason_unwraps_json_error_bodies():
     body = '{"code":"imagine:content-moderated","error":"Generated image rejected by content moderation.","usage":{"cost_in_usd_ticks":1}}'
     assert providers.readable_reason(body) == "Generated image rejected by content moderation."
     assert providers.readable_reason('{"error":{"message":"bad  prompt"}}') == "bad prompt"
     assert providers.readable_reason("plain text") == "plain text"
     assert providers.readable_reason('{"other":1}') == '{"other":1}'
+
+
+# --- directives that used to vanish silently ---
+
+def serve_pieces(fake_client, pieces):
+    fake_client.chat.completions.create = lambda **kw: FakeStream(pieces)
+
+
+def send_illustrated(api, fake_client, pieces):
+    setup_profile(api)
+    serve_pieces(fake_client, pieces)
+    generator(fake_client, log=(log := []))
+    evs = events(post(api, new_chat(api), content="x", illustrate=True))
+    return evs, log
+
+
+@pytest.mark.parametrize(
+    "directive, prompt",
+    [
+        ("[[image: a sign reading [exit], dusk]]", "a sign reading [exit], dusk"),
+        ("[[image: a barn\nat dawn,\n  in mist]]", "a barn at dawn, in mist"),
+        ("[[image:no space]]", "no space"),
+    ],
+)
+def test_directives_the_clients_accept_get_a_picture(api, fake_client, directive, prompt):
+    evs, log = send_illustrated(api, fake_client, ["Once.\n\n", directive, "\n\nThen."])
+    reply = evs[-1][1]["messages"][1]
+    assert [e["prompt"] for e in reply["images"]] == [prompt] and [k["prompt"] for k in log] == [prompt]
+    assert "[[image" not in reply["content"] and reply["content"].startswith("Once.\n\n[[img:")
+
+
+@pytest.mark.parametrize(
+    "pieces",
+    [["A\n\n[[image: a barn]", "]\n\nB"], ["A\n\n[[image: a barn]", "]"], ["A\n\n[[image: a barn]]"], ["A\n\n[[image: a b", "arn]", "]"]],
+)
+def test_a_directive_closing_across_chunks_or_at_the_very_end_gets_a_picture(api, fake_client, pieces):
+    evs, log = send_illustrated(api, fake_client, pieces)
+    reply = evs[-1][1]["messages"][1]
+    assert [k["prompt"] for k in log] == ["a barn"] and len(reply["images"]) == 1
+    assert "[[image" not in reply["content"]
+
+
+def test_an_unclosed_directive_is_never_left_as_text_and_is_reported(api, fake_client, caplog):
+    with caplog.at_level("WARNING", logger="dolphinllm"):
+        evs, log = send_illustrated(api, fake_client, ["A\n\n[[image: a barn at da", "wn, and it was cut off"])
+    reply = evs[-1][1]["messages"][1]
+    assert log == [] and reply["images"] == [] and "[[image" not in reply["content"] and reply["content"].startswith("A")
+    failed = [d for n, d in evs if n == "illustration_failed"]
+    assert len(failed) == 1 and "never closed" in failed[0]["detail"] and failed[0]["status"] is None
+    assert "never closed" in caplog.text
+
+
+def test_an_empty_directive_is_removed_and_reported(api, fake_client):
+    evs, log = send_illustrated(api, fake_client, ["A\n\n[[image:  ]]\n\nB"])
+    reply = evs[-1][1]["messages"][1]
+    assert log == [] and reply["content"] == "A\n\nB"
+    assert [d["detail"] for n, d in evs if n == "illustration_failed"] == ["the picture description was empty"]
+
+
+def test_directives_over_the_cap_are_reported_not_silent(api, fake_client, caplog):
+    with caplog.at_level("WARNING", logger="dolphinllm"):
+        evs, log = send_illustrated(api, fake_client, [f"P{i}\n\n[[image: scene {i}]]\n\n" for i in range(5)])
+    reply = evs[-1][1]["messages"][1]
+    assert len(log) == 3 and len(reply["images"]) == 3 and "[[image" not in reply["content"]
+    failed = [d for n, d in evs if n == "illustration_failed"]
+    assert [d["prompt"] for d in failed] == ["scene 3", "scene 4"]
+    assert all("at most 3" in d["detail"] for d in failed) and "at most 3" in caplog.text
+    assert [n for n, _ in evs][-1] == "done"
+
+
+def test_directives_with_illustrate_off_are_removed_and_logged_once(api, fake_client, caplog):
+    setup_profile(api)
+    serve_pieces(fake_client, ["A\n\n[[image: a sign [exit], dusk]]\n\n[[image: a barn\nat dawn]]\n\nB"])
+    generator(fake_client, log=(log := []))
+    with caplog.at_level("INFO", logger="dolphinllm"):
+        evs = events(post(api, new_chat(api), content="x"))
+    reply = evs[-1][1]["messages"][1]
+    assert log == [] and reply["images"] == [] and "[[image" not in reply["content"] and reply["content"].startswith("A")
+    assert "illustration_failed" not in [n for n, _ in evs]
+    assert caplog.text.count("illustrations were off") == 1
+
+
+# --- illustrate off: nothing of a directive reaches the client or the model ---
+
+def streamed(evs):
+    return "".join(d["text"] for n, d in evs if n == "delta")
+
+
+@pytest.mark.parametrize(
+    "pieces",
+    [
+        ["A\n\n[[image: a sign [exit], dusk]]\n\nB"],
+        ["A\n\n[", "[image: a sign [exit], ", "dusk]", "]\n\nB"],
+        ["A\n\n[[ima", "ge: a sign [exit], dusk]]\n\nB"],
+        ["A\n\n[[image:", " a sign\n[exit], dusk]]", "\n\nB"],
+        list("A\n\n[[image: a sign [exit], dusk]]\n\nB"),
+    ],
+)
+def test_directives_never_reach_the_delta_stream_when_illustrate_is_off(api, fake_client, pieces):
+    setup_profile(api)
+    serve_pieces(fake_client, pieces)
+    evs = events(post(api, new_chat(api), content="x"))
+    assert "[[" not in streamed(evs) and "image" not in streamed(evs)
+    assert streamed(evs).replace("\n", "") == "AB" == evs[-1][1]["messages"][1]["content"].replace("\n", "")
+    assert "illustration_failed" not in [n for n, _ in evs]
+
+
+def test_other_brackets_and_partial_openers_are_streamed_when_illustrate_is_off(api, fake_client):
+    setup_profile(api)
+    serve_pieces(fake_client, ["see [1] and [[note]]", " then [[ima", "ge ok] and a final [[", "image"])
+    evs = events(post(api, new_chat(api), content="x"))
+    text = "see [1] and [[note]] then [[image ok] and a final [[image"
+    assert streamed(evs) == text and evs[-1][1]["messages"][1]["content"] == text
+
+
+def test_a_directive_cut_off_by_the_end_of_the_reply_is_not_streamed_or_saved(api, fake_client):
+    setup_profile(api)
+    serve_pieces(fake_client, ["A\n\n[[image: a barn at da", "wn"])
+    evs = events(post(api, new_chat(api), content="x"))
+    assert streamed(evs).strip() == "A" == evs[-1][1]["messages"][1]["content"].strip()
+
+
+def test_directives_still_stream_as_text_when_illustrating(api, fake_client):
+    evs, _ = send_illustrated(api, fake_client, ["A\n\n[[image: a barn]]\n\nB"])
+    assert "[[image: a barn]]" in streamed(evs)
+
+
+def test_history_and_prompt_stop_cueing_directives_when_illustrate_is_off(api, fake_client):
+    setup_profile(api)
+    seen = []
+    reply_with(fake_client, "Once.\n\n[[image: a red barn]]\n\nThen.\n\n[[image: a broken [one], x]]\n\nEnd.", seen)
+    generator(fake_client)
+    cid = new_chat(api)
+    post(api, cid, content="one", illustrate=True)
+    reply_with(fake_client, "Next.", seen)
+    post(api, cid, content="next chapter")
+
+    system, *history = seen[1]
+    assert history[1] == {"role": "assistant", "content": "Once.\n\nThen.\n\nEnd."}
+    assert "[[img:" not in json.dumps(seen[1]) and "red barn" not in json.dumps(history)
+    assert "do not write [[image:" in system["content"]
+    assert "do not write [[image:" not in seen[0][0]["content"]
+
+
+def test_the_no_pictures_note_is_only_for_chats_that_had_pictures(api, fake_client):
+    setup_profile(api)
+    seen = []
+    reply_with(fake_client, "plain", seen)
+    cid = new_chat(api)
+    post(api, cid, content="a")
+    post(api, cid, content="b")
+    assert "[[image:" not in seen[1][0]["content"]
+
+
+def test_a_picture_only_reply_is_not_sent_as_a_blank_turn_when_illustrate_is_off(api, fake_client):
+    setup_profile(api)
+    seen = []
+    reply_with(fake_client, "[[image: a barn]]", seen)
+    generator(fake_client)
+    cid = new_chat(api)
+    post(api, cid, content="draw", illustrate=True)
+    reply_with(fake_client, "ok", seen)
+    post(api, cid, content="now words")
+    assert [m["role"] for m in seen[1]] == ["system", "user"]
+
+
+# --- bounded grammar: an opener that never closes must not eat the story ---
+
+UNCLOSED_THEN_CLOSED = "a [[image: x\n\nmore story\n\n[[image: y]] end"
+ODD_INPUTS = [
+    UNCLOSED_THEN_CLOSED,
+    "a [[image: x [[image: y]] end",
+    "p1\n\n[[image: cut off here\nnext line stays\n\np3",
+    "tail [[image: never ends",
+    "[[image:]] and [[image:   ]]x",
+    "ok [[image: " + "long " * 400 + "]] after",
+    "[[ima [[image [image: z]] [[image:a]]b",
+]
+
+
+def collapse(text):
+    return story_tidy(text)
+
+
+@pytest.mark.parametrize("raw", ODD_INPUTS)
+@pytest.mark.parametrize("size", [None, 1, 3])
+def test_streamed_text_equals_saved_text_for_odd_directives_when_illustrate_is_off(api, fake_client, raw, size):
+    setup_profile(api)
+    serve_pieces(fake_client, [raw] if size is None else [raw[i : i + size] for i in range(0, len(raw), size)])
+    evs = events(post(api, new_chat(api), content="x"))
+    saved = evs[-1][1]["messages"][1]["content"]
+    assert collapse(streamed(evs)) == saved
+    assert "[[image:" not in saved
+
+
+def test_an_unclosed_opener_keeps_the_story_after_it_when_illustrate_is_off(api, fake_client):
+    setup_profile(api)
+    serve_pieces(fake_client, [UNCLOSED_THEN_CLOSED])
+    evs = events(post(api, new_chat(api), content="x"))
+    assert evs[-1][1]["messages"][1]["content"] == "a \n\nmore story\n\n end"
+
+
+def test_an_unclosed_opener_keeps_the_story_after_it_when_illustrating(api, fake_client):
+    evs, log = send_illustrated(api, fake_client, [UNCLOSED_THEN_CLOSED])
+    reply = evs[-1][1]["messages"][1]
+    assert [k["prompt"] for k in log] == ["y"] and len(reply["images"]) == 1
+    assert reply["content"] == f"a \n\nmore story\n\n[[img:{reply['images'][0]['id']}]] end"
+    failed = [d for n, d in evs if n == "illustration_failed"]
+    assert len(failed) == 1 and "never closed" in failed[0]["detail"] and failed[0]["prompt"] == "x"
+
+
+def test_a_directive_longer_than_the_cap_counts_as_unclosed(api, fake_client):
+    evs, log = send_illustrated(api, fake_client, ["a [[image: " + "w " * 1000 + "]] b"])
+    assert log == [] and "never closed" in [d for n, d in evs if n == "illustration_failed"][0]["detail"]
+    assert "[[image" not in evs[-1][1]["messages"][1]["content"]
+
+
+def test_pathological_input_is_processed_in_linear_time():
+    import time
+
+    from app.streaming import DirectiveFilter
+
+    text = "[[image: x" * 5000
+    started = time.perf_counter()
+    story_strip(text)
+    story_strip("[[image: " + "y" * 50_000)
+    story.scan_directives(text, 0, False)
+    filt = DirectiveFilter()
+    "".join(filt.feed(text[i : i + 100]) for i in range(0, len(text), 100)) + filt.finish()
+    assert time.perf_counter() - started < 0.1
