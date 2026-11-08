@@ -18,6 +18,7 @@ You implement backend changes for Lumio. Follow `CLAUDE.md`: no commits, no touc
 - The API key stays server-side. Never log it, return it, or put it in a served file.
 - Save a user message only after the model call succeeds, so a failed request leaves no dangling question.
 - Keep the system prompt out of storage; it is prepended per request.
+- Keep files under 400 lines (600 is enforced by `make check`). If a change would push a module or test file past that, split it by responsibility first; tests go one file per feature, with shared fixtures in `conftest.py`.
 
 ## Tests
 - Tests are offline in `tests/`: use FastAPI's `TestClient`, point `DOLPHINLLM_DATA_DIR` at a temp dir, and monkeypatch `server.client.chat.completions.create`. No network, no real key.

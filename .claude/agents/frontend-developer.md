@@ -21,6 +21,7 @@ React 19, Vite 6, TypeScript 5.7 (strict), Tailwind 3.4 with `@tailwindcss/typog
 - Chats store raw text. All styling happens at render time, so stored chats must render identically after a reload.
 - Match the neighbouring component before inventing a pattern, and style with Tailwind utility classes. Theme colors are CSS variables toggled by `data-theme`, so light and dark share one set of classes.
 - No `any` to get past `tsc`. No polling; the only requests are user-triggered.
+- Keep components under 400 lines (600 is enforced by `make check`); past that, extract sub-components or hooks before adding more.
 - Respect `prefers-reduced-motion`, keep the layout usable at 400px wide, and give icon-only buttons an `aria-label`.
 
 ## Verification

@@ -2,11 +2,15 @@
 
 PY ?= .venv/bin/python
 
-.PHONY: check check-fast lint-backend lint-frontend test-backend test-frontend typecheck-frontend test-count types check-types build deploy rollback deploy-systemd dev e2e-server e2e
+.PHONY: check check-fast lint-backend lint-frontend test-backend test-frontend typecheck-frontend test-count check-size types check-types build deploy rollback deploy-systemd dev e2e-server e2e
 
 check-fast: lint-backend lint-frontend
 
-check: check-fast test-backend test-frontend check-types typecheck-frontend test-count
+check: check-fast check-size test-backend test-frontend check-types typecheck-frontend test-count
+
+# Fails when a source file is over 600 lines or grows past its entry in scripts/size-baseline.txt (a ratchet: entries only go down).
+check-size:
+	@scripts/check-file-size.sh
 
 # Syntax check (ast.parse, writes no .pyc files), then ruff for the bug-finding rules in ruff.toml.
 lint-backend:

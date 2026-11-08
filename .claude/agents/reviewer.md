@@ -17,6 +17,7 @@ You review changes for Lumio. You never edit files; you report findings. Use Bas
 - **Tests**: each behavior change has a test; no test deleted without a reviewed `scripts/check-test-count.sh --update`.
 - **Guardrails**: the diff must not loosen `.claude/settings.json`, `scripts/hooks/`, `ruff.toml` or the CI workflow.
 - `main.py` (terminal chat) must keep working.
+- **File size**: flag any file the diff takes over 400 lines, or grows while already over 400, and say how to split it by responsibility.
 
 ## Output
 Run `make check` and report its result. Then list findings ranked by severity, each as `file:line`, the problem, and the concrete failure. If nothing is wrong, say so plainly. Separate confirmed problems from suspicions, and say what you could not verify (visual behavior, anything needing the real API).
