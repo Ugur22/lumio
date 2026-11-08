@@ -13,10 +13,11 @@ Local chat UI for any OpenAI-compatible API. Providers are profiles (name, base 
 - The API key stays server-side: never log it, return it, or put it in a served file.
 - Chats store raw text. Styling (Markdown, highlight tags, dialogue) is applied at render time, and reply text is untrusted, so it is always sanitized.
 - Anything non-trivial: plan first, then wait for approval.
+- File size: aim for under 400 lines per hand-written source or test file (`api.gen.ts` excluded); 600 is a hard limit that `make check` enforces. Past 400, split by responsibility before adding more (tests: one file per feature or route group, shared fixtures in `conftest.py`). A plan that touches a file over 400 lines must include the split. `scripts/size-baseline.txt` lists files still over 600; they may only shrink. Never raise an entry; after a split, lower it with `scripts/check-file-size.sh --update`.
 - Do not edit `.claude/settings.json` or `scripts/hooks/` to loosen the checks.
 
 ## Verify
-Run `make check` (about 20 seconds, offline: syntax lint, ESLint, pytest, Vitest, generated-types freshness, tsc, test-count baseline; Cypress stays in `make e2e`) before reporting a task done; a Stop hook enforces it. The real API is only ever called by hand.
+Run `make check` (about 20 seconds, offline: syntax lint, ESLint, file-size limit, pytest, Vitest, generated-types freshness, tsc, test-count baseline; Cypress stays in `make e2e`) before reporting a task done; a Stop hook enforces it. The real API is only ever called by hand.
 
 ## Pull requests
 `main` only takes changes through a PR, and `gh` fails inside Claude's sandbox, so Claude never opens one. After every push of a branch, end the reply with a ready-to-run command for the user (to run with the `!` prefix), in this shape:

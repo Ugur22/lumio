@@ -1,6 +1,6 @@
-# ruff: noqa: F401, F811  (fixtures are imported from test_trial and re-declared as test arguments)
+# ruff: noqa: F401, F811  (fixtures are imported from trial_support and re-declared as test arguments)
 """The native app signs in through the same server-side OAuth flow: the server brokers, the app gets a one-time code
-bound to its PKCE challenge and trades it for a bearer token. Providers are faked (see test_trial.Idp); no network."""
+bound to its PKCE challenge and trades it for a bearer token. Providers are faked (see trial_support.Idp); no network."""
 
 import base64
 import hashlib
@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
-from test_trial import HOST, ORIGIN, begin, browser, clean, error_of, idp, net, trial_on
+from trial_support import HOST, ORIGIN, begin, browser, clean, error_of, idp, net, trial_on
 
 import server
 from app import routes_oauth, runtime
