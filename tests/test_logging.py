@@ -1,6 +1,8 @@
 import io
 import json
 import logging
+
+import pytest
 from app import logs
 
 
@@ -63,3 +65,50 @@ def test_info_reaches_file_but_not_console(tmp_path, monkeypatch):
     levels = [json.loads(line)["level"] for line in (tmp_path / "app.jsonl").read_text().splitlines()]
     assert levels == ["INFO", "WARNING"]
     assert "just info" not in console.getvalue() and "a warning" in console.getvalue()
+
+
+def _access_record(target, status=200):
+    # The shape uvicorn emits: a format string and a tuple of args, the target being one of them.
+    return logging.LogRecord("uvicorn.access", logging.INFO, __file__, 1, '%s - "%s %s HTTP/%s" %d', ("1.2.3.4:5", "GET", target, "1.1", status), None)
+
+
+def _emit_access(record) -> str:
+    from app import logs
+
+    assert any(isinstance(f, logs.InviteRedactor) for f in logging.getLogger("uvicorn.access").filters)
+    logging.getLogger("uvicorn.access").filter(record)
+    return record.getMessage()
+
+
+@pytest.mark.parametrize(
+    "target,expected",
+    [
+        ("/api/auth/oauth/google/start?invite=SECRET-code_1", "/api/auth/oauth/google/start?invite=REDACTED"),
+        ("/api/auth/oauth/google/start?client=app&invite=SECRET&challenge=abc", "/api/auth/oauth/google/start?client=app&invite=REDACTED&challenge=abc"),
+        ("/api/auth/oauth/github/start?invite=SE%2FCR%3DET%20x&redirect=lumio%3A%2F%2Fauth", "/api/auth/oauth/github/start?invite=REDACTED&redirect=lumio%3A%2F%2Fauth"),
+        ("/api/chats?limit=5", "/api/chats?limit=5"),
+    ],
+)
+def test_the_access_log_never_carries_an_invite(target, expected):
+    line = _emit_access(_access_record(target))
+
+    assert "SECRET" not in line and "SE%2F" not in line
+    assert line == f'1.2.3.4:5 - "GET {expected} HTTP/1.1" 200'
+
+
+def test_the_access_log_redaction_also_covers_a_preformatted_message_and_a_dict_of_args():
+    done = logging.LogRecord("uvicorn.access", logging.INFO, __file__, 1, "GET /x?a=1&invite=SECRET HTTP/1.1", None, None)
+    named = logging.LogRecord("uvicorn.access", logging.INFO, __file__, 1, "%(t)s", ({"t": "/x?invite=SECRET"},), None)
+
+    assert _emit_access(done) == "GET /x?a=1&invite=REDACTED HTTP/1.1"
+    assert _emit_access(named) == "/x?invite=REDACTED"
+
+
+def test_the_redaction_survives_uvicorns_logging_setup():
+    import logging.config
+
+    from uvicorn.config import LOGGING_CONFIG
+
+    logging.config.dictConfig(LOGGING_CONFIG)
+
+    assert "SECRET" not in _emit_access(_access_record("/start?invite=SECRET"))
