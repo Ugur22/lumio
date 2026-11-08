@@ -14,3 +14,11 @@ ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:867
 ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:882
 ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:891
 ab22aaa2d4c079da5b00a5178567caa405537789:tests/test_trial.py:generic-api-key:901
+
+# The same fake trial-test keys, moved by the test_trial.py split into trial_support.py and test_trial_restrictions.py; none is a credential.
+579043bfd8033127dd00cf87f157d4b169c3b134:tests/trial_support.py:generic-api-key:26
+579043bfd8033127dd00cf87f157d4b169c3b134:tests/test_trial_restrictions.py:generic-api-key:95
+579043bfd8033127dd00cf87f157d4b169c3b134:tests/test_trial_restrictions.py:generic-api-key:99
+579043bfd8033127dd00cf87f157d4b169c3b134:tests/test_trial_restrictions.py:generic-api-key:114
+579043bfd8033127dd00cf87f157d4b169c3b134:tests/test_trial_restrictions.py:generic-api-key:123
+579043bfd8033127dd00cf87f157d4b169c3b134:tests/test_trial_restrictions.py:generic-api-key:133
