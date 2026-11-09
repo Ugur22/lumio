@@ -4,13 +4,16 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  CircleAlert,
   Copy,
   Globe,
   Image as ImageGlyph,
+  Info,
   KeyRound,
   LogOut,
   Menu,
-  Moon,
+  MessageSquare,
+  MoonStar,
   Paperclip,
   Pencil,
   Play,
@@ -20,7 +23,6 @@ import {
   Sparkles,
   Sun,
   Trash2,
-  User,
   X,
   type LucideIcon,
   type LucideProps,
@@ -71,12 +73,14 @@ export const RefreshIcon = lucide(RefreshCw);
 export const BookIcon = lucide(BookOpen);
 export const CopyIcon = lucide(Copy);
 export const CheckIcon = lucide(Check);
-export const MoonIcon = lucide(Moon);
 export const SunIcon = lucide(Sun);
-export const UserIcon = lucide(User);
+export const MoonStarIcon = lucide(MoonStar);
+export const ChatIcon = lucide(MessageSquare);
 export const KeyIcon = lucide(KeyRound);
 export const LogOutIcon = lucide(LogOut);
 export const ChevronUpIcon = lucide(ChevronUp);
+export const AlertIcon = lucide(CircleAlert);
+export const InfoIcon = lucide(Info);
 
 // Brand marks are filled single-colour glyphs, so they follow the theme's text colour.
 export function GoogleIcon(props: SVGProps<SVGSVGElement>) {

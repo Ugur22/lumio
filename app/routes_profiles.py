@@ -192,7 +192,7 @@ async def list_models(body: ModelsQuery, user: CurrentUser):
         # If the name now resolves somewhere internal (DNS rebinding), the error text is that service's, not a provider's.
         if runtime.settings.deployed and not await run_in_threadpool(providers.is_public_url, base_url):
             raise HTTPException(502, "Could not reach the provider")
-        raise HTTPException(502, providers.redact(getattr(e, "message", str(e)), key))
+        raise HTTPException(502, providers.client_error(e, key))
     finally:
         client.close()
 

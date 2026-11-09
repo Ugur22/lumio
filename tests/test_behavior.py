@@ -123,3 +123,28 @@ def test_rejected_request_reports_the_upstream_reason_to_the_client(api, fake_cl
 
     assert res.status_code == 502
     assert "Moonshot: max_tokens too large" in res.json()["detail"]
+
+
+def status_error(status, text):
+    from openai import APIStatusError
+    import httpx2 as httpx
+
+    res = httpx.Response(status, text=text, request=httpx.Request("POST", "https://api.x.ai/v1/chat/completions"))
+    return APIStatusError(f"Error code: {status}", response=res, body=None)
+
+
+def test_non_openai_shaped_body_shows_the_provider_reason_without_a_duplicate_hint():
+    e = status_error(403, '{"code": "x", "error": "You have reached your monthly spending limit."}')
+
+    assert providers.client_error(e, None) == "403: You have reached your monthly spending limit."
+
+
+def test_bare_status_gets_a_friendly_hint():
+    text = providers.client_error(status_error(403, ""), None)
+
+    assert text.startswith("The provider refused the request.")
+    assert text.endswith("(403)")
+
+
+def test_unmapped_status_gets_no_hint():
+    assert providers.client_error(status_error(500, "boom"), None) == "500: boom"

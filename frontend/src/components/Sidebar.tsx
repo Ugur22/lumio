@@ -2,12 +2,14 @@ import { animated, useSpring, useTransition } from "@react-spring/web";
 import { useMemo, useState, type ReactNode } from "react";
 import { useDrawerSwipe } from "../hooks/useDrawerSwipe";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { Theme } from "../hooks/useTheme";
 import type { ChatSummary } from "../types";
-import { PlugIcon, LumioMark, MoonIcon, PencilIcon, PlusIcon, SunIcon, TrashIcon } from "./icons";
+import { ChatIcon, PlugIcon, LumioMark, PencilIcon, PlusIcon, TrashIcon } from "./icons";
 import { APP_NAME } from "../lib/brand";
 import { Button, PressButton, focusRing } from "./ui";
 import { BottomSheet } from "./ui/BottomSheet";
+import { ThemeSwitch } from "./ThemeSwitch";
 import { UserMenu } from "./UserMenu";
 
 interface Props {
@@ -64,28 +66,9 @@ function toRows(chats: ChatSummary[]): Row[] {
   return rows;
 }
 
-function ThemeIcon({ theme }: { theme: Theme }) {
-  const transitions = useTransition(theme, {
-    from: { opacity: 0, rotate: -80, scale: 0.4 },
-    enter: { opacity: 1, rotate: 0, scale: 1 },
-    leave: { opacity: 0, rotate: 80, scale: 0.4 },
-    exitBeforeEnter: true,
-    config: { tension: 380, friction: 22 },
-  });
-  return (
-    <span className="relative block size-[18px]">
-      {transitions((style, t) => (
-        <animated.span style={style} className="absolute inset-0">
-          {t === "dark" ? <SunIcon /> : <MoonIcon />}
-        </animated.span>
-      ))}
-    </span>
-  );
-}
-
 export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename, onDelete, onToggleTheme, onOpenSettings, onOpenChange }: Props) {
   const mobile = useMediaQuery("(max-width: 720px)");
-  const calm = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const calm = useReducedMotion();
   const slide = useSpring({ x: mobile && !open ? -105 : 0, immediate: calm, config: { tension: 300, friction: 32 } });
   useDrawerSwipe(mobile, open, onOpenChange);
   const [menuFor, setMenuFor] = useState<ChatSummary | null>(null);
@@ -148,28 +131,26 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
             )}
           </animated.div>
         ))}
+        {rows.length === 0 && (
+          <div className="mt-10 flex flex-col items-center gap-2.5 text-muted">
+            <ChatIcon size={28} />
+            <p>No chats yet</p>
+          </div>
+        )}
       </nav>
 
       <div className="flex flex-col gap-3 max-[720px]:gap-0 max-[720px]:border-t max-[720px]:border-border max-[720px]:pt-1.5">
-        <PressButton
-          type="button"
-          onClick={onOpenSettings}
-          press={0.97}
-          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-[46px] max-[720px]:px-2 max-[720px]:text-[15px] ${focusRing}`}
-        >
-          <PlugIcon /> Providers
-        </PressButton>
-
-        <PressButton
-          type="button"
-          aria-label="Toggle theme"
-          onClick={onToggleTheme}
-          press={0.97}
-          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-[46px] max-[720px]:px-2 max-[720px]:text-[15px] ${focusRing}`}
-        >
-          <ThemeIcon theme={theme} />
-          {theme === "dark" ? "Light mode" : "Dark mode"}
-        </PressButton>
+        <div className="flex items-center justify-between gap-2">
+          <PressButton
+            type="button"
+            onClick={onOpenSettings}
+            press={0.97}
+            className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-11 max-[720px]:px-2 max-[720px]:text-[15px] ${focusRing}`}
+          >
+            <PlugIcon /> Providers
+          </PressButton>
+          <ThemeSwitch theme={theme} onToggle={onToggleTheme} />
+        </div>
 
         {/* The menu lives in its own component; widen its buttons here so every drawer target is 44px on a phone. */}
         <div className="max-[720px]:[&_button]:min-h-11">
@@ -232,10 +213,12 @@ const iconBtn = `rounded-lg p-1.5 text-muted transition-colors duration-200 hove
 function ChatRow({ chat, active, onOpen, onRename, onDelete, touch, onMore }: RowProps) {
   return (
     <div
-      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-lg pl-2.5 max-[720px]:my-0 max-[720px]:h-11 max-[720px]:rounded-xl max-[720px]:pl-3 pr-1.5 transition-colors ${
+      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-lg pl-1.5 max-[720px]:my-0 max-[720px]:h-11 max-[720px]:rounded-xl max-[720px]:pl-2 pr-1.5 transition-colors ${
         active ? "bg-border" : "hover:bg-bubble"
       }`}
     >
+      <span aria-hidden="true" className={`h-5 w-[3px] flex-none rounded-full ${active ? "bg-accent" : "bg-transparent"}`} />
+      <ChatIcon size={16} className={`mx-1.5 flex-none ${active ? "text-accent" : "text-muted"}`} />
       <Button variant="bare"
         type="button"
         onClick={() => onOpen(chat.id)}

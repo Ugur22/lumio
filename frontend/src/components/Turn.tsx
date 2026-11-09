@@ -7,7 +7,7 @@ import { hostOf } from "../lib/providers";
 import type { Illustration } from "../lib/illustrations";
 import type { Thought } from "../lib/thinking";
 import type { IllustrationFailure, SourceRef } from "../types";
-import { CheckIcon, CopyIcon, LumioMark } from "./icons";
+import { AlertIcon, CheckIcon, CopyIcon, InfoIcon, LumioMark } from "./icons";
 import { AttachedImage } from "./AttachedImage";
 import { IllustrationNotes } from "./IllustrationNotes";
 import { ReplyBody } from "./ReplyBody";
@@ -83,13 +83,12 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
           <Appear
             live
             role={r.notice ? "status" : "alert"}
-            className={
-              r.notice
-                ? "mt-5 rounded-xl border border-border bg-note-bg px-4 py-3 text-text"
-                : "mt-5 rounded-xl border border-warn-bar/40 bg-warn-bg px-4 py-3 text-warn-bar"
-            }
+            className={`mt-5 flex items-start gap-3 rounded-xl border px-4 py-3 ${
+              r.notice ? "border-border bg-note-bg text-text" : "border-warn-bar/40 bg-warn-bg text-warn-bar"
+            }`}
           >
-            {r.notice ? r.message : `Failed: ${r.message}`}
+            {r.notice ? <InfoIcon className="mt-0.5 shrink-0" /> : <AlertIcon className="mt-0.5 shrink-0" />}
+            <span className="min-w-0 [overflow-wrap:anywhere]">{r.notice ? r.message : `Failed: ${r.message}`}</span>
           </Appear>
         ))
         .with({ kind: "none" }, () => null)

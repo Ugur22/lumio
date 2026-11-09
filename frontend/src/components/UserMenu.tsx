@@ -3,7 +3,7 @@ import { useState } from "react";
 import { authErrorMessage } from "../lib/auth";
 import { useSession } from "../store/session";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
-import { ChevronUpIcon, KeyIcon, LogOutIcon, UserIcon } from "./icons";
+import { ChevronUpIcon, KeyIcon, LogOutIcon } from "./icons";
 import { focusRing } from "./ui";
 
 const item = `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-muted data-[focus]:bg-bubble data-[focus]:text-text`;
@@ -31,7 +31,12 @@ export function UserMenu() {
         <MenuButton
           className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-muted hover:bg-bubble hover:text-text ${focusRing}`}
         >
-          <UserIcon />
+          <span
+            aria-hidden="true"
+            className="grid size-[22px] flex-none place-items-center rounded-full bg-accent text-[12px] font-semibold uppercase text-on-accent"
+          >
+            {[...user.username][0] ?? "?"}
+          </span>
           <span className="min-w-0 flex-1 truncate" title={user.username}>
             {user.username}
           </span>

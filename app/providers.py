@@ -6,7 +6,7 @@ import threading
 
 import web
 from fastapi import HTTPException
-from openai import DefaultHttpxClient, OpenAI, OpenAIError
+from openai import APIStatusError, DefaultHttpxClient, OpenAI, OpenAIError
 from pydantic import ValidationError
 
 import profile_store
@@ -269,7 +269,7 @@ def error_text(e: Exception) -> str:
     body = getattr(e, "body", None)
     meta = body.get("metadata") if isinstance(body, dict) else None
     if not isinstance(meta, dict):
-        return message
+        return upstream_reason(e, message)
     raw = meta.get("raw")
     if not isinstance(raw, str):
         raw = json.dumps(raw) if raw else ""
@@ -279,6 +279,26 @@ def error_text(e: Exception) -> str:
     head = inner if isinstance(inner, str) and inner else message
     detail = f"{provider}: {reason}" if provider and reason else reason or (provider or "")
     return f"{head} ({detail})" if detail else head
+
+
+HINTS = {
+    401: "The provider rejected the API key. Check the key in the Providers dialog.",
+    402: "The provider account is out of credits.",
+    403: "The provider refused the request. This usually means a spending limit or used-up credits, or a key without access to this model.",
+    429: "The provider is rate limiting or the usage limit is reached. Wait a while or switch to another provider.",
+}
+
+
+def upstream_reason(e: Exception, message: str) -> str:
+    """The SDK message is a bare "Error code: 403" when the body is not OpenAI-shaped (xAI sends {"code": ..., "error": "..."}).
+    The response text has the reason, which is clearer than any hint; a hint is only for a status with no reason at all."""
+    if not isinstance(e, APIStatusError) or " - " in message:
+        return message
+    reason = readable_reason(" ".join((e.response.text or "")[:2000].split()))[:500]
+    if reason:
+        return f"{e.status_code}: {reason}"
+    hint = HINTS.get(e.status_code)
+    return f"{hint} ({e.status_code})" if hint else message
 
 
 def describe_provider_error(e: Exception, key: str | None) -> str:
