@@ -29,7 +29,7 @@ export function UserMenu() {
     <div className="relative">
       <Menu>
         <MenuButton
-          className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-muted hover:bg-bubble hover:text-text ${focusRing}`}
+          className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-muted hover:bg-bubble hover:text-text ${focusRing}`}
         >
           <span
             aria-hidden="true"
@@ -40,7 +40,11 @@ export function UserMenu() {
           <span className="min-w-0 flex-1 truncate" title={user.username}>
             {user.username}
           </span>
-          <ChevronUpIcon width={16} height={16} />
+          <ChevronUpIcon
+            width={16}
+            height={16}
+            className="flex-none motion-safe:transition-transform motion-safe:duration-200 group-data-[open]:rotate-180"
+          />
         </MenuButton>
         <MenuItems
           className={`absolute inset-x-0 bottom-full z-10 mb-1 flex flex-col rounded-xl border border-border bg-surface p-1 shadow-lift ${focusRing}`}
