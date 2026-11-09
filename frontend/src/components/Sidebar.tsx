@@ -4,7 +4,7 @@ import { useDrawerSwipe } from "../hooks/useDrawerSwipe";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { Theme } from "../hooks/useTheme";
 import type { ChatSummary } from "../types";
-import { PlugIcon, LumioMark, MoonIcon, PencilIcon, PlusIcon, SunIcon, TrashIcon } from "./icons";
+import { ChatIcon, PlugIcon, LumioMark, MoonIcon, PencilIcon, PlusIcon, SunIcon, TrashIcon } from "./icons";
 import { APP_NAME } from "../lib/brand";
 import { Button, PressButton, focusRing } from "./ui";
 import { BottomSheet } from "./ui/BottomSheet";
@@ -148,6 +148,12 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
             )}
           </animated.div>
         ))}
+        {rows.length === 0 && (
+          <div className="mt-10 flex flex-col items-center gap-2.5 text-muted">
+            <ChatIcon size={28} />
+            <p>No chats yet</p>
+          </div>
+        )}
       </nav>
 
       <div className="flex flex-col gap-3 max-[720px]:gap-0 max-[720px]:border-t max-[720px]:border-border max-[720px]:pt-1.5">
@@ -232,10 +238,12 @@ const iconBtn = `rounded-lg p-1.5 text-muted transition-colors duration-200 hove
 function ChatRow({ chat, active, onOpen, onRename, onDelete, touch, onMore }: RowProps) {
   return (
     <div
-      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-lg pl-2.5 max-[720px]:my-0 max-[720px]:h-11 max-[720px]:rounded-xl max-[720px]:pl-3 pr-1.5 transition-colors ${
+      className={`group relative mx-1 my-0.5 flex h-9 items-center gap-0.5 rounded-lg pl-1.5 max-[720px]:my-0 max-[720px]:h-11 max-[720px]:rounded-xl max-[720px]:pl-2 pr-1.5 transition-colors ${
         active ? "bg-border" : "hover:bg-bubble"
       }`}
     >
+      <span aria-hidden="true" className={`h-5 w-[3px] flex-none rounded-full ${active ? "bg-accent" : "bg-transparent"}`} />
+      <ChatIcon size={16} className={`mx-1.5 flex-none ${active ? "text-accent" : "text-muted"}`} />
       <Button variant="bare"
         type="button"
         onClick={() => onOpen(chat.id)}

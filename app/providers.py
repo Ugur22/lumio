@@ -6,7 +6,7 @@ import threading
 
 import web
 from fastapi import HTTPException
-from openai import DefaultHttpxClient, OpenAI, OpenAIError
+from openai import APIStatusError, DefaultHttpxClient, OpenAI, OpenAIError
 from pydantic import ValidationError
 
 import profile_store
@@ -222,7 +222,7 @@ def client_error(e: Exception, key: str | None) -> str:
     """error_text for a client: the key of the call and the operator's trial key are both removed, since a provider's
     error body can echo the Authorization it was sent."""
     trial = runtime.settings.trial_api_key
-    return redact(redact(error_text(e), key), trial.get_secret_value() if trial else None)
+    return redact(redact(friendly_error(e, error_text(e)), key), trial.get_secret_value() if trial else None)
 
 
 def sniff_media_type(raw: bytes) -> str | None:
@@ -269,7 +269,7 @@ def error_text(e: Exception) -> str:
     body = getattr(e, "body", None)
     meta = body.get("metadata") if isinstance(body, dict) else None
     if not isinstance(meta, dict):
-        return message
+        return upstream_reason(e, message)
     raw = meta.get("raw")
     if not isinstance(raw, str):
         raw = json.dumps(raw) if raw else ""
@@ -279,6 +279,33 @@ def error_text(e: Exception) -> str:
     head = inner if isinstance(inner, str) and inner else message
     detail = f"{provider}: {reason}" if provider and reason else reason or (provider or "")
     return f"{head} ({detail})" if detail else head
+
+
+def upstream_reason(e: Exception, message: str) -> str:
+    """The SDK message is a bare "Error code: 403" when the body is not OpenAI-shaped (xAI sends {"code": ..., "error": "..."}); the response text has the reason."""
+    if not isinstance(e, APIStatusError) or " - " in message:
+        return message
+    reason = readable_reason(" ".join((e.response.text or "").split()))[:500]
+    return f"{message}: {reason}" if reason else message
+
+
+HINTS = {
+    401: "The provider rejected the API key. Check the key in the Providers dialog.",
+    402: "The provider account is out of credits.",
+    403: "The provider refused the request. This usually means a spending limit or used-up credits, or a key without access to this model.",
+    429: "The provider is rate limiting or the usage limit is reached. Wait a while or switch to another provider.",
+}
+
+
+def friendly_error(e: Exception, text: str) -> str:
+    """The provider's own reason when it gave one (it is clearer than any hint); a hint only for a bare status."""
+    if not isinstance(e, APIStatusError):
+        return text
+    bare = f"Error code: {e.status_code}"
+    if text.startswith(f"{bare}: "):
+        return f"{e.status_code}: {text[len(bare) + 2:]}"
+    hint = HINTS.get(e.status_code)
+    return f"{hint} ({e.status_code})" if hint and text == bare else text
 
 
 def describe_provider_error(e: Exception, key: str | None) -> str:

@@ -18,11 +18,11 @@ function stubPhone(phone: boolean) {
   stubResizeObserver();
 }
 
-function setup(over: { open?: boolean } = {}) {
+function setup(over: { open?: boolean; chats?: ChatSummary[] } = {}) {
   const fns = { onRename: vi.fn(), onDelete: vi.fn(), onOpenChange: vi.fn() };
   render(
     <Sidebar
-      chats={[chat]}
+      chats={over.chats ?? [chat]}
       currentId={null}
       open={over.open ?? false}
       theme="light"
@@ -98,5 +98,13 @@ describe("Sidebar list", () => {
     setup();
     const row = screen.getByRole("navigation", { name: "Saved chats" }).firstElementChild;
     expect(row?.classList.contains("shrink-0")).toBe(true);
+  });
+});
+
+describe("Sidebar list", () => {
+  it("shows an empty state when there are no chats", () => {
+    stubPhone(false);
+    setup({ chats: [] });
+    expect(screen.getByText("No chats yet")).toBeTruthy();
   });
 });

@@ -160,6 +160,11 @@ export function App() {
     config: { tension: 260, friction: 30 },
   });
 
+  // On phones the chat steps back as the drawer opens, like the lumio-mobile app. The transform is dropped at rest because it would
+  // make `main` the containing block of fixed descendants.
+  const calm = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const stepBack = useSpring({ p: phone && menuOpen ? 1 : 0, immediate: calm, config: { tension: 300, friction: 32 } });
+
   // Touches that start on the composer can't scroll anything themselves, so hand the drag to the message list.
   const lastY = useRef<number | null>(null);
   const dragStart = (e: TouchEvent) => {
@@ -222,18 +227,17 @@ export function App() {
         tab={story.tab}
         onClose={() => setStory((s) => ({ ...s, open: false }))}
       />
-      {scrim(
-        (style, show) =>
-          show && (
-            <animated.div
-              aria-hidden="true"
-              style={style}
-              onClick={() => setMenuOpen(false)}
-              className="fixed inset-0 z-10 bg-black/40 min-[721px]:hidden"
-            />
-          ),
-      )}
-      <main className="relative flex min-w-0 flex-1 flex-col">
+      <animated.main
+        style={
+          phone
+            ? {
+                transform: stepBack.p.to((v) => (v === 0 ? "none" : `scale(${1 - 0.06 * v})`)),
+                borderRadius: stepBack.p.to((v) => `${28 * v}px`),
+              }
+            : undefined
+        }
+        className="relative flex min-w-0 flex-1 flex-col max-[720px]:overflow-hidden"
+      >
         {/* backdrop-blur makes the header its own stacking context; without a z-index the model popover paints under the composer and tiles. Stays below the drawer overlay (z-10). */}
         {/* On phones the header is a 44px | title + model chip | 44px grid. It drops the blur (costly to repaint while the keyboard moves) for a solid bg, and order-first keeps it above the meter, which is later in the DOM. */}
         <header className="relative z-[5] flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/70 px-5 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] backdrop-blur max-[720px]:order-first max-[720px]:grid max-[720px]:grid-cols-[44px_1fr_44px] max-[720px]:gap-y-0 max-[720px]:border-b-0 max-[720px]:bg-bg max-[720px]:px-2.5 max-[720px]:pb-2 max-[720px]:pt-[calc(0.375rem+env(safe-area-inset-top,0px))] max-[720px]:backdrop-blur-none">
@@ -318,7 +322,18 @@ export function App() {
           />
         )}
         {centered && <div className="flex-[1.2]" />}
-      </main>
+        {scrim(
+          (style, show) =>
+            show && (
+              <animated.div
+                aria-hidden="true"
+                style={style}
+                onClick={() => setMenuOpen(false)}
+                className="absolute inset-0 z-10 bg-black/20 min-[721px]:hidden"
+              />
+            ),
+        )}
+      </animated.main>
     </div>
   );
 }
