@@ -14,6 +14,7 @@ import {
   Menu,
   MessageSquare,
   Moon,
+  MoonStar,
   Paperclip,
   Pencil,
   Play,
@@ -126,3 +127,4 @@ export function LumioMark({ size = 32, ...props }: SVGProps<SVGSVGElement> & { s
   );
 }
 export const ChatIcon = lucide(MessageSquare);
+export const MoonStarIcon = lucide(MoonStar);

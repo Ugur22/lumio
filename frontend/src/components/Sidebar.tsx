@@ -4,10 +4,11 @@ import { useDrawerSwipe } from "../hooks/useDrawerSwipe";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import type { Theme } from "../hooks/useTheme";
 import type { ChatSummary } from "../types";
-import { ChatIcon, PlugIcon, LumioMark, MoonIcon, PencilIcon, PlusIcon, SunIcon, TrashIcon } from "./icons";
+import { ChatIcon, PlugIcon, LumioMark, PencilIcon, PlusIcon, TrashIcon } from "./icons";
 import { APP_NAME } from "../lib/brand";
 import { Button, PressButton, focusRing } from "./ui";
 import { BottomSheet } from "./ui/BottomSheet";
+import { ThemeSwitch } from "./ThemeSwitch";
 import { UserMenu } from "./UserMenu";
 
 interface Props {
@@ -62,25 +63,6 @@ function toRows(chats: ChatSummary[]): Row[] {
     rows.push({ key: chat.id, kind: "chat", chat });
   }
   return rows;
-}
-
-function ThemeIcon({ theme }: { theme: Theme }) {
-  const transitions = useTransition(theme, {
-    from: { opacity: 0, rotate: -80, scale: 0.4 },
-    enter: { opacity: 1, rotate: 0, scale: 1 },
-    leave: { opacity: 0, rotate: 80, scale: 0.4 },
-    exitBeforeEnter: true,
-    config: { tension: 380, friction: 22 },
-  });
-  return (
-    <span className="relative block size-[18px]">
-      {transitions((style, t) => (
-        <animated.span style={style} className="absolute inset-0">
-          {t === "dark" ? <SunIcon /> : <MoonIcon />}
-        </animated.span>
-      ))}
-    </span>
-  );
 }
 
 export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename, onDelete, onToggleTheme, onOpenSettings, onOpenChange }: Props) {
@@ -157,25 +139,17 @@ export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename
       </nav>
 
       <div className="flex flex-col gap-3 max-[720px]:gap-0 max-[720px]:border-t max-[720px]:border-border max-[720px]:pt-1.5">
-        <PressButton
-          type="button"
-          onClick={onOpenSettings}
-          press={0.97}
-          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-[46px] max-[720px]:px-2 max-[720px]:text-[15px] ${focusRing}`}
-        >
-          <PlugIcon /> Providers
-        </PressButton>
-
-        <PressButton
-          type="button"
-          aria-label="Toggle theme"
-          onClick={onToggleTheme}
-          press={0.97}
-          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-[46px] max-[720px]:px-2 max-[720px]:text-[15px] ${focusRing}`}
-        >
-          <ThemeIcon theme={theme} />
-          {theme === "dark" ? "Light mode" : "Dark mode"}
-        </PressButton>
+        <div className="flex items-center justify-between gap-2">
+          <PressButton
+            type="button"
+            onClick={onOpenSettings}
+            press={0.97}
+            className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted hover:bg-bubble hover:text-text max-[720px]:min-h-11 max-[720px]:px-2 max-[720px]:text-[15px] ${focusRing}`}
+          >
+            <PlugIcon /> Providers
+          </PressButton>
+          <ThemeSwitch theme={theme} onToggle={onToggleTheme} />
+        </div>
 
         {/* The menu lives in its own component; widen its buttons here so every drawer target is 44px on a phone. */}
         <div className="max-[720px]:[&_button]:min-h-11">

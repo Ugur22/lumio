@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubResizeObserver } from "../test/helpers";
@@ -52,6 +52,8 @@ describe("Sidebar chat actions", () => {
     await user.click(await screen.findByRole("button", { name: /rename/i }));
     expect(onRename).toHaveBeenCalledWith(chat);
 
+    // The sheet slides out before it unmounts, and the page behind it stays inert until then.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await user.click(screen.getByRole("button", { name: "Actions for Dragon story" }));
     await user.click(await screen.findByRole("button", { name: /delete/i }));
     expect(onDelete).toHaveBeenCalledWith(chat);
@@ -106,5 +108,20 @@ describe("Sidebar list", () => {
     stubPhone(false);
     setup({ chats: [] });
     expect(screen.getByText("No chats yet")).toBeTruthy();
+  });
+});
+
+describe("Sidebar theme switch", () => {
+  it("shows the current theme and switches only when the other side is picked", async () => {
+    stubPhone(false);
+    const onToggleTheme = vi.fn();
+    render(
+      <Sidebar chats={[]} currentId={null} open={false} theme="light" onNew={() => undefined} onOpen={() => undefined} onRename={() => undefined} onDelete={() => undefined} onToggleTheme={onToggleTheme} onOpenSettings={() => undefined} onOpenChange={() => undefined} />,
+    );
+    expect(screen.getByRole("radio", { name: "Light" }).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByRole("radio", { name: "Light" }));
+    expect(onToggleTheme).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("radio", { name: "Dark" }));
+    expect(onToggleTheme).toHaveBeenCalledTimes(1);
   });
 });
