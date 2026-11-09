@@ -5,7 +5,7 @@ Local chat UI for any OpenAI-compatible API. Providers are profiles (name, base 
 ## Run
 - Setup: `python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`, then `cd frontend && npm install`. Add a provider and key in the app's Providers dialog. `DOLPHINLLM_API_KEY` in `.env` still works as a fallback for a pre-profiles setup (it becomes the "Dolphin" profile).
 - Production-like: `make build` then `make dev`, open http://localhost:8000.
-- After changing a route or a model in `models.py`: `make types` regenerates `frontend/src/api.gen.ts`; commit it with the change.
+- After changing a route or a model in `models.py`: `make types` regenerates `frontend/src/api.gen.ts` and `openapi.json`; commit both with the change. `openapi.json` is the API contract the lumio-mobile repo syncs its types from (`npm run sync:api`), so API changes must stay additive: older mobile app versions stay installed.
 - Hot reload: `make dev` plus `npm run dev` in `frontend/` (Vite on :5173 proxies `/api` to :8000).
 
 ## Rules
