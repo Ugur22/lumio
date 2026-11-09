@@ -2,6 +2,7 @@ import { animated, useSpring, useTransition } from "@react-spring/web";
 import { useMemo, useState, type ReactNode } from "react";
 import { useDrawerSwipe } from "../hooks/useDrawerSwipe";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { Theme } from "../hooks/useTheme";
 import type { ChatSummary } from "../types";
 import { ChatIcon, PlugIcon, LumioMark, PencilIcon, PlusIcon, TrashIcon } from "./icons";
@@ -67,7 +68,7 @@ function toRows(chats: ChatSummary[]): Row[] {
 
 export function Sidebar({ chats, currentId, open, theme, onNew, onOpen, onRename, onDelete, onToggleTheme, onOpenSettings, onOpenChange }: Props) {
   const mobile = useMediaQuery("(max-width: 720px)");
-  const calm = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const calm = useReducedMotion();
   const slide = useSpring({ x: mobile && !open ? -105 : 0, immediate: calm, config: { tension: 300, friction: 32 } });
   useDrawerSwipe(mobile, open, onOpenChange);
   const [menuFor, setMenuFor] = useState<ChatSummary | null>(null);

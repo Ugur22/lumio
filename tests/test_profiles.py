@@ -260,6 +260,24 @@ def test_models_errors_redact_the_key(api, fake_openai):
     assert res.status_code == 502 and SECRET not in res.text
 
 
+def test_models_error_shows_the_providers_reason_and_never_the_key(api, fake_openai, monkeypatch):
+    from openai import APIStatusError
+    import httpx2 as httpx
+
+    body = f'{{"code": "x", "error": "Team credits used up for {SECRET}."}}'
+    res = httpx.Response(403, text=body, request=httpx.Request("GET", "https://api.x.example/v1/models"))
+
+    def refuse(_self):
+        raise APIStatusError("Error code: 403", response=res, body=None)
+
+    monkeypatch.setattr(FakeOpenAI, "_list", refuse)
+
+    out = api.post("/api/profiles/models", json={"base_url": "https://api.x.example/v1", "key": SECRET})
+
+    assert out.status_code == 502
+    assert "403: Team credits used up" in out.text and SECRET not in out.text
+
+
 def test_client_is_rebuilt_when_the_key_changes(api):
     pid = by_name(make(api), "OpenRouter")["id"]
     profile = providers.find_profile(profile_store.load_store(runtime.settings, LOCAL_USER), pid)

@@ -19,7 +19,7 @@ function stubPhone(phone: boolean) {
 }
 
 function setup(over: { open?: boolean; chats?: ChatSummary[] } = {}) {
-  const fns = { onRename: vi.fn(), onDelete: vi.fn(), onOpenChange: vi.fn() };
+  const fns = { onRename: vi.fn(), onDelete: vi.fn(), onOpenChange: vi.fn(), onToggleTheme: vi.fn() };
   render(
     <Sidebar
       chats={over.chats ?? [chat]}
@@ -28,7 +28,6 @@ function setup(over: { open?: boolean; chats?: ChatSummary[] } = {}) {
       theme="light"
       onNew={() => undefined}
       onOpen={() => undefined}
-      onToggleTheme={() => undefined}
       onOpenSettings={() => undefined}
       {...fns}
     />,
@@ -101,9 +100,7 @@ describe("Sidebar list", () => {
     const row = screen.getByRole("navigation", { name: "Saved chats" }).firstElementChild;
     expect(row?.classList.contains("shrink-0")).toBe(true);
   });
-});
 
-describe("Sidebar list", () => {
   it("shows an empty state when there are no chats", () => {
     stubPhone(false);
     setup({ chats: [] });
@@ -114,10 +111,7 @@ describe("Sidebar list", () => {
 describe("Sidebar theme switch", () => {
   it("shows the current theme and switches only when the other side is picked", async () => {
     stubPhone(false);
-    const onToggleTheme = vi.fn();
-    render(
-      <Sidebar chats={[]} currentId={null} open={false} theme="light" onNew={() => undefined} onOpen={() => undefined} onRename={() => undefined} onDelete={() => undefined} onToggleTheme={onToggleTheme} onOpenSettings={() => undefined} onOpenChange={() => undefined} />,
-    );
+    const { onToggleTheme } = setup();
     expect(screen.getByRole("radio", { name: "Light" }).getAttribute("aria-checked")).toBe("true");
     await userEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(onToggleTheme).not.toHaveBeenCalled();

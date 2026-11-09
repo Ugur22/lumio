@@ -13,7 +13,6 @@ import {
   LogOut,
   Menu,
   MessageSquare,
-  Moon,
   MoonStar,
   Paperclip,
   Pencil,
@@ -74,8 +73,9 @@ export const RefreshIcon = lucide(RefreshCw);
 export const BookIcon = lucide(BookOpen);
 export const CopyIcon = lucide(Copy);
 export const CheckIcon = lucide(Check);
-export const MoonIcon = lucide(Moon);
 export const SunIcon = lucide(Sun);
+export const MoonStarIcon = lucide(MoonStar);
+export const ChatIcon = lucide(MessageSquare);
 export const KeyIcon = lucide(KeyRound);
 export const LogOutIcon = lucide(LogOut);
 export const ChevronUpIcon = lucide(ChevronUp);
@@ -126,5 +126,3 @@ export function LumioMark({ size = 32, ...props }: SVGProps<SVGSVGElement> & { s
     </svg>
   );
 }
-export const ChatIcon = lucide(MessageSquare);
-export const MoonStarIcon = lucide(MoonStar);

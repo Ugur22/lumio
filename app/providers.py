@@ -222,7 +222,7 @@ def client_error(e: Exception, key: str | None) -> str:
     """error_text for a client: the key of the call and the operator's trial key are both removed, since a provider's
     error body can echo the Authorization it was sent."""
     trial = runtime.settings.trial_api_key
-    return redact(redact(friendly_error(e, error_text(e)), key), trial.get_secret_value() if trial else None)
+    return redact(redact(error_text(e), key), trial.get_secret_value() if trial else None)
 
 
 def sniff_media_type(raw: bytes) -> str | None:
@@ -281,14 +281,6 @@ def error_text(e: Exception) -> str:
     return f"{head} ({detail})" if detail else head
 
 
-def upstream_reason(e: Exception, message: str) -> str:
-    """The SDK message is a bare "Error code: 403" when the body is not OpenAI-shaped (xAI sends {"code": ..., "error": "..."}); the response text has the reason."""
-    if not isinstance(e, APIStatusError) or " - " in message:
-        return message
-    reason = readable_reason(" ".join((e.response.text or "").split()))[:500]
-    return f"{message}: {reason}" if reason else message
-
-
 HINTS = {
     401: "The provider rejected the API key. Check the key in the Providers dialog.",
     402: "The provider account is out of credits.",
@@ -297,15 +289,16 @@ HINTS = {
 }
 
 
-def friendly_error(e: Exception, text: str) -> str:
-    """The provider's own reason when it gave one (it is clearer than any hint); a hint only for a bare status."""
-    if not isinstance(e, APIStatusError):
-        return text
-    bare = f"Error code: {e.status_code}"
-    if text.startswith(f"{bare}: "):
-        return f"{e.status_code}: {text[len(bare) + 2:]}"
+def upstream_reason(e: Exception, message: str) -> str:
+    """The SDK message is a bare "Error code: 403" when the body is not OpenAI-shaped (xAI sends {"code": ..., "error": "..."}).
+    The response text has the reason, which is clearer than any hint; a hint is only for a status with no reason at all."""
+    if not isinstance(e, APIStatusError) or " - " in message:
+        return message
+    reason = readable_reason(" ".join((e.response.text or "")[:2000].split()))[:500]
+    if reason:
+        return f"{e.status_code}: {reason}"
     hint = HINTS.get(e.status_code)
-    return f"{hint} ({e.status_code})" if hint and text == bare else text
+    return f"{hint} ({e.status_code})" if hint else message
 
 
 def describe_provider_error(e: Exception, key: str | None) -> str:

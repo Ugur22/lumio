@@ -1,7 +1,7 @@
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "@headlessui/react";
 import { animated, useTransition } from "@react-spring/web";
 import type { ReactNode } from "react";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 
 interface Props {
   open: boolean;
@@ -14,7 +14,7 @@ interface Props {
 
 // Phone counterpart of Modal: same Headless Dialog (focus trap, scroll lock, Escape, scrim tap), anchored to the bottom.
 export function BottomSheet({ open, onClose, title, eyebrow = false, children }: Props) {
-  const calm = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const calm = useReducedMotion();
   const transition = useTransition(open, {
     from: { o: 0, y: 100 },
     enter: { o: 1, y: 0 },

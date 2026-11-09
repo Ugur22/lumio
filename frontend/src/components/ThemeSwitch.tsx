@@ -1,14 +1,21 @@
 import { animated, to, useSpring } from "@react-spring/web";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { Theme } from "../hooks/useTheme";
 import { MoonStarIcon, SunIcon } from "./icons";
 import { focusRing } from "./ui";
 
-const segment = `relative z-10 grid size-8 place-items-center rounded-full max-[720px]:size-11 ${focusRing}`;
+const segment = `relative z-10 grid size-8 place-items-center rounded-xl max-[720px]:size-11 ${focusRing}`;
 
-function Glyph({ on, children }: { on: boolean; children: ReactNode }) {
-  const calm = useMediaQuery("(prefers-reduced-motion: reduce)");
+// How far the thumb reaches into the other segment on hover, as a share of the switch's width.
+const STRETCH = 14;
+
+const OPTIONS: { value: Theme; label: string; Icon: typeof SunIcon }[] = [
+  { value: "light", label: "Light", Icon: SunIcon },
+  { value: "dark", label: "Dark", Icon: MoonStarIcon },
+];
+
+function Glyph({ on, calm, children }: { on: boolean; calm: boolean; children: ReactNode }) {
   const style = useSpring({
     rotate: on ? 0 : -50,
     scale: on ? 1 : 0.8,
@@ -24,7 +31,7 @@ function Glyph({ on, children }: { on: boolean; children: ReactNode }) {
 
 // Shows the current theme and lets either side be picked, instead of one button naming the action.
 export function ThemeSwitch({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
-  const calm = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const calm = useReducedMotion();
   const dark = theme === "dark";
   // Hovering the other side stretches the thumb over part of it (it stays fully on its own side), as a hint of where a
   // click will take it. `ext` is signed: positive grows it to the right, negative to the left.
@@ -66,23 +73,34 @@ export function ThemeSwitch({ theme, onToggle }: { theme: Theme; onToggle: () =>
       <animated.span
         aria-hidden="true"
         style={{
-          left: to([thumb.pos, thumb.ext], (p, e) => `calc(2px + ${p} * (50% - 1px) - ${Math.max(-e, 0) * 14}%)`),
-          width: thumb.ext.to((e) => `calc(50% - 3px + ${Math.abs(e) * 14}%)`),
+          left: to([thumb.pos, thumb.ext], (p, e) => `calc(2px + ${p} * (50% - 1px) - ${Math.max(-e, 0) * STRETCH}%)`),
+          width: thumb.ext.to((e) => `calc(50% - 3px + ${Math.abs(e) * STRETCH}%)`),
           y: hop.v.to((v) => -4 * v),
           scale: hop.v.to((v) => 1 + 0.12 * v),
         }}
         className="absolute inset-y-0.5 rounded-xl bg-accent shadow-sm"
       />
-      <button type="button" role="radio" aria-checked={!dark} aria-label="Light" tabIndex={dark ? -1 : 0} onClick={() => pick("light")} onPointerEnter={hover("light")} onPointerLeave={hover(null)} className={segment}>
-        <Glyph on={!dark}>
-          <SunIcon size={16} />
-        </Glyph>
-      </button>
-      <button type="button" role="radio" aria-checked={dark} aria-label="Dark" tabIndex={dark ? 0 : -1} onClick={() => pick("dark")} onPointerEnter={hover("dark")} onPointerLeave={hover(null)} className={segment}>
-        <Glyph on={dark}>
-          <MoonStarIcon size={16} />
-        </Glyph>
-      </button>
+      {OPTIONS.map(({ value, label, Icon }) => {
+        const on = value === theme;
+        return (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            aria-label={label}
+            tabIndex={on ? 0 : -1}
+            onClick={() => pick(value)}
+            onPointerEnter={hover(value)}
+            onPointerLeave={hover(null)}
+            className={segment}
+          >
+            <Glyph on={on} calm={calm}>
+              <Icon size={16} />
+            </Glyph>
+          </button>
+        );
+      })}
     </div>
   );
 }

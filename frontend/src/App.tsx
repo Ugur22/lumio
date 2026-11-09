@@ -13,6 +13,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StoryDialog, type StoryTab } from "./components/StoryDialog";
 import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, useRenameChat, useSetChatModel } from "./hooks/useChats";
 import { useMediaQuery } from "./hooks/useMediaQuery";
+import { useReducedMotion } from "./hooks/useReducedMotion";
 import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTrial } from "./hooks/useTrial";
@@ -162,7 +163,7 @@ export function App() {
 
   // On phones the chat steps back as the drawer opens, like the lumio-mobile app. The transform is dropped at rest because it would
   // make `main` the containing block of fixed descendants.
-  const calm = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const calm = useReducedMotion();
   const stepBack = useSpring({ p: phone && menuOpen ? 1 : 0, immediate: calm, config: { tension: 300, friction: 32 } });
 
   // Touches that start on the composer can't scroll anything themselves, so hand the drag to the message list.
