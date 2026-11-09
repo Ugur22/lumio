@@ -22,16 +22,19 @@ lint-backend:
 test-count:
 	@PY=$(PY) scripts/check-test-count.sh
 
-# The frontend's API types are generated from the backend's OpenAPI schema; run this after changing a route or a model in models.py.
+# The frontend's API types and the committed openapi.json (the contract the mobile app syncs from) are generated from the
+# backend's OpenAPI schema; run this after changing a route or a model in models.py.
 types:
-	@PY=$(PY) scripts/gen-types.sh frontend/src/api.gen.ts
+	@PY=$(PY) scripts/gen-types.sh frontend/src/api.gen.ts openapi.json
 
-# Fails when the committed types no longer match the backend, so an API change cannot reach the frontend unnoticed.
+# Fails when the committed types or openapi.json no longer match the backend, so an API change cannot reach a client unnoticed.
 check-types:
-	@mkdir -p "$${TMPDIR:-/tmp}" && tmp=$$(mktemp "$${TMPDIR:-/tmp}/api-types.XXXXXX") && trap 'rm -f "$$tmp"' EXIT \
-		&& PY=$(PY) scripts/gen-types.sh "$$tmp" \
+	@mkdir -p "$${TMPDIR:-/tmp}" && tmp=$$(mktemp "$${TMPDIR:-/tmp}/api-types.XXXXXX") && tmpjson=$$(mktemp "$${TMPDIR:-/tmp}/api-json.XXXXXX") \
+		&& trap 'rm -f "$$tmp" "$$tmpjson"' EXIT \
+		&& PY=$(PY) scripts/gen-types.sh "$$tmp" "$$tmpjson" \
 		&& { cmp -s "$$tmp" frontend/src/api.gen.ts || { echo "frontend/src/api.gen.ts is out of date with the API. Run: make types"; exit 1; }; } \
-		&& echo "api types match the backend"
+		&& { cmp -s "$$tmpjson" openapi.json || { echo "openapi.json is out of date with the API. Run: make types"; exit 1; }; } \
+		&& echo "api types and openapi.json match the backend"
 
 lint-frontend:
 	@cd frontend && npx eslint .
