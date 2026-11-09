@@ -60,3 +60,12 @@ export type UserView = Schema<"UserView">;
 export type LoginBody = Schema<"LoginBody">;
 export type RegisterBody = Schema<"RegisterBody">;
 export type PasswordChange = Schema<"PasswordChange">;
+
+export type InviteKind = Schema<"InviteCreate">["kind"];
+export type InviteCreate = Schema<"InviteCreate">;
+// `code` is in this response only; the list never has it.
+export type InviteCreated = Schema<"InviteCreated">;
+export type InviteItem = Schema<"InviteItem">;
+export type InviteStatus = InviteItem["status"];
+export type InviteCheck = Schema<"InviteCheck">;
+export type InviteReason = NonNullable<InviteCheck["reason"]>;

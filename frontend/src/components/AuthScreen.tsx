@@ -3,9 +3,10 @@ import { useEffect, useRef, useState, type FormEvent, type RefObject } from "rea
 import { api } from "../api";
 import { authErrorMessage, normalizeUsername, passwordHint, usernameHint } from "../lib/auth";
 import { useSession } from "../store/session";
-import { oauthStartUrl, type OAuthProvider } from "../lib/oauth";
-import { TRIAL_PITCH } from "../lib/trial";
-import { GitHubIcon, GoogleIcon, LumioMark } from "./icons";
+import { useInviteLink } from "../store/invite";
+import { LumioMark } from "./icons";
+import { InviteCard } from "./InviteCard";
+import { OAuthButtons } from "./OAuthButtons";
 import { APP_NAME } from "../lib/brand";
 import { PressButton, TextField, cx, focusRing } from "./ui";
 
@@ -20,6 +21,12 @@ export function AuthScreen() {
   const notice = useSession((s) => s.notice);
   // Focus follows a tab switch, but not the first paint, so the page does not open with a field grabbed.
   const [switched, setSwitched] = useState(false);
+  const [tab, setTab] = useState(0);
+  // An account invite opens the registration form; the person can still switch back.
+  const accountInvite = useInviteLink((s) => s.phase === "applied" && s.kind === "account");
+  useEffect(() => {
+    if (accountInvite) setTab(1);
+  }, [accountInvite]);
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-bg p-4 font-sans text-[15px] leading-[1.6] text-text">
@@ -33,7 +40,15 @@ export function AuthScreen() {
             {notice}
           </p>
         )}
-        <TabGroup manual onChange={() => setSwitched(true)}>
+        <InviteCard />
+        <TabGroup
+          manual
+          selectedIndex={tab}
+          onChange={(i) => {
+            setSwitched(true);
+            setTab(i);
+          }}
+        >
           <TabList className="mb-5 flex gap-1 rounded-xl bg-bubble p-1">
             <Tab className={({ selected }) => tabClass(selected)}>Sign in</Tab>
             <Tab className={({ selected }) => tabClass(selected)}>Create account</Tab>
@@ -50,70 +65,6 @@ export function AuthScreen() {
         <OAuthButtons />
       </div>
     </main>
-  );
-}
-
-const oauthLink = cx(
-  "flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-bg px-3 py-2 text-[14px] font-medium text-text transition-colors hover:border-accent/50 hover:bg-bubble",
-  focusRing,
-);
-
-const PROVIDERS: { id: OAuthProvider; label: string; Icon: typeof GoogleIcon }[] = [
-  { id: "google", label: "Continue with Google", Icon: GoogleIcon },
-  { id: "github", label: "Continue with GitHub", Icon: GitHubIcon },
-];
-
-// Plain links: the server answers with a redirect to the provider, so the browser has to navigate, not fetch.
-// Below the tabs, so one copy serves both the sign-in and the create-account view.
-function OAuthButtons() {
-  const inviteHint = useSession((s) => s.inviteHint);
-  // The code lives only in this field's state; it reaches the URL of the click and nowhere else.
-  const [invite, setInvite] = useState("");
-  const [open, setOpen] = useState(inviteHint);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!inviteHint) return;
-    setOpen(true);
-    inputRef.current?.focus();
-  }, [inviteHint]);
-
-  return (
-    <section aria-label="Free trial" className="flex flex-col gap-3 border-t border-border pt-5">
-      <div className="flex flex-col gap-2">
-        {PROVIDERS.map(({ id, label, Icon }) => (
-          <a key={id} href={oauthStartUrl(id, invite)} className={oauthLink}>
-            <Icon className="flex-none" />
-            <span>{label}</span>
-          </a>
-        ))}
-      </div>
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls="trial-invite"
-          onClick={() => setOpen((o) => !o)}
-          className={cx("self-center rounded-md px-1 text-[13px] text-muted underline-offset-2 hover:text-text hover:underline", focusRing)}
-        >
-          Have an invite code?
-        </button>
-        <div id="trial-invite" hidden={!open}>
-          <TextField
-            ref={inputRef}
-            label="Trial invite code"
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            maxLength={256}
-            surface
-            value={invite}
-            onChange={(e) => setInvite(e.target.value)}
-          />
-        </div>
-      </div>
-      <p className="text-center text-[13px] text-muted">{TRIAL_PITCH}</p>
-    </section>
   );
 }
 
@@ -211,7 +162,10 @@ function SignInForm({ focusOnMount }: { focusOnMount: boolean }) {
 function RegisterForm({ focusOnMount }: { focusOnMount: boolean }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [invite, setInvite] = useState("");
+  const linked = useInviteLink((s) => s.code);
+  const [invite, setInvite] = useState(linked ?? "");
+  // Removing the invite from the card empties the field it filled.
+  useEffect(() => setInvite(linked ?? ""), [linked]);
   const [touched, setTouched] = useState<Partial<Record<Field, boolean>>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -282,7 +236,7 @@ function RegisterForm({ focusOnMount }: { focusOnMount: boolean }) {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         onBlur={() => touch("password")}
-        description="10-128 characters"
+        description={linked ? "At least 10 characters" : "10-128 characters"}
         error={touched.password && pwHint}
       />
       <ErrorText error={error} />

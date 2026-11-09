@@ -31,7 +31,7 @@ class UsernameTaken(Exception):
 
 
 class InvalidInvite(Exception):
-    """Unknown, used or expired; callers must not say which."""
+    """Unknown, used, expired or revoked; callers must not say which."""
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class AccountsMixin:
         with self._tx() as conn:
             if invite_hash is not None:
                 used = conn.execute(
-                    "UPDATE invites SET used_by=?, used_at=? WHERE code_hash=? AND kind='account' AND used_by IS NULL AND expires>?",
+                    "UPDATE invites SET used_by=?, used_at=? WHERE code_hash=? AND kind='account' AND used_by IS NULL AND revoked_at IS NULL AND expires>?",
                     (user_id, _ts(now), invite_hash, _ts(now)),
                 )
                 if used.rowcount == 0:
@@ -112,26 +112,6 @@ class AccountsMixin:
             changed = conn.execute("UPDATE users SET disabled=1 WHERE id=?", (user_id,)).rowcount > 0
             conn.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
             return changed
-
-    def create_invite(self, code_hash: str, days: float = INVITE_DAYS, now: datetime | None = None, kind: str = "account") -> None:
-        """kind 'account' is for password registration, 'trial' for the OAuth sign-up that draws on the reserved trial pool."""
-        now = now or datetime.now(timezone.utc)
-        with self._tx() as conn:
-            conn.execute(
-                "INSERT INTO invites (code_hash, created, expires, kind) VALUES (?,?,?,?)",
-                (code_hash, _ts(now), _ts(now + timedelta(days=days)), kind),
-            )
-
-    def invite_valid(self, code_hash: str, kind: str, now: datetime | None = None) -> bool:
-        """Whether the invite could be redeemed right now. Does not redeem it."""
-        now = now or datetime.now(timezone.utc)
-        with self._read() as conn:
-            return (
-                conn.execute(
-                    "SELECT 1 FROM invites WHERE code_hash=? AND kind=? AND used_by IS NULL AND expires>?", (code_hash, kind, _ts(now))
-                ).fetchone()
-                is not None
-            )
 
     def create_session(self, token_hash: str, user_id: str, now: datetime | None = None) -> None:
         now = now or datetime.now(timezone.utc)
@@ -302,7 +282,7 @@ class AccountsMixin:
             if not invited and (wait := self._login_wait(conn, [ip_key], stamp, ip_limit or SIGNUP_PER_IP, SIGNUP_WINDOW)):
                 raise SignupThrottled(wait)
             if invited and not conn.execute(
-                "SELECT 1 FROM invites WHERE code_hash=? AND kind='trial' AND used_by IS NULL AND expires>?", (invite_hash, _ts(now))
+                "SELECT 1 FROM invites WHERE code_hash=? AND kind='trial' AND used_by IS NULL AND revoked_at IS NULL AND expires>?", (invite_hash, _ts(now))
             ).fetchone():
                 raise InvalidInvite
             conn.executemany(
@@ -338,7 +318,7 @@ class AccountsMixin:
             )
             if grant:
                 if invited and not conn.execute(
-                    "UPDATE invites SET used_by=?, used_at=? WHERE code_hash=? AND kind='trial' AND used_by IS NULL AND expires>?",
+                    "UPDATE invites SET used_by=?, used_at=? WHERE code_hash=? AND kind='trial' AND used_by IS NULL AND revoked_at IS NULL AND expires>?",
                     (user_id, _ts(now), invite_hash, _ts(now)),
                 ).rowcount:
                     raise InvalidInvite

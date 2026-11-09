@@ -8,16 +8,16 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
-  type ReactNode,
   type Ref,
 } from "react";
 import { continueList, shiftList, type Edit } from "../lib/lists";
 import { ACCEPT_ATTR, prepareImage, rejectReason, type Attachment } from "../lib/images";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import { bannerText, trialBanner, TRIAL_ENDED } from "../lib/trial";
+import { trialBanner } from "../lib/trial";
 import { CloseIcon, GlobeIcon, PaperclipIcon, PlusIcon, SendIcon, SparklesIcon, StopIcon } from "./icons";
+import { AddSheet, chip, Tip, toolBase, toolOff, toolOn, TrialBannerView } from "./ComposerParts";
 import type { TrialStatus } from "../types";
-import { BottomSheet, Button, PressButton } from "./ui";
+import { Button, PressButton } from "./ui";
 
 export interface ComposerHandle {
   focus: () => void;
@@ -40,6 +40,8 @@ interface Props {
   trial?: TrialStatus;
   // Opens Providers; offered when the trial has ended.
   onAddProvider?: () => void;
+  // No provider to send to (the first-run onboarding is showing): nothing can be typed, attached or sent.
+  locked?: boolean;
   onSend: (text: string, attachments: Attachment[], web: boolean, illustrate: boolean) => void;
   onStop: () => void;
 }
@@ -50,76 +52,10 @@ function fit(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-const toolBase =
-  "flex h-8 flex-none items-center justify-center rounded-lg border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-const toolOn = "border-accent/50 bg-accent/15 text-accent";
-const toolOff = "border-transparent text-muted hover:bg-bg hover:text-text";
-
-// Positioned against the (relative) toolbar rather than its own button, so every tip starts at the
-// card's left edge and stays inside a 400px viewport however wide the toggles above have grown.
-// has-[:focus-visible], not focus-within: a mouse click leaves focus on the button and would pin the tip open.
-function Tip({ id, title, children }: { id: string; title: string; children: ReactNode }) {
-  return (
-    <div
-      id={id}
-      role="tooltip"
-      className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-[min(16rem,calc(100vw-3.5rem))] rounded-xl border border-border bg-surface px-3 py-2.5 text-[12px] leading-snug text-text opacity-0 shadow-lift transition-opacity duration-150 motion-reduce:transition-none group-has-[:focus-visible]/tip:opacity-100 group-hover/tip:opacity-100"
-    >
-      <strong className="block text-[13px] font-semibold">{title}</strong>
-      <span className="mt-0.5 block">{children}</span>
-    </div>
-  );
-}
-
-const chip =
-  "inline-flex h-8 items-center gap-1 rounded-full border border-accent/50 bg-accent/15 pl-3 pr-2 text-[13px] font-medium text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-
-const sheetRow =
-  "flex min-h-[60px] w-full items-center gap-3.5 border-t border-border py-2 text-left text-[16px] leading-[1.3] focus-visible:rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-
-// Switch drawn from aria-pressed on the row, so the button stays the single source of truth.
-const sw =
-  "relative h-7 w-[46px] flex-none rounded-full bg-border transition-colors duration-200 motion-reduce:transition-none after:absolute after:left-[3px] after:top-[3px] after:size-[22px] after:rounded-full after:bg-surface after:shadow-soft after:transition-transform after:duration-200 motion-reduce:after:transition-none group-aria-pressed/row:bg-accent group-aria-pressed/row:after:translate-x-[18px]";
-
-function SheetText({ title, hint }: { title: string; hint: string }) {
-  return (
-    <span className="flex min-w-0 flex-1 flex-col">
-      {title}
-      <small className="text-[13px] text-muted">{hint}</small>
-    </span>
-  );
-}
-
-function TrialBannerView({ banner, onAddProvider }: { banner: NonNullable<ReturnType<typeof trialBanner>>; onAddProvider?: () => void }) {
-  if (banner.kind === "ended") {
-    return (
-      <div role="status" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-warn-bg px-3 py-2 text-[13px] text-warn-bar">
-        <span className="min-w-0 flex-1">{TRIAL_ENDED}</span>
-        {onAddProvider && (
-          <Button variant="bare" onClick={onAddProvider} className="rounded px-2 py-1 font-medium underline">
-            Open Providers
-          </Button>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className="mb-1.5 flex">
-      <span
-        role="status"
-        className={`inline-flex h-6 items-center rounded-full border px-2.5 text-[12px] ${
-          banner.kind === "last" ? "border-warn-bar/40 bg-warn-bg text-warn-bar" : "border-border bg-surface text-muted"
-        }`}
-      >
-        {bannerText(banner)}
-      </span>
-    </div>
-  );
-}
 
 const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
-export function Composer({ ref, disabled, vision, providerName, canIllustrate = false, managed = false, trial, onAddProvider, onSend, onStop }: Props) {
+export function Composer({ ref, disabled, vision, providerName, canIllustrate = false, managed = false, trial, locked = false, onAddProvider, onSend, onStop }: Props) {
   const [value, setValue] = useState("");
   const [web, setWeb] = useState(false);
   const [illustrate, setIllustrate] = useState(false);
@@ -157,11 +93,12 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
   useImperativeHandle(ref, () => ({
     focus: () => input.current?.focus(),
     setText: (text) => {
+      if (locked) return;
       caret.current = text.length;
       setValue(text);
       input.current?.focus();
     },
-    enableWeb: () => setWeb(!managed),
+    enableWeb: () => setWeb(!managed && !locked),
     openPicker,
   }));
 
@@ -172,19 +109,20 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
   const ended = banner?.kind === "ended";
   // The toggles are hidden for the trial, so a leftover "on" from another provider must neither show nor be sent.
   const webOn = web && !managed;
-  const ready = (value.trim() !== "" || attachments.length > 0) && !disabled && !blocked && !ended && preparing === 0;
+  const ready = (value.trim() !== "" || attachments.length > 0) && !disabled && !locked && !blocked && !ended && preparing === 0;
   const inList = /^\s*([-*]|\d+\.) +\S/.test(value.slice(value.lastIndexOf("\n") + 1));
   const unsupported = managed
     ? "Images are not part of the free trial. Add your own provider to use them."
     : `${providerName ?? "This provider"} can't read images. Switch to a vision-capable provider, or turn on "Can read images" for it in Providers.`;
 
   function openPicker() {
+    if (locked) return;
     if (vision) picker.current?.click();
     else setNotice(unsupported);
   }
 
   async function addFiles(files: File[]) {
-    if (files.length === 0) return;
+    if (files.length === 0 || locked) return;
     if (!vision) {
       setNotice(unsupported);
       return;
@@ -220,7 +158,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
   function submit(e?: FormEvent) {
     e?.preventDefault();
     const text = value.trim();
-    if ((!text && attachments.length === 0) || disabled || blocked || ended || preparing > 0) return;
+    if ((!text && attachments.length === 0) || disabled || locked || blocked || ended || preparing > 0) return;
     const sending = attachments;
     setValue("");
     setAttachments([]);
@@ -265,6 +203,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
     if (!hasFiles(e)) return;
     e.preventDefault();
     setDragging(false);
+    if (locked) return;
     void addFiles(Array.from(e.dataTransfer.files));
   }
 
@@ -289,7 +228,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
     <form
       onSubmit={submit}
       onDragOver={(e) => {
-        if (!hasFiles(e)) return;
+        if (!hasFiles(e) || locked) return;
         e.preventDefault();
         setDragging(true);
       }}
@@ -357,6 +296,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
               type="button"
               aria-label="Add to message"
               aria-haspopup="dialog"
+              disabled={locked}
               onClick={() => setSheet(true)}
               className="grid size-10 flex-none place-items-center rounded-full text-muted hover:bg-bg hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
@@ -379,6 +319,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
               rows={1}
               autoFocus
               aria-label="Message"
+              disabled={locked}
               value={value}
               onChange={(e) => {
                 setValue(e.target.value);
@@ -386,13 +327,15 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
               onKeyDown={onKeyDown}
               onPaste={onPaste}
               placeholder={
-                attachments.length > 0
+                locked
+                  ? "Add a provider to start chatting"
+                  : attachments.length > 0
                   ? "Ask something about the image…"
                   : webOn
                     ? "Ask anything — Lumio will search the web first…"
                     : "Write a message…"
               }
-              className={`max-h-[min(40vh,12rem)] resize-none bg-transparent text-[16px] text-text outline-none placeholder:text-muted ${
+              className={`max-h-[min(40vh,12rem)] resize-none bg-transparent text-[16px] text-text outline-none placeholder:text-muted disabled:cursor-not-allowed ${
                 phone ? "min-w-[6rem] flex-1 px-1 py-0.5 leading-[1.35]" : "block w-full px-2.5 py-2 text-[length:inherit]"
               }`}
             />
@@ -408,12 +351,13 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                 <PressButton
                   type="button"
                   aria-pressed={web}
+                  disabled={locked}
                   aria-label="Search the web"
                   aria-describedby="web-tip"
                   onClick={() => setWeb((on) => !on)}
                   hover={1.04}
                   press={0.94}
-                  className={`${toolBase} ${web ? `${toolOn} gap-1.5 px-2.5` : `${toolOff} w-8`}`}
+                  className={`${toolBase} disabled:cursor-not-allowed disabled:opacity-50 ${web ? `${toolOn} gap-1.5 px-2.5` : `${toolOff} w-8`}`}
                 >
                   <GlobeIcon />
                   {web && <span className="text-[13px] font-medium">Web on</span>}
@@ -429,12 +373,13 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                   <PressButton
                     type="button"
                     aria-pressed={illustrate}
+                    disabled={locked}
                     aria-label="Illustrate the reply"
                     aria-describedby="illustrate-tip"
                     onClick={() => setIllustrate((on) => !on)}
                     hover={1.04}
                     press={0.94}
-                    className={`${toolBase} ${illustrate ? `${toolOn} gap-1.5 px-2.5` : `${toolOff} w-8`}`}
+                    className={`${toolBase} disabled:cursor-not-allowed disabled:opacity-50 ${illustrate ? `${toolOn} gap-1.5 px-2.5` : `${toolOff} w-8`}`}
                   >
                     <SparklesIcon />
                     {illustrate && <span className="text-[13px] font-medium">Illustrate on</span>}
@@ -452,11 +397,12 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
                   type="button"
                   aria-label="Attach images"
                   aria-disabled={!vision}
+                  disabled={locked}
                   aria-describedby="image-tip"
                   onClick={openPicker}
                   hover={vision ? 1.04 : 1}
                   press={vision ? 0.94 : 1}
-                  className={`${toolBase} ${toolOff} w-8 ${vision ? "" : "cursor-not-allowed opacity-50"}`}
+                  className={`${toolBase} ${toolOff} w-8 disabled:cursor-not-allowed disabled:opacity-50 ${vision ? "" : "cursor-not-allowed opacity-50"}`}
                 >
                   <PaperclipIcon />
                 </PressButton>
@@ -485,42 +431,22 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
           }}
         />
       </div>
-      <BottomSheet open={phone && !managed && sheet} onClose={() => setSheet(false)} title="Add to message" eyebrow>
-        <ul className="flex flex-col">
-          <li>
-            {/* aria-disabled, not disabled: it stays focusable so the reason is reachable. */}
-            <button
-              type="button"
-              aria-disabled={!vision}
-              onClick={() => {
-                if (!vision) return;
-                setSheet(false);
-                openPicker();
-              }}
-              className={`${sheetRow} border-t-0 ${vision ? "" : "cursor-not-allowed opacity-50"}`}
-            >
-              <PaperclipIcon width={24} height={24} className="flex-none text-muted" />
-              <SheetText title="Attach images" hint={vision ? `Up to 4. ${providerName ?? "This provider"} can read them.` : unsupported} />
-            </button>
-          </li>
-          <li>
-            <button type="button" aria-pressed={web} onClick={() => setWeb((on) => !on)} className={`${sheetRow} group/row`}>
-              <GlobeIcon width={24} height={24} className="flex-none text-muted" />
-              <SheetText title="Search the web" hint="Looks it up first, then answers." />
-              <span aria-hidden="true" className={sw} />
-            </button>
-          </li>
-          {canIllustrate && (
-            <li>
-              <button type="button" aria-pressed={illustrate} onClick={() => setIllustrate((on) => !on)} className={`${sheetRow} group/row`}>
-                <SparklesIcon width={24} height={24} className="flex-none text-muted" />
-                <SheetText title="Illustrate the reply" hint="Adds pictures between paragraphs." />
-                <span aria-hidden="true" className={sw} />
-              </button>
-            </li>
-          )}
-        </ul>
-      </BottomSheet>
+      <AddSheet
+        open={phone && !managed && sheet}
+        onClose={() => setSheet(false)}
+        vision={vision}
+        providerName={providerName}
+        unsupported={unsupported}
+        web={web}
+        illustrate={illustrate}
+        canIllustrate={canIllustrate}
+        onWeb={() => setWeb((on) => !on)}
+        onIllustrate={() => setIllustrate((on) => !on)}
+        onAttach={() => {
+          setSheet(false);
+          openPicker();
+        }}
+      />
       <p className={`mt-2 text-center text-xs [@media(pointer:coarse)]:hidden ${webOn ? "text-accent" : "text-muted"}`}>
         {webOn
           ? "Web search on · your message is sent to Tavily"

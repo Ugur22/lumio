@@ -136,7 +136,7 @@ def test_a_version_2_database_is_upgraded_in_place(tmp_path):
     assert store.get_account("alice").id == "u1"
     with store._read() as c:
         tables = {r["name"] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert c.execute("PRAGMA user_version").fetchone()[0] == storage.SCHEMA_VERSION == 4
+        assert c.execute("PRAGMA user_version").fetchone()[0] == storage.SCHEMA_VERSION
     assert {"identities", "trial_anchors", "trials", "trial_usage"} <= tables
     storage.Store(path)  # idempotent
 
@@ -145,7 +145,7 @@ def test_a_newer_database_is_still_refused(tmp_path):
     path = tmp_path / "new.db"
     storage.Store(path)
     conn = sqlite3.connect(path)
-    conn.execute("PRAGMA user_version=5")
+    conn.execute(f"PRAGMA user_version={storage.SCHEMA_VERSION + 1}")
     conn.commit()
     conn.close()
 
@@ -247,7 +247,7 @@ def test_a_version_3_database_keeps_its_trials_in_the_open_pool(tmp_path):
         assert c.execute("SELECT pool FROM trials WHERE user_id='u1'").fetchone()["pool"] == "open"
         assert [tuple(r) for r in c.execute("SELECT day, pool, calls FROM trial_usage")] == [("2030-01-01", "open", 7)]
         assert c.execute("SELECT kind FROM invites").fetchone()["kind"] == "account"
-        assert c.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert c.execute("PRAGMA user_version").fetchone()[0] == storage.SCHEMA_VERSION
     assert store.get_trial("u1").used == 2
     assert store.create_user("bob", "hash", invite_hash="h1").username == "bob"  # the old invite still registers an account
     storage.Store(path)  # idempotent

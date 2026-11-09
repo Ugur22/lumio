@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Sparkles,
   Sun,
+  Ticket,
   Trash2,
   X,
   type LucideIcon,
@@ -76,6 +77,7 @@ export const CheckIcon = lucide(Check);
 export const SunIcon = lucide(Sun);
 export const MoonStarIcon = lucide(MoonStar);
 export const ChatIcon = lucide(MessageSquare);
+export const TicketIcon = lucide(Ticket);
 export const KeyIcon = lucide(KeyRound);
 export const LogOutIcon = lucide(LogOut);
 export const ChevronUpIcon = lucide(ChevronUp);

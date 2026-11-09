@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 import accounts
 import secret_store
-from app import routes_auth, routes_chats, routes_oauth, routes_profiles, runtime
+from app import routes_auth, routes_chats, routes_invites, routes_oauth, routes_profiles, runtime
 from models import BASE_DIR
 
 try:
@@ -41,6 +41,8 @@ async def hashing_busy(request: Request, exc: accounts.Busy):
 
 app.include_router(routes_auth.router)
 app.include_router(routes_auth.token_router)
+app.include_router(routes_invites.admin)
+app.include_router(routes_invites.public)
 app.include_router(routes_oauth.router)
 app.include_router(routes_oauth.trial_router)
 app.include_router(routes_chats.router)

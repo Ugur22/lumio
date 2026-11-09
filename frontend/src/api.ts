@@ -8,6 +8,10 @@ import type {
   DoneChat,
   EditProfileBody,
   IllustrationFailure,
+  InviteCheck,
+  InviteCreate,
+  InviteCreated,
+  InviteItem,
   ImageUpload,
   ModelsQuery,
   ModelsResult,
@@ -153,6 +157,13 @@ export const api = {
   login: (body: LoginBody) => request<UserView>("/auth/login", { method: "POST", body: JSON.stringify(body) }, false),
   register: (body: RegisterBody) =>
     request<UserView>("/auth/register", { method: "POST", body: JSON.stringify(body) }, false),
+  // Throttled per IP and every call counts, so it is called once per page load.
+  checkInvite: (invite: string) =>
+    request<InviteCheck>("/auth/invite-check", { method: "POST", body: JSON.stringify({ invite }) }, false),
+  listInvites: () => request<InviteItem[]>("/admin/invites"),
+  createInvite: (body: InviteCreate) =>
+    request<InviteCreated>("/admin/invites", { method: "POST", body: JSON.stringify(body) }),
+  revokeInvite: (id: string) => request<void>(`/admin/invites/${encodeURIComponent(id)}`, { method: "DELETE" }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   changePassword: (body: PasswordChange) =>
     request<void>("/auth/password", { method: "POST", body: JSON.stringify(body) }),

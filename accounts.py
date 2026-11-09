@@ -105,10 +105,16 @@ def create_user(db: storage.Store, username: str, password: str, *, admin: bool 
     return db.create_user(clean_username(username), hash_password(check_password(password)), is_admin=admin)
 
 
-def create_invite(db: storage.Store, days: float = storage.INVITE_DAYS, kind: str = "account") -> str:
+def issue_invite(
+    db: storage.Store, days: float = storage.INVITE_DAYS, kind: str = "account", *, note: str | None = None, created_by: str | None = None
+) -> tuple[str, str]:
+    """Returns (code, id). Only the code's hash is stored; the code is shown once and cannot be recovered."""
     code = secrets.token_urlsafe(16)
-    db.create_invite(sha256(code), days, kind=kind)
-    return code
+    return code, db.create_invite(sha256(code), days, kind=kind, note=note, created_by=created_by)
+
+
+def create_invite(db: storage.Store, days: float = storage.INVITE_DAYS, kind: str = "account") -> str:
+    return issue_invite(db, days, kind)[0]
 
 
 def _find(db: storage.Store, username: str) -> storage.Account:

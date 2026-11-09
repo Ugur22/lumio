@@ -9,9 +9,13 @@ import { useSendMessage } from "./useChats";
 interface Options {
   // The trial refused the send (used up, or full for today); the app opens Providers when it ended.
   onTrialRefused?: (failure: TrialFailure) => void;
+  // There is no provider to send to (the first-run onboarding is showing); a send is dropped without an error.
+  blocked?: boolean;
 }
 
-export function useStreamingSend({ onTrialRefused }: Options = {}) {
+export function useStreamingSend({ onTrialRefused, blocked = false }: Options = {}) {
+  const refusing = useRef(blocked);
+  refusing.current = blocked;
   const refused = useRef(onTrialRefused);
   refused.current = onTrialRefused;
   const { mutate, isPending } = useSendMessage();
@@ -58,6 +62,8 @@ export function useStreamingSend({ onTrialRefused }: Options = {}) {
 
   const send = useCallback(
     (chatId: string | null, content: string, attachments: Attachment[], web: boolean, illustrate: boolean, onSaved: (chat: Chat) => void, model?: ChatModelBody) => {
+      // Not a failure: the composer and tiles are already locked, so this only catches paths that slip past them.
+      if (refusing.current) return;
       const controller = new AbortController();
       abort.current = controller;
       streamed.current = "";

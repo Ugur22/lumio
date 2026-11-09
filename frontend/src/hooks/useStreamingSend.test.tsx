@@ -15,11 +15,11 @@ afterEach(() => {
   useStream.getState().clear();
 });
 
-function setup(onTrialRefused?: (failure: TrialFailure) => void) {
+function setup(onTrialRefused?: (failure: TrialFailure) => void, blocked = false) {
   const client = new QueryClient();
   client.setQueryData(trialKey, { enrolled: true, limit: 5, used: 2, remaining: 3, ended: false });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  const hook = renderHook(() => useStreamingSend({ onTrialRefused }), { wrapper });
+  const hook = renderHook(() => useStreamingSend({ onTrialRefused, blocked }), { wrapper });
   const send = () => act(() => hook.result.current.send("c1", "hello", [], false, false, () => undefined));
   return { client, send };
 }
@@ -148,5 +148,15 @@ describe("useStreamingSend reasoning and smoothing", () => {
     act(() => hook.result.current.stop());
     expect(setReply).toHaveBeenLastCalledWith("Half a sentence");
     setReply.mockRestore();
+  });
+});
+
+describe("useStreamingSend with no provider", () => {
+  it("drops a send without a request, a pending message or an error", () => {
+    const fetcher = mockFetch(() => json({}));
+    const { send } = setup(undefined, true);
+    send();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(pending()).toBeNull();
   });
 });
