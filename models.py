@@ -403,6 +403,40 @@ class RegisterBody(ApiModel):
     invite: SecretStr = Field(min_length=1, max_length=256)
 
 
+class InviteCreate(ApiModel):
+    kind: Literal["trial", "account"]
+    note: str | None = Field(default=None, max_length=80)
+
+
+class InviteCreated(ApiModel):
+    id: str
+    code: str  # returned only here: just its hash is stored
+    kind: Literal["trial", "account"]
+    note: str | None
+    created: str
+    expires: str
+
+
+class InviteItem(ApiModel):
+    id: str
+    kind: Literal["trial", "account"]
+    note: str | None
+    created: str
+    expires: str
+    status: Literal["unused", "used", "expired", "revoked"]
+    used_at: str | None
+
+
+class InviteCheckBody(ApiModel):
+    invite: SecretStr = Field(min_length=1, max_length=256)
+
+
+class InviteCheck(ApiModel):
+    valid: bool
+    kind: Literal["trial", "account"] | None = None
+    reason: Literal["used", "expired", "revoked", "unknown"] | None = None
+
+
 class LoginBody(ApiModel):
     # No format rules here: a malformed name must fail like a wrong one, not with a different status.
     username: Annotated[str, BeforeValidator(_lower), Field(min_length=1, max_length=128)]

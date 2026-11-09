@@ -36,10 +36,10 @@ def user_key(username: str) -> str:
     return f"user:{username[:64]}"
 
 
-def throttle(keys: list[str]) -> list[int]:
+def throttle(keys: list[str], limit: int | None = None) -> list[int]:
     """Counts this attempt as a failure up front and returns what to hand to `credit` if it succeeds. Recording after the
     password check would let parallel guesses (each slow to hash) all see an empty record."""
-    wait, attempts = runtime.db.take_login_attempt(keys)
+    wait, attempts = runtime.db.take_login_attempt(keys, **({"limit": limit} if limit else {}))
     if wait:
         raise HTTPException(429, "Too many failed attempts; try again later", headers={"Retry-After": str(wait)})
     return attempts

@@ -7,11 +7,14 @@ import { useStream } from "../store/stream";
 import type { IllustrationFailure, Message, SourceRef } from "../types";
 import { BookIcon, GlobeIcon, ImageIcon, LumioMark, PencilIcon } from "./icons";
 import { Button, PressButton } from "./ui";
+import { FirstRun } from "./FirstRun";
 import { Turn, type Reply } from "./Turn";
 
 interface Props {
   messages: Message[];
   chatId: string | null;
+  // Opens the Providers dialog from the first-run onboarding.
+  onManage: () => void;
 }
 
 // `send` tiles are complete requests; the others are templates that need the user's own text first.
@@ -22,7 +25,7 @@ const SUGGESTIONS = [
   { title: "Explain simply", text: "Explain a hard idea to me as if I'm new to it, with one concrete example.", send: false },
 ];
 
-export function MessageList({ messages, chatId }: Props) {
+export function MessageList({ messages, chatId, onManage }: Props) {
   const ref = useRef<HTMLElement>(null);
   const stored = useStream((s) => s.pending);
   const liveSources = useStream((s) => s.sources);
@@ -112,7 +115,7 @@ export function MessageList({ messages, chatId }: Props) {
     >
       <div className="mx-auto w-full max-w-[720px]">
         {turns.length === 0 ? (
-          <EmptyHeading />
+          <FirstRun onManage={onManage} fallback={<EmptyHeading />} />
         ) : (
           turns.map((t, i) => <Turn key={i} question={t.question} images={t.images} reply={t.reply} sources={t.sources} notes={t.notes} query={t.query} failures={t.failures} />)
         )}

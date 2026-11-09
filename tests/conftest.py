@@ -165,3 +165,28 @@ ORIGIN = "http://localhost:8000"
 @pytest.fixture
 def api():
     return TestClient(server.app, base_url=ORIGIN, headers={"Origin": ORIGIN})
+
+
+DEPLOYED_ORIGIN = "https://lumio.example.com"
+
+
+@pytest.fixture
+def deployed(monkeypatch):
+    """A deployed server (accounts and sessions on), reached at DEPLOYED_ORIGIN."""
+    monkeypatch.setattr(runtime.settings, "public_host", "lumio.example.com")
+
+
+@pytest.fixture
+def signed_in(deployed):
+    """Builds a client signed in as a fresh user, or a signed-out one with username=None. Users and invites are removed by
+    the accounts fixtures of the module that uses this."""
+    from app import routes_auth
+
+    def make(username: str | None = None, *, admin: bool = False) -> TestClient:
+        client = TestClient(server.app, base_url=DEPLOYED_ORIGIN, headers={"Origin": DEPLOYED_ORIGIN})
+        if username:
+            account = runtime.db.create_user(username, "!", is_admin=admin)  # no password: this client never logs in
+            client.cookies.set("lumio_session", routes_auth.new_session(account.id))
+        return client
+
+    return make

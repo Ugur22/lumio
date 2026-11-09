@@ -14,6 +14,7 @@ import { StoryDialog, type StoryTab } from "./components/StoryDialog";
 import { useChat, useChatContext, useChatList, useCreateChat, useDeleteChat, useRenameChat, useSetChatModel } from "./hooks/useChats";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useReducedMotion } from "./hooks/useReducedMotion";
+import { useEmptyKind } from "./hooks/useEmptyKind";
 import { useProfiles } from "./hooks/useProfiles";
 import { useStreamingSend } from "./hooks/useStreamingSend";
 import { useTrial } from "./hooks/useTrial";
@@ -89,7 +90,10 @@ export function App() {
   const create = useCreateChat();
   const rename = useRenameChat();
   const remove = useDeleteChat();
+  // No provider and no trial: the onboarding shows, and nothing can be sent until one exists.
+  const locked = useEmptyKind() !== null;
   const { send, stop, isPending: sending } = useStreamingSend({
+    blocked: locked,
     // Used up: the way forward is a provider of their own. Full for today needs nothing but the message.
     onTrialRefused: (failure) => failure.kind === "ended" && setSettingsOpen(true),
   });
@@ -112,6 +116,7 @@ export function App() {
   function onSend(content: string, attachments: Attachment[], web: boolean, illustrate: boolean) {
     // Starters and code actions send without passing the composer's own check.
     if (sendBlocked(trial, activeProfile)) return setSettingsOpen(true);
+    if (locked) return;
     const chatId = currentId;
     const model = chatId === null ? (pendingModel ?? undefined) : undefined;
     send(
@@ -281,6 +286,7 @@ export function App() {
           <MessageList
             messages={currentId ? (chat.data?.messages ?? []) : []}
             chatId={currentId}
+            onManage={() => setSettingsOpen(true)}
           />
         </CodeActionsContext.Provider>
         <ContextMeter
@@ -288,7 +294,7 @@ export function App() {
           onSetWindow={() => setSettingsOpen(true)}
           onSummarize={managed ? undefined : () => setStory({ open: true, tab: "summary" })}
         />
-        {blank && phone && (
+        {blank && phone && !locked && (
           <QuickActions
             focused={focused}
             canAttach={activeProfile?.vision ?? false}
@@ -306,6 +312,7 @@ export function App() {
             vision={activeProfile?.vision ?? false}
             canIllustrate={Boolean(activeProfile?.image_model)}
             managed={managed}
+            locked={locked}
             trial={trial}
             onAddProvider={() => setSettingsOpen(true)}
             providerName={activeProfile?.name ?? null}
@@ -313,7 +320,7 @@ export function App() {
             onSend={onSend}
           />
         </animated.div>
-        {(centered || fading) && (
+        {(centered || fading) && !locked && (
           <Starters
             ref={tiles}
             leavingAt={centered ? undefined : tilesTop.current}

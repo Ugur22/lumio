@@ -567,6 +567,215 @@
         "title": "ImageRef",
         "type": "object"
       },
+      "InviteCheck": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "trial",
+                  "account"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "used",
+                  "expired",
+                  "revoked",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid",
+          "kind",
+          "reason"
+        ],
+        "title": "InviteCheck",
+        "type": "object"
+      },
+      "InviteCheckBody": {
+        "properties": {
+          "invite": {
+            "format": "password",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Invite",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "invite"
+        ],
+        "title": "InviteCheckBody",
+        "type": "object"
+      },
+      "InviteCreate": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "trial",
+              "account"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "InviteCreate",
+        "type": "object"
+      },
+      "InviteCreated": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "string"
+          },
+          "expires": {
+            "title": "Expires",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "trial",
+              "account"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "kind",
+          "note",
+          "created",
+          "expires"
+        ],
+        "title": "InviteCreated",
+        "type": "object"
+      },
+      "InviteItem": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "string"
+          },
+          "expires": {
+            "title": "Expires",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "trial",
+              "account"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "status": {
+            "enum": [
+              "unused",
+              "used",
+              "expired",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used At"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "note",
+          "created",
+          "expires",
+          "status",
+          "used_at"
+        ],
+        "title": "InviteItem",
+        "type": "object"
+      },
       "LoginBody": {
         "properties": {
           "password": {
@@ -1409,6 +1618,134 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/admin/invites": {
+      "get": {
+        "operationId": "list_all_api_admin_invites_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InviteItem"
+                  },
+                  "title": "Response List All Api Admin Invites Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List All"
+      },
+      "post": {
+        "operationId": "create_api_admin_invites_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create"
+      }
+    },
+    "/api/admin/invites/{invite_id}": {
+      "delete": {
+        "operationId": "revoke_api_admin_invites__invite_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invite_id",
+            "required": true,
+            "schema": {
+              "title": "Invite Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke"
+      }
+    },
+    "/api/auth/invite-check": {
+      "post": {
+        "operationId": "invite_check_api_auth_invite_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteCheckBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteCheck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invite Check"
+      }
+    },
     "/api/auth/login": {
       "post": {
         "operationId": "login_api_auth_login_post",

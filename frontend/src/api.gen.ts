@@ -4,6 +4,58 @@
  */
 
 export interface paths {
+    "/api/admin/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List All */
+        get: operations["list_all_api_admin_invites_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_api_admin_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke */
+        delete: operations["revoke_api_admin_invites__invite_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/invite-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invite Check */
+        post: operations["invite_check_api_auth_invite_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -703,6 +755,74 @@ export interface components {
             /** Prompt */
             prompt: string | null;
         };
+        /** InviteCheck */
+        InviteCheck: {
+            /** Kind */
+            kind: ("trial" | "account") | null;
+            /** Reason */
+            reason: ("used" | "expired" | "revoked" | "unknown") | null;
+            /** Valid */
+            valid: boolean;
+        };
+        /** InviteCheckBody */
+        InviteCheckBody: {
+            /**
+             * Invite
+             * Format: password
+             */
+            invite: string;
+        };
+        /** InviteCreate */
+        InviteCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "trial" | "account";
+            /** Note */
+            note?: string | null;
+        };
+        /** InviteCreated */
+        InviteCreated: {
+            /** Code */
+            code: string;
+            /** Created */
+            created: string;
+            /** Expires */
+            expires: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "trial" | "account";
+            /** Note */
+            note: string | null;
+        };
+        /** InviteItem */
+        InviteItem: {
+            /** Created */
+            created: string;
+            /** Expires */
+            expires: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "trial" | "account";
+            /** Note */
+            note: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unused" | "used" | "expired" | "revoked";
+            /** Used At */
+            used_at: string | null;
+        };
         /** LoginBody */
         LoginBody: {
             /**
@@ -1052,6 +1172,121 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_all_api_admin_invites_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteItem"][];
+                };
+            };
+        };
+    };
+    create_api_admin_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_api_admin_invites__invite_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invite_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invite_check_api_auth_invite_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteCheckBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_api_auth_login_post: {
         parameters: {
             query?: never;

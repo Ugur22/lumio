@@ -10,6 +10,8 @@ interface Props {
   title: string;
   description?: ReactNode;
   confirmLabel: string;
+  // Defaults to "Cancel"; a destructive question reads better as "Keep it".
+  cancelLabel?: string;
   // A destructive action gets the warning style instead of the accent.
   danger?: boolean;
   onConfirm: () => void;
@@ -17,7 +19,7 @@ interface Props {
 }
 
 // Replaces window.confirm. Focus starts on Cancel, so Enter never confirms by accident.
-export function ConfirmDialog({ open, title, description, confirmLabel, danger, onConfirm, onCancel }: Props) {
+export function ConfirmDialog({ open, title, description, confirmLabel, cancelLabel = "Cancel", danger, onConfirm, onCancel }: Props) {
   return (
     <Modal open={open} onClose={onCancel} className="w-[min(92vw,24rem)]">
       <div className="flex flex-col gap-4 p-5">
@@ -26,7 +28,7 @@ export function ConfirmDialog({ open, title, description, confirmLabel, danger, 
         </DialogTitle>
         {description && <Description className="text-muted">{description}</Description>}
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button onClick={onCancel}>Cancel</Button>
+          <Button onClick={onCancel}>{cancelLabel}</Button>
           <PressButton onClick={onConfirm} hover={1.02} press={0.97} variant={danger ? "destructive" : "primary"}>
             {danger && <TrashIcon width={16} height={16} />}
             {confirmLabel}

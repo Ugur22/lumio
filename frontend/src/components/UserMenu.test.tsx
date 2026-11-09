@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSession } from "../store/session";
-import { alice, bodyOf, json, localUser, mockFetch, noContent, resetSession, stubMatchMedia, stubResizeObserver } from "../test/helpers";
+import { alice, bodyOf, json, localUser, mockFetch, noContent, renderWithClient, resetSession, stubMatchMedia, stubResizeObserver } from "../test/helpers";
 import { UserMenu } from "./UserMenu";
 
 beforeEach(() => {
@@ -49,6 +49,24 @@ describe("UserMenu", () => {
     await user.click(screen.getByRole("button", { name: /alice/ }));
     expect(await screen.findByRole("menuitem", { name: /change password/i })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeTruthy();
+  });
+
+  it("lists Invites between Change password and Sign out for an admin only", async () => {
+    const user = userEvent.setup();
+    useSession.getState().signIn({ ...alice, is_admin: true });
+    renderWithClient(<UserMenu />);
+    await user.click(screen.getByRole("button", { name: /alice/ }));
+    const names = (await screen.findAllByRole("menuitem")).map((i) => i.textContent?.trim());
+    expect(names).toEqual(["Change password", "InvitesAdmin", "Sign out"]);
+  });
+
+  it("hides Invites from a member", async () => {
+    const user = userEvent.setup();
+    useSession.getState().signIn(alice);
+    render(<UserMenu />);
+    await user.click(screen.getByRole("button", { name: /alice/ }));
+    await screen.findByRole("menuitem", { name: /sign out/i });
+    expect(screen.queryByRole("menuitem", { name: /invites/i })).toBeNull();
   });
 
   it("signs out through the API", async () => {

@@ -33,6 +33,7 @@ from storage_accounts import (  # noqa: F401  re-exported: callers use storage.<
     UsernameTaken,
 )
 from storage_common import _ts
+from storage_invites import INVITES_TABLE, InvitesMixin, upgrade_invites
 from storage_trials import Trial, TrialCall, TrialExhausted, TrialFull, TrialsMixin  # noqa: F401  re-exported like the above
 
 log = logging.getLogger("dolphinllm")
@@ -42,7 +43,8 @@ log = logging.getLogger("dolphinllm")
 # 3: free trials (identities, trial_anchors, trials, trial_usage). Builds before it refuse a version-3 file for the same reason.
 # 4: trial pools (trials.pool, trial_usage per (day, pool), invites.kind). Builds before it would accept a trial invite for a
 # password registration and count every pool's calls as one, so they refuse a version-4 file too.
-SCHEMA_VERSION = 4
+# 5: revocable invites (invites.id, note, created_by, revoked_at). Builds before it would redeem a revoked invite.
+SCHEMA_VERSION = 5
 DEFAULT_TITLE = "New chat"
 BUSY_SECONDS = 10.0
 # A generation lease that is not renewed for this long is treated as left behind by a crashed process.
@@ -112,14 +114,7 @@ _SCHEMA = [
         expires TEXT
     )""",
     "CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)",
-    """CREATE TABLE IF NOT EXISTS invites (
-        code_hash TEXT PRIMARY KEY,
-        created TEXT,
-        expires TEXT,
-        used_by TEXT,
-        used_at TEXT,
-        kind TEXT NOT NULL DEFAULT 'account'
-    )""",
+    INVITES_TABLE,
     "CREATE TABLE IF NOT EXISTS login_attempts (key TEXT, at REAL)",
     "CREATE INDEX IF NOT EXISTS login_attempts_key ON login_attempts(key, at)",
     # Which sign-in belongs to which account. Only keyed hashes of the provider's subject id are stored.
@@ -220,7 +215,7 @@ class Lease:
             log.warning("Could not release the generation lease for chat %s; it expires on its own", self.chat_id)
 
 
-class Store(AccountsMixin, TrialsMixin):
+class Store(AccountsMixin, InvitesMixin, TrialsMixin):
     def __init__(self, path: Path, lease_ttl: float = LEASE_TTL, lease_beat: float = LEASE_BEAT, acquire_wait: float = 0.0):
         self.path = Path(path)
         # How long acquire() waits for a held lease before giving up: Stop followed by an instant resend
@@ -278,6 +273,7 @@ class Store(AccountsMixin, TrialsMixin):
             if "owner" not in {r["name"] for r in conn.execute("PRAGMA table_info(chats)")}:
                 conn.execute("ALTER TABLE chats ADD COLUMN owner TEXT")  # chats from before accounts stay NULL until claimed at startup
             self._upgrade_pools(conn)
+            upgrade_invites(conn)
             for statement in _INDEXES:
                 conn.execute(statement)
             conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")

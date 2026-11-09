@@ -3,7 +3,8 @@ import { useState } from "react";
 import { authErrorMessage } from "../lib/auth";
 import { useSession } from "../store/session";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
-import { ChevronUpIcon, KeyIcon, LogOutIcon } from "./icons";
+import { ChevronUpIcon, KeyIcon, LogOutIcon, TicketIcon } from "./icons";
+import { InvitesDialog } from "./InvitesDialog";
 import { focusRing } from "./ui";
 
 const item = `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-muted data-[focus]:bg-bubble data-[focus]:text-text`;
@@ -12,6 +13,7 @@ const item = `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-lef
 export function UserMenu() {
   const user = useSession((s) => s.user);
   const [changing, setChanging] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!user || user.id === "local") return null;
@@ -54,6 +56,14 @@ export function UserMenu() {
               <KeyIcon /> Change password
             </button>
           </MenuItem>
+          {user.is_admin && (
+            <MenuItem>
+              <button type="button" className={item} onClick={() => setInviting(true)}>
+                <TicketIcon /> Invites
+                <span className="ml-auto rounded-full border border-border px-1.5 text-[11px] leading-5 text-muted">Admin</span>
+              </button>
+            </MenuItem>
+          )}
           <MenuItem>
             <button type="button" className={item} onClick={() => void signOut()}>
               <LogOutIcon /> Sign out
@@ -67,6 +77,7 @@ export function UserMenu() {
         </p>
       )}
       <ChangePasswordDialog open={changing} onClose={() => setChanging(false)} />
+      {user.is_admin && <InvitesDialog open={inviting} onClose={() => setInviting(false)} />}
     </div>
   );
 }
