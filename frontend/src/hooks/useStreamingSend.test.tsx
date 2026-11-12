@@ -149,6 +149,27 @@ describe("useStreamingSend reasoning and smoothing", () => {
     expect(setReply).toHaveBeenLastCalledWith("Half a sentence");
     setReply.mockRestore();
   });
+  it("shows a neutral notice, not a failure, when the user stops before any text", async () => {
+    mockFetch(
+      (_url, init) =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(c) {
+              init?.signal?.addEventListener("abort", () => c.error(new DOMException("aborted", "AbortError")));
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "text/event-stream" } },
+        ),
+    );
+    const client = new QueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const hook = renderHook(() => useStreamingSend(), { wrapper });
+    act(() => hook.result.current.send("c1", "hello", [], false, false, () => undefined));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    act(() => hook.result.current.stop());
+    await waitFor(() => expect(useStream.getState().pending?.status).toBe("error"));
+    expect(useStream.getState().pending).toMatchObject({ notice: true, error: expect.stringMatching(/^Stopped/) });
+  });
 });
 
 describe("useStreamingSend with no provider", () => {
