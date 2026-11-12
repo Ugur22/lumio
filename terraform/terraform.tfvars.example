@@ -1,2 +1,3 @@
-ssh_cidr = "203.0.113.4/32" # your public IP (curl -s https://checkip.amazonaws.com) plus /32
+# Each place you connect from: its public IP (curl -s https://checkip.amazonaws.com) plus /32.
+ssh_cidrs = ["203.0.113.4/32", "198.51.100.7/32"]
 key_name = "lumio-keypair"

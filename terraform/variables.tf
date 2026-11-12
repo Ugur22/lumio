@@ -3,9 +3,9 @@ variable "region" {
   default = "eu-north-1"
 }
 
-variable "ssh_cidr" {
-  type        = string
-  description = "Your public IP as x.x.x.x/32; the only address allowed on port 22."
+variable "ssh_cidrs" {
+  type        = list(string)
+  description = "Public IPs as x.x.x.x/32 (home, office, hotspot); the only addresses allowed on port 22."
 }
 
 variable "key_name" {
