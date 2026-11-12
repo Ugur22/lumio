@@ -30,7 +30,6 @@ export default {
         "dot-pulse": { "0%, 100%": { opacity: "0.25" }, "50%": { opacity: "1" } },
         "sketch-pulse": { "0%, 100%": { opacity: "1" }, "50%": { opacity: "0.45" } },
         sheen: { from: { backgroundPosition: "100% 0" }, to: { backgroundPosition: "-100% 0" } },
-        ring: { "0%": { transform: "scale(0.5)", opacity: "0.7" }, "100%": { transform: "scale(1.3)", opacity: "0" } },
       },
       animation: {
         // The delay holds the sweep back until the sketch has finished building up.
@@ -39,7 +38,6 @@ export default {
         // Backwards fill keeps pieces solid until their staggered delay, after the build-up.
         "sketch-pulse": "sketch-pulse 1.6s ease-in-out infinite backwards",
         sheen: "sheen 2s linear infinite",
-        ring: "ring 1.8s ease-out infinite",
       },
       boxShadow: {
         soft: v("shadow"),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { counterText, labelOf, phaseOf, sourceDomains, thoughtOf, type PhaseInput } from "./thinking";
+import { counterText, labelOf, orbStateOf, phaseOf, sourceDomains, thoughtOf, type PhaseInput } from "./thinking";
 
 const base: PhaseInput = { elapsedMs: 0, reasoning: "", query: null, sources: [], hasText: false };
 const phase = (over: Partial<PhaseInput>) => phaseOf({ ...base, ...over });
@@ -26,6 +26,16 @@ describe("phaseOf", () => {
 
   it("writes once text has been shown, over every other phase", () => {
     expect(phase({ hasText: true, reasoning: "x", query: "q", sources: [src("https://a.com")], elapsedMs: 9000 })).toBe("writing");
+  });
+});
+
+describe("orbStateOf", () => {
+  it("gives each visible phase its own orb state", () => {
+    expect(orbStateOf("waiting")).toBe("connecting");
+    expect(orbStateOf("still")).toBe("breathing");
+    expect(orbStateOf("thinking")).toBe("solving");
+    expect(orbStateOf("searching")).toBe("searching");
+    expect(orbStateOf("reading")).toBe("working");
   });
 });
 

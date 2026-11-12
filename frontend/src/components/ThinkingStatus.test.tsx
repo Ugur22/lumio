@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubMatchMedia } from "../test/helpers";
 import { Turn } from "./Turn";
 import { ThinkingStatus, ThinkingView } from "./ThinkingStatus";
+
+beforeEach(() => {
+  stubMatchMedia();
+  // jsdom has no canvas; the orb skips drawing when there is no context.
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+});
 
 afterEach(() => {
   cleanup();
@@ -87,6 +94,27 @@ describe("ThinkingView", () => {
     expect(screen.getByText("knmi.nl")).toBeTruthy();
     expect(screen.getByText("deltawerken.com")).toBeTruthy();
     expect(screen.queryByText("q")).toBeNull();
+  });
+
+  it("keeps the orb out of the accessibility tree so only the label is announced", () => {
+    const { container } = view(1000);
+    const orb = container.querySelector('[role="status"] > span:first-child');
+    expect(orb?.getAttribute("aria-hidden")).toBe("true");
+    expect(orb?.querySelector('[role="img"]')).toBeTruthy();
+  });
+
+  it("puts a 64px orb in an avatar gutter from 721px up, and a 20px one inline on phones", () => {
+    const media = (matches: boolean) =>
+      vi.stubGlobal("matchMedia", (q: string) => ({ matches, media: q, addEventListener() {}, removeEventListener() {} }));
+    media(true);
+    const wide = view(1000, { query: "q" });
+    expect(wide.container.querySelector<HTMLCanvasElement>("canvas")?.style.width).toBe("64px");
+    expect(wide.container.querySelector('[role="status"] canvas')).toBeNull();
+    cleanup();
+    media(false);
+    const narrow = view(1000);
+    expect(narrow.container.querySelector<HTMLCanvasElement>('[role="status"] canvas')?.style.width).toBe("20px");
+    vi.unstubAllGlobals();
   });
 
   it("respects reduced motion by gating every animation on motion-safe", () => {

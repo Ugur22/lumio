@@ -75,7 +75,6 @@ export function Turn({ question, images = [], reply, sources = [], notes = [], q
         ))
         .with({ kind: "thinking" }, (r) => (
           <div className="mt-5">
-            <Who />
             <ThinkingStatus startedAt={r.startedAt} reasoning={r.reasoning} query={query} sources={sources} />
           </div>
         ))
