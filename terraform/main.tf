@@ -41,7 +41,7 @@ resource "aws_security_group" "lumio" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [var.ssh_cidr]
+    cidr_blocks = var.ssh_cidrs
   }
 
   # Terraform deletes AWS's default allow-all egress unless it is declared.
