@@ -1,6 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { ThinkingOrb } from "thinking-orbs";
 import { useElapsed } from "../hooks/useElapsed";
-import { counterText, labelOf, phaseOf, sourceDomains, type Thought } from "../lib/thinking";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { counterText, labelOf, orbStateOf, phaseOf, sourceDomains, type Thought } from "../lib/thinking";
 import type { SourceRef } from "../types";
 import { ChevronDownIcon } from "./icons";
 
@@ -21,20 +23,27 @@ export function ThinkingStatus(props: StatusProps) {
 
 // The elapsed time comes in as a prop so the view can be rendered at any second.
 export function ThinkingView({ elapsedMs, reasoning, query, sources }: Omit<StatusProps, "startedAt"> & { elapsedMs: number }) {
+  // Desktop gives the orb its own 64px avatar gutter; on phones it shrinks to sit inline before the label.
+  const avatar = useMediaQuery("(min-width: 721px)");
   const phase = phaseOf({ elapsedMs, reasoning, query, sources, hasText: false });
   if (phase === "writing") return null;
   const domains = sourceDomains(sources);
   const searched = query?.trim() ?? "";
   const counter = counterText(elapsedMs);
+  const orb = (
+    // The label is the announcement, so the orb stays out of the accessibility tree. It follows the root
+    // data-theme and renders a still frame under prefers-reduced-motion by itself.
+    <span aria-hidden="true" className="flex-none">
+      <ThinkingOrb state={orbStateOf(phase)} size={avatar ? 64 : 20} />
+    </span>
+  );
 
   return (
     // The surrounding message list is a polite live region; off here keeps the chips and the streaming reasoning quiet.
-    <div aria-live="off">
-      <div role="status" className="flex min-h-6 items-center gap-[9px] text-sm">
-        <span
-          aria-hidden="true"
-          className="relative size-2 flex-none rounded-full bg-accent after:absolute after:-inset-1 after:rounded-full after:border-[1.5px] after:border-accent after:opacity-0 after:content-[''] motion-safe:after:animate-ring"
-        />
+    <div aria-live="off" className={avatar ? "grid grid-cols-[64px_1fr] gap-x-3.5" : undefined}>
+      {avatar && orb}
+      <div role="status" className={`flex items-center gap-[9px] text-sm ${avatar ? "min-h-16" : "min-h-6"}`}>
+        {!avatar && orb}
         <span className="text-muted motion-safe:animate-sheen motion-safe:bg-[linear-gradient(90deg,var(--muted)_0%,var(--muted)_38%,var(--text)_50%,var(--muted)_62%,var(--muted)_100%)] motion-safe:bg-[length:250%_100%] motion-safe:bg-clip-text motion-safe:text-transparent">
           {labelOf(phase)}
         </span>
@@ -42,23 +51,25 @@ export function ThinkingView({ elapsedMs, reasoning, query, sources }: Omit<Stat
           {counter}
         </span>
       </div>
-      {phase === "searching" && searched && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className={`${chip} text-text`} title={searched}>
-            {searched}
-          </span>
-        </div>
-      )}
-      {phase === "reading" && domains.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {domains.map((d) => (
-            <span key={d} className={`${chip} text-muted`}>
-              {d}
+      <div className={avatar ? "col-start-2" : undefined}>
+        {phase === "searching" && searched && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className={`${chip} text-text`} title={searched}>
+              {searched}
             </span>
-          ))}
-        </div>
-      )}
-      {phase === "thinking" && <LiveThought text={reasoning} />}
+          </div>
+        )}
+        {phase === "reading" && domains.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {domains.map((d) => (
+              <span key={d} className={`${chip} text-muted`}>
+                {d}
+              </span>
+            ))}
+          </div>
+        )}
+        {phase === "thinking" && <LiveThought text={reasoning} />}
+      </div>
     </div>
   );
 }

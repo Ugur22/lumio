@@ -1,3 +1,4 @@
+import type { OrbState } from "thinking-orbs";
 import type { SourceRef } from "../types";
 
 // What the status line says while no reply text has been shown yet.
@@ -35,6 +36,16 @@ const LABEL: Record<Exclude<Phase, "writing">, string> = {
   searching: "Searching the web",
   reading: "Reading sources",
 };
+
+const ORB: Record<Exclude<Phase, "writing">, OrbState> = {
+  waiting: "connecting",
+  still: "breathing",
+  thinking: "solving",
+  searching: "searching",
+  reading: "working",
+};
+
+export const orbStateOf = (phase: Exclude<Phase, "writing">): OrbState => ORB[phase];
 
 export const labelOf = (phase: Exclude<Phase, "writing">) => LABEL[phase];
 
