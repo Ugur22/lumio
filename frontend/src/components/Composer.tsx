@@ -210,7 +210,7 @@ export function Composer({ ref, disabled, vision, providerName, canIllustrate = 
   const sendClass = "grid flex-none place-items-center text-on-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
   const size = phone ? "size-10 rounded-full" : "size-9 rounded-xl";
   const sendButton = disabled ? (
-    <PressButton type="button" aria-label="Stop" onClick={onStop} className={`${sendClass} ${size} bg-accent shadow-soft`}>
+    <PressButton type="button" aria-label="Stop" onClick={onStop} className={`${sendClass} ${size} bg-warn-bar shadow-soft`}>
       <StopIcon />
     </PressButton>
   ) : (

@@ -99,6 +99,11 @@ export function useStreamingSend({ onTrialRefused, blocked = false }: Options = 
           },
           onError: (err) => {
             endStream();
+            // Stopping before any text arrives surfaces as an abort error; that is the user's choice, not a failure.
+            if (controller.signal.aborted) {
+              useStream.getState().fail("Stopped. Nothing was generated.", true);
+              return;
+            }
             const trial = trialFailure(err);
             if (trial) {
               useStream.getState().fail(trial.message, true);
