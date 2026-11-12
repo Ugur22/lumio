@@ -112,3 +112,15 @@ e2e: build
 	(cd frontend && npx cypress run); rc=$$?; \
 	if [ $$rc -ne 0 ]; then echo "--- last 40 lines of logs/app.jsonl ---"; tail -n 40 logs/app.jsonl 2>/dev/null; fi; \
 	exit $$rc
+
+# For lumio-mobile's visual check: like e2e-server, but the app counts as a server (public host and admin user set) with a
+# seeded admin account "demo", so the mobile app can sign in with a username and password. The admin inherits the stub
+# profile. Uses the same ports as e2e-server, so do not run both at once.
+.PHONY: e2e-mobile-server
+e2e-mobile-server:
+	@d=$$(mktemp -d "$${TMPDIR:-/tmp}/lumio-e2e.XXXXXX"); trap 'kill 0; rm -rf "$$d"' EXIT INT TERM; \
+	LUMIO_E2E_DATA_DIR=$$d $(PY) scripts/seed_e2e_account.py || exit 1; \
+	$(PY) -m tests.fake_upstream --port $(E2E_STUB_PORT) & \
+	LUMIO_E2E_UPSTREAM=http://127.0.0.1:$(E2E_STUB_PORT)/v1 LUMIO_E2E_DATA_DIR=$$d \
+	DOLPHINLLM_PUBLIC_HOST=127.0.0.1:$(E2E_APP_PORT) DOLPHINLLM_ADMIN_USER=demo \
+	$(PY) -m uvicorn server:app --host 127.0.0.1 --port $(E2E_APP_PORT) --log-level warning
