@@ -1,5 +1,6 @@
 import pytest
 from models import LOCAL_USER
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import e2e
@@ -64,3 +65,10 @@ def test_import_refuses_without_data_dir(monkeypatch):
 def test_off_by_default(monkeypatch):
     monkeypatch.delenv(e2e.UPSTREAM_VAR, raising=False)
     assert not e2e.enabled()
+
+
+def test_deployed_server_refuses_loopback_except_the_stub(e2e_env, monkeypatch):
+    monkeypatch.setattr(runtime.settings, "public_host", "lumio.example")
+    providers.ensure_public_url("http://127.0.0.1:8765/v1")  # the e2e upstream
+    with pytest.raises(HTTPException):
+        providers.ensure_public_url("http://127.0.0.1:9999/v1")

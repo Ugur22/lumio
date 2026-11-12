@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import threading
 
 import web
@@ -9,6 +10,7 @@ from fastapi import HTTPException
 from openai import APIStatusError, DefaultHttpxClient, OpenAI, OpenAIError
 from pydantic import ValidationError
 
+import e2e
 import profile_store
 import storage
 from app import runtime, story
@@ -187,6 +189,8 @@ def ensure_public_url(url: str) -> None:
     """On a server, a provider URL may not point at loopback, link-local, private or unspecified addresses (resolving
     names like web.check_public does): the server would otherwise fetch internal services, such as the cloud metadata
     endpoint, for any signed-in user. Locally the URL is the user's own business (Ollama on 127.0.0.1)."""
+    if e2e.enabled() and url == os.environ.get(e2e.UPSTREAM_VAR):
+        return  # the stub the e2e runs talk to; nothing else on loopback is let through
     if runtime.settings.deployed and not is_public_url(url):
         raise HTTPException(422, PRIVATE_URL)
 
