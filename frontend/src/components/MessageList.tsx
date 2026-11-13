@@ -63,6 +63,20 @@ export function MessageList({ messages, chatId, onManage }: Props) {
     });
   }, [messages, pending, streaming]);
 
+  // The thinking block grows as reasoning streams in, and images load late, so the list's height changes without
+  // `messages` or `pending` changing. Watching the content keeps the reader at the bottom through all of it.
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const inner = content.current;
+    if (!el || !inner || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, []);
+
   // Messages alternate user/assistant, so pairing them gives one visual turn each.
   const turns: { question: string; images: string[]; reply: Reply; sources: SourceRef[]; notes: string[]; query: string | null; failures: IllustrationFailure[] }[] = [];
   for (let i = 0; i < messages.length; i += 2) {
@@ -113,7 +127,7 @@ export function MessageList({ messages, chatId, onManage }: Props) {
       // Blank chat: the heading hugs the composer below instead of floating at the top.
       className={`flex-1 overflow-y-auto overflow-x-hidden px-5 py-6 max-[720px]:px-4 [overflow-wrap:anywhere] ${turns.length === 0 ? "flex flex-col justify-end max-[720px]:justify-center" : ""}`}
     >
-      <div className="mx-auto w-full max-w-[720px]">
+      <div ref={content} className="mx-auto w-full max-w-[720px]">
         {turns.length === 0 ? (
           <FirstRun onManage={onManage} fallback={<EmptyHeading />} />
         ) : (
